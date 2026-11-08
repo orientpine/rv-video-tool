@@ -13,6 +13,8 @@ DIR="${1:?usage: scan-public.sh <dir> [--git]}"
 MODE="${2:-}"
 DIR="$(cd "$DIR" && pwd)"
 PATTERNS="${RV_SCAN_PATTERNS:-$HOME/.config/rv-video-tool/scan-patterns}"
+# --git: every author/committer line must equal the project identity or one exact line of this local file
+ALLOW="${RV_SCAN_ALLOW_IDENTITIES:-$HOME/.config/rv-video-tool/scan-allow-identities}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 fail=0
@@ -41,7 +43,17 @@ else
 fi
 
 g() { grep -rInP --exclude-dir=.git "$@" "$DIR" | sed "s|^$DIR/||" ; }
-[[ "$MODE" == "--git" ]] && git -C "$DIR" log --all -p --format='commit %H%n%an <%ae>%n%cn <%ce>%n%B' > "$TMP/log"
+if [[ "$MODE" == "--git" ]]; then
+  git -C "$DIR" log --all -p --format='%x1ecommit %H%n%an <%ae>%n%cn <%ce>%n%B' > "$TMP/raw"
+  # allowed identity lines are blanked only in the two header lines of a commit, never elsewhere
+  awk -v allowf="$ALLOW" -v identf="$TMP/ident" '
+    BEGIN { ok["rv maintainers <rv@users.noreply.github.com>"] = 1
+            while ((getline l < allowf) > 0) if (l != "" && substr(l, 1, 1) != "#") ok[l] = 1 }
+    /^\036commit / { i = 0; print; next }
+    { i++ }
+    i == 1 || i == 2 { if ($0 in ok) { print ""; next } print "git-log-identity:" NR ":" $0 > identf }
+    { print }' "$TMP/raw" > "$TMP/log"
+fi
 gl() { [[ -f "$TMP/log" ]] && grep -nP "$@" "$TMP/log" | sed 's/^/git-log:/' ; true; }
 IP='\b(?:10|172\.(?:1[6-9]|2\d|3[01])|192\.168|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7]))\.\d{1,3}\.\d{1,3}(?:\.\d{1,3})?\b'
 { g "$IP"; gl "$IP"; } | grep -vP '\b\d+\.\d+\.\d+\.\d+\.\d+' > "$TMP/ips"
@@ -70,8 +82,9 @@ count emails "$TMP/emails"
 count home-paths "$TMP/home"
 count chat-ids "$TMP/snow"
 count "private-patterns($npat)" "$TMP/private"
+[[ "$MODE" == "--git" ]] && count identities "$TMP/ident"
 
-( cd "$DIR" && find . -path ./.git -prune -o \( -name 'REPORT*.md' -o -name 'HANDOVER*.md' -o -name 'brief*.md' -o -name '.omo' -o -name 'upstream-v3' -o -name 'private' -o -name 'evidence' -o -name '*.mp4' -o -name '*.webm' -o -name '*.mov' -o -name '*.wav' -o -name '*.glb' -o -name '*.stl' -o -name '*.urdf' -o -name 'scan-patterns' -o -name 'robots_shutter*' -o -name '__pycache__' -o -name '.ruff_cache' \) -print ) > "$TMP/paths"
+( cd "$DIR" && find . -path ./.git -prune -o \( -name 'REPORT*.md' -o -name 'HANDOVER*.md' -o -name 'brief*.md' -o -name '.omo' -o -name 'upstream-v3' -o -name 'private' -o -name 'evidence' -o -name '*.mp4' -o -name '*.webm' -o -name '*.mov' -o -name '*.wav' -o -name '*.glb' -o -name '*.stl' -o -name '*.urdf' -o -name 'scan-patterns' -o -name 'scan-allow-identities' -o -name 'robots_shutter*' -o -name '__pycache__' -o -name '.ruff_cache' \) -print ) > "$TMP/paths"
 count forbidden-paths "$TMP/paths"
 
 [[ $fail == 2 ]] && exit 2
