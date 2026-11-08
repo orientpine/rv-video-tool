@@ -76,7 +76,7 @@
   const TEX = {};
   function canvasTex(w, h, draw) {
     const cv = document.createElement("canvas"); cv.width = w; cv.height = h; draw(cv.getContext("2d"), w, h);
-    const t = new THREE.CanvasTexture(cv); t.anisotropy = 4; return t;
+    const t = new THREE.CanvasTexture(cv); t.anisotropy = 4; t.userData.rvSurface = true; return t;
   }
   const softTex = () => TEX.soft || (TEX.soft = canvasTex(64, 64, g => {
     const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);

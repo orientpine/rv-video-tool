@@ -124,7 +124,7 @@ FRAME = r"""mutate => {
   scene.traverse(m=>{
    if(!m.isMesh||!shown(m)||tagged(m)) return;
    const mat=[].concat(m.material)[0]; if(!mat||!mat.map||mat.depthTest===false) return;
-   const img=mat.map.image; if(!(mat.map.isCanvasTexture||(img&&img.tagName==='CANVAS'))) return;
+   const img=mat.map.image; if(!(mat.map.isCanvasTexture||(img&&img.tagName==='CANVAS'))||mat.map.userData.rvSurface) return;   // kit surface textures (wood, paint, hatch) carry no text
    if(!m.geometry.boundingBox) m.geometry.computeBoundingBox();
    const bb=m.geometry.boundingBox, d=bb.getSize(new THREE.Vector3()), dd=[d.x,d.y,d.z].sort((a,b)=>a-b);
    if(!(dd[2]>0.05&&dd[0]<0.05*dd[2])) return;
