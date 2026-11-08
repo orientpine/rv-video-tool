@@ -27,7 +27,8 @@ from capture import CHROME, CHROME_ARGS
 ACTION_VERBS = re.compile(
     r"(?:풀[기고어]|열[기고어]|옮[기겨]|빼[기고야]|돌[리려]|닫[기고아]|"
     r"올[리려]|내[리려]|붙(?:이|여(?!\s*(?:둔|있는|놓)))|밀[기고어]|잠[그가]|분리[하해]|"
-    r"이동[하해]|회전[하해]|개방[하해]|배기[하해]|감압[하해]|끼[우워]|꽂[기고아]|켜[기고서]|꺼내)"
+    r"이동[하해]|회전[하해]|개방[하해]|배기[하해]|감압[하해]|끼[우워웁웠]|꽂[기고아]|켜[기고서]|꺼내|"
+    r"교체[하해합]|갈아\s*끼)"
     r"(?!는\s+(?!동안|순간|때|중|사이|모습|장면|과정)\S)")
 # At 160x90: >=15 pixels changing by >12/255 and mean RGB delta >=.02/255.
 # Both reject raster rounding noise; a visible mesh transform must also change.
@@ -35,7 +36,7 @@ ACTION_PIXEL_FRACTION = .001
 ACTION_RGB_DELTA = .02
 # Word<->animation match (ACTION_MATCH, owner 2026-11-07 16:24 KST): KIT.process parts expose names and
 # state 0..1 (0 = as built/closed/start/off). Verb classes decide the expected change of the named part.
-MATCH_RISE = re.compile(r"열[기고어리]|개방|풀[기고어]|켜[기고서]|옮[기겨]|이동[하해]|빼[기고야서]|꺼내|분리[하해]|끼[우워]|꽂[기고아]|넣[기고어]|장착|붙[이여]")
+MATCH_RISE = re.compile(r"열[기고어리]|개방|풀[기고어]|켜[기고서]|옮[기겨]|이동[하해]|빼[기고야서]|꺼내|분리[하해]|끼[우워웁웠]|꽂[기고아]|넣[기고어]|장착|붙[이여]|교체|갈아\s*끼")
 MATCH_FALL = re.compile(r"닫[기고아]|덮[기고어]|잠[그가]|끄[기고]")
 MATCH_UP = re.compile(r"올[리려]")
 MATCH_DOWN = re.compile(r"내[리려]")
@@ -67,6 +68,26 @@ ACTION_PATH_RATIO = 1.5
 ACTION_ZOOM = 1.25
 ACTION_ORBIT_DEG = 15.0
 ACTION_PATH_STEP = .2
+# Pop-in (owner: an element suddenly appears with no transition). Weight = on-screen area share x opacity of one
+# overlay element or 3D mesh. A pop rises from <= 5% to >= 50% of its peak (max over the next 0.5 s) within
+# POP_FRAMES frames; simultaneous pops of one group (overlay child / top 3D object) are summed and must reach
+# POP_MIN_WEIGHT (0.2% of the frame, about a 64x64 px card) to count. Scene transitions, declared shot cuts and
+# camera cuts (a one-frame camera jump) are not pops: the whole picture changes there.
+POP_FRAMES = 2
+POP_RISE = .5
+POP_FROM = .05
+POP_MIN_WEIGHT = .002
+POP_PEAK_S = .5
+POP_ONSET = 1e-6
+POP_CUT_M, POP_CUT_DEG = .25, 8.0
+# Explained subject near the centre (owner: while the script explains a part, that part must come to the camera
+# centre). For every action span with a linked subject (ACTION_MATCH target, else the declared action/follow shot
+# subject), after a lead-in for the camera to arrive, the subject's screen centre stays inside the central box
+# |x - .5| <= .15, |y - .5| <= .15 (frame fractions; the middle 30%) in at least half of the samples. A subject
+# on a rule-of-thirds line (x = .34) is not the centre.
+FRAME_BOX = .15
+FRAME_SHARE = .5
+FRAME_LEAD_S = .5
 
 
 HOOK = r"""
@@ -163,6 +184,260 @@ UI_SNAPSHOT = r"""() => {
   }
   return out;
 }"""
+
+# Per frame: on-screen weight (clipped area share x opacity) of every painted overlay element and visible 3D mesh.
+# A tracker keeps the last weight per key and records each onset (weight leaving ~0) with the next weights, so a
+# pop is judged later without sending every frame's weights out of the page.
+POP_STEP = r"""(frame, scene, cam) => {
+  const P = window.__motion.pop || (window.__motion.pop = {last: new Map(), open: [], done: [], ids: new WeakMap(), n: 0});
+  const id = o => { let v = P.ids.get(o); if (v === undefined) { v = ++P.n; P.ids.set(o, v); } return v; };
+  const W = innerWidth, H = innerHeight, now = new Map();
+  const straddle = new Set();
+  const put = (key, w, name, group) => { if (w <= 0) return; const e = now.get(key); if (e) e[0] += w; else now.set(key, [w, name, group]); };
+  const alpha = new Map();
+  const alphaOf = el => {
+    if (!el || el === document.documentElement) return 1;
+    if (alpha.has(el)) return alpha.get(el);
+    const s = getComputedStyle(el);
+    const f = /opacity\(([\d.]+)(%?)\)/.exec(s.filter || '');   // CSS filter: opacity() fades as well as opacity does
+    const v = s.display === 'none' || s.visibility === 'hidden' ? 0 :
+      (+s.opacity) * (f ? +f[1] / (f[2] ? 100 : 1) : 1) * alphaOf(el.parentElement);
+    alpha.set(el, v); return v;
+  };
+  const skip = /^(svg|g|defs|mask|marker|stop|clippath|pattern|lineargradient|radialgradient|filter|style|script|br)$/;
+  for (const ov of document.querySelectorAll('.overlay[data-scene]')) {
+    if (getComputedStyle(ov).display === 'none') continue;
+    [...ov.children].forEach((top, i) => {
+      const group = 'ui:' + ov.dataset.scene + '/' + i;
+      const name = (top.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 40) || top.tagName.toLowerCase() + '#' + i;
+      for (const el of [top, ...top.querySelectorAll('*')]) {
+        const tag = el.tagName.toLowerCase();
+        if (skip.test(tag) || el.closest('defs,mask,marker,clipPath,pattern')) continue;
+        const s = getComputedStyle(el), bg = s.backgroundColor;
+        // Boxes, shapes and pictures only. Bare text (no background of its own) is read like a caption: its text
+        // may change or start in one frame (counters, readouts, a line of text) without counting as a pop.
+        const painted = el instanceof SVGElement || /^(img|canvas|video)$/.test(tag) ||
+          (bg && bg !== 'transparent' && !/^rgba\(.*,\s*0\)$/.test(bg));
+        if (!painted) continue;
+        const a = alphaOf(el); if (a <= 0) continue;
+        // Visible part only: clip-path inset() and overflow-clipping ancestors (wipes, masks) cut the box.
+        const b = el.getBoundingClientRect();
+        let x0 = Math.max(0, b.left), x1 = Math.min(W, b.right), y0 = Math.max(0, b.top), y1 = Math.min(H, b.bottom);
+        for (let e = el; e && e !== document.body; e = e.parentElement) {
+          const z = e === el ? s : getComputedStyle(e), q = e.getBoundingClientRect();
+          const inset = z.clipPath && z.clipPath.match(/^inset\(([^)]+)\)$/);
+          if (inset) {
+            const v = inset[1].trim().split(/\s+/), f = [v[0], v[1] || v[0], v[2] || v[0], v[3] || v[1] || v[0]];
+            const px = (x, n) => parseFloat(x) * (x.endsWith('%') ? n / 100 : 1);
+            x0 = Math.max(x0, q.left + px(f[3], q.width)); x1 = Math.min(x1, q.right - px(f[1], q.width));
+            y0 = Math.max(y0, q.top + px(f[0], q.height)); y1 = Math.min(y1, q.bottom - px(f[2], q.height));
+          }
+          if (e !== el && /hidden|clip/.test(z.overflow)) { x0 = Math.max(x0, q.left); x1 = Math.min(x1, q.right); y0 = Math.max(y0, q.top); y1 = Math.min(y1, q.bottom); }
+        }
+        const w = Math.max(0, x1 - x0) * Math.max(0, y1 - y0) / (W * H);
+        // Keyed by place in the overlay, not by node: a box rebuilt with innerHTML every frame is the same box.
+        let path = '';
+        for (let e = el; e && e !== ov; e = e.parentElement) path = e.tagName + ':' + [...e.parentElement.children].indexOf(e) + '/' + path;
+        // Cut by the screen edge: it slides in or the camera reveals it, it does not pop - unless it is big and mostly
+        // on screen already (a card placed a few px past the edge that switches on in one frame still pops).
+        const full = Math.max(1e-9, b.width * b.height / (W * H));
+        if ((b.left < 0 || b.right > W || b.top < 0 || b.bottom > H) && (w < .03 || w < .5 * full))
+          straddle.add('u' + ov.dataset.scene + '/' + path);
+        put('u' + ov.dataset.scene + '/' + path, w * a, name, group);
+      }
+    });
+  }
+  if (scene && cam) {
+    cam.updateMatrixWorld(true);
+    const v = new THREE.Vector3();
+    scene.traverse(o => {
+      if (!(o.isMesh || o.isPoints || o.isLine || o.isSprite) || !o.geometry) return;
+      let named = null, top = o;
+      for (let a = o; a && a !== scene; a = a.parent) { if (!a.visible) return; if (!named && a.name) named = a; top = a; }
+      const g = o.geometry; if (!g.boundingBox) g.computeBoundingBox();
+      const b = g.boundingBox; if (!b || b.isEmpty()) return;
+      let x0 = 1, x1 = -1, y0 = 1, y1 = -1, front = 0;
+      for (let i = 0; i < 8; i++) {
+        v.set(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z)
+          .applyMatrix4(o.matrixWorld).applyMatrix4(cam.matrixWorldInverse);
+        if (cam.isPerspectiveCamera && v.z > -cam.near) continue;
+        v.applyMatrix4(cam.projectionMatrix); front++;
+        x0 = Math.min(x0, v.x); x1 = Math.max(x1, v.x); y0 = Math.min(y0, v.y); y1 = Math.max(y1, v.y);
+      }
+      if (!front) return;
+      // Cut by the screen edge: a part sliding in or revealed by the camera, not a pop (small parts cross the edge in 1-2 frames).
+      const area = Math.max(0, Math.min(1, x1) - Math.max(-1, x0)) * Math.max(0, Math.min(1, y1) - Math.max(-1, y0)) / 4;
+      if ((x0 < -1 || x1 > 1 || y0 < -1 || y1 > 1) && (area < .03 || area < .5 * (x1 - x0) * (y1 - y0) / 4))
+        straddle.add('m' + id(o));
+      // A box reaching behind the camera (a room or a big body the camera is close to) has no reliable screen
+      // area: corners swap sides as the camera moves. No onset is counted for it in this frame or the next.
+      if (front < 8) straddle.add('m' + id(o));
+      let op = 0;
+      for (const m of [].concat(o.material || [])) if (m && m.visible !== false) op = Math.max(op, m.transparent ? m.opacity : 1);
+      const label = (named && named.name) || o.name || (g.type + '#' + o.id);
+      put('m' + id(o), area * op, label, '3d:' + id(top));
+    });
+  }
+  for (const c of P.open) { const e = now.get(c.key); c.ws.push(e ? e[0] : 0); }
+  P.done.push(...P.open.filter(c => c.ws.length >= c.need));
+  P.open = P.open.filter(c => c.ws.length < c.need);
+  for (const [key, [w, name, group]] of now) {
+    const prev = P.last.get(key) || 0;
+    if (prev <= window.__motion.popOnset && w > window.__motion.popOnset && !straddle.has(key) && !(P.straddle || new Set()).has(key))
+      P.open.push({key, frame, prev, name, group, ws: [w], need: window.__motion.popNeed});
+  }
+  P.last = new Map([...now].map(([k, e]) => [k, e[0]]));
+  P.straddle = straddle;
+}"""
+
+# Mutation popin: one steady overlay element is hidden for 0.6 s and then shown again in one frame.
+POP_HIDE = r"""([sel, a, b]) => {
+  const render = window.renderAt;
+  window.renderAt = async function(t) {
+    await render(t);
+    const el = document.querySelector(sel);
+    if (el) el.style.visibility = t >= a && t < b ? 'hidden' : '';
+  };
+}"""
+
+# Find an overlay element that is fully shown and steady at both t - .7 s and t, to hide before t (mutation popin).
+POP_PICK = r"""async (times) => {
+  for (const t of times) {
+    const seen = [];
+    for (const at of [t - .7, t]) {
+      await window.renderAt(at);
+      const list = new Map();
+      for (const ov of document.querySelectorAll('.overlay[data-scene]')) {
+        if (getComputedStyle(ov).display === 'none') continue;
+        for (const el of ov.querySelectorAll('div')) {
+          if (![...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) continue;
+          const bg = getComputedStyle(el).backgroundColor;
+          if (!bg || bg === 'transparent' || /^rgba\(.*,\s*0\)$/.test(bg)) continue;   // a box, as POP_STEP counts
+          let a = 1; for (let e = el; e; e = e.parentElement) { const s = getComputedStyle(e); if (s.display === 'none' || s.visibility === 'hidden') { a = 0; break; } a *= +s.opacity; }
+          const r = el.getBoundingClientRect();
+          if (a >= .99 && r.width * r.height >= .004 * innerWidth * innerHeight && r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight) {
+            if (!el.dataset.rvPopPick) el.dataset.rvPopPick = 'p' + Math.random().toString(36).slice(2);
+            list.set(el.dataset.rvPopPick, Math.round(r.left) + ',' + Math.round(r.top));
+          }
+        }
+      }
+      seen.push(list);
+    }
+    for (const [k, pos] of seen[1]) if (seen[0].get(k) === pos) return {t, sel: `[data-rv-pop-pick="${k}"]`};
+  }
+  return null;
+}"""
+
+# Screen centre (0..1, y down) of explained subjects: KIT.process part indices and/or object names.
+SUBJECT_PROBE = r"""async ([times, parts, names]) => {
+  const all = window.__rvProcess || [], out = [];
+  for (const t of times) {
+    window.__motion.scene = null; await window.renderAt(t);
+    const scene = window.__motion.scene, cam = window.__motion.camera;
+    if (!scene || !cam) { out.push(null); continue; }
+    scene.updateMatrixWorld(true); cam.updateMatrixWorld(true);
+    const box = new THREE.Box3(), objs = parts.map(i => all[i] && all[i].obj).filter(Boolean);
+    for (const n of names) scene.traverse(o => { if (o.name === n) objs.push(o); });
+    for (const o of objs) {
+      let root = o, shown = true; for (let a = o; a; a = a.parent) { if (!a.visible) shown = false; root = a; }
+      if (root === scene && shown) box.expandByObject(o);
+    }
+    if (box.isEmpty()) { out.push(null); continue; }
+    const c = box.getCenter(new THREE.Vector3()), v = c.clone().applyMatrix4(cam.matrixWorldInverse);
+    if (cam.isPerspectiveCamera && v.z > -cam.near) { out.push({x: null, y: null}); continue; }
+    c.project(cam);
+    out.push({x: (c.x + 1) / 2, y: (1 - c.y) / 2});
+  }
+  return out;
+}"""
+
+# Mutation offcenter: inside each explanation span the camera turns 25 degrees away from what it looked at.
+CAM_TURN = r"""spans => {
+  const render = window.renderAt;
+  let previous;
+  window.renderAt = async function(t) {
+    if (previous) { previous.c.quaternion.copy(previous.q); previous.c.updateMatrixWorld(true); }
+    await render(t);
+    const c = window.__motion.camera;
+    if (!window.__motion.scene || !c) return;
+    previous = {c, q: c.quaternion.clone()};
+    if (window.__camTurnOn && spans.some(([a, b]) => t >= a && t <= b)) c.rotateY(25 * Math.PI / 180);
+    c.updateMatrixWorld(true);
+  };
+}"""
+
+
+def camera_cut(a, b):
+    """A one-frame camera jump: the whole picture changes, so nothing in it 'pops'."""
+    if not a or not b:
+        return True
+    dot = min(1.0, abs(sum(x * y for x, y in zip(a["q"], b["q"]))))
+    return math.dist(a["p"], b["p"]) > POP_CUT_M or 2 * math.degrees(math.acos(dot)) > POP_CUT_DEG
+
+
+def pop_findings(records, rows, tl, fps, spans, cuts, lo=0):
+    """Group simultaneous onsets per overlay child / top 3D object; a group whose summed peak >= POP_MIN_WEIGHT
+    and whose members rise to POP_RISE of their peak within POP_FRAMES frames is a pop (unless exempt)."""
+    by_frame = {r["frame"]: r for r in rows}
+    need = max(POP_FRAMES, round(POP_PEAK_S * fps))
+    groups = defaultdict(list)
+    for c in records:
+        ws = c["ws"] + [0] * (need - len(c["ws"]))
+        peak = max(ws)
+        if peak <= 0 or c["prev"] > POP_FROM * peak or max(ws[:POP_FRAMES]) < POP_RISE * peak:
+            continue
+        groups[(c["frame"], c["group"])].append((peak, c["name"]))
+    # Groups that pop in the same frame are one event (a label's leader line and its text box, a card's parts).
+    frames = defaultdict(list)
+    for (frame, group), items in groups.items():
+        if sum(p for p, _ in items) >= POP_MIN_WEIGHT:
+            frames[frame].append((group, items))
+    failures, rows_out, exempt = [], [], 0
+    for frame, members in sorted(frames.items()):
+        items = [x for _, its in members for x in its]
+        group = "ui:" if all(g.startswith("ui:") for g, _ in members) else "3d" if not any(
+            g.startswith("ui:") for g, _ in members) else "mixed"
+        weight = sum(p for p, _ in items)
+        t = frame / fps
+        scene = next((s for s in reversed(tl["order"]) if t + 1e-7 >= tl["modules"][s]["start"]), tl["order"][0])
+        start = tl["modules"][scene]["start"]
+        end = start + tl["modules"][scene]["duration"]
+        lead, tail = spans.get(scene, (0, 0))
+        names = []
+        for _, n in sorted(items, reverse=True):
+            if n not in names:
+                names.append(n)
+        names = [n for n in names if not re.fullmatch(r"svg#\d+", n)] or names   # leader lines: name the text
+        kind = "ui" if group == "ui:" else group
+        here, before = by_frame.get(frame), by_frame.get(frame - 1)
+        reason = ("scene_start" if frame <= max(lo, math.ceil(start * fps - 1e-6)) or (before and here and before.get("scene") != here.get("scene")) else
+                  "transition" if t < start + lead or t > end - tail else
+                  "declared_cut" if any(abs(start + c - t) <= 1.5 / fps for c in cuts.get(scene, [])) else
+                  "camera_cut" if here and before and here.get("camera") and camera_cut(here["camera"], before.get("camera")) else "")
+        line = (f"POP_IN {scene} t={t:.3f}s kind={kind} element={names[0]!r}"
+                f"{' +' + str(len(names) - 1) + ' more' if len(names) > 1 else ''} weight={weight:.4f} "
+                f"need_fade>={POP_FRAMES + 1}frames min_weight={POP_MIN_WEIGHT}")
+        if reason:
+            exempt += 1
+            rows_out.append(f"{line} EXEMPT {reason}")
+            continue
+        rows_out.append(f"{line} FAIL")
+        failures.append((frame, scene, "pop_in", f"{kind} element={names[0]!r} weight={weight:.4f} "
+                         f"appears within {POP_FRAMES} frames with no fade/slide/camera reveal"))
+    return failures, rows_out, exempt
+
+
+def frame_verdict(samples):
+    """Share of the samples where the subject is shown (None = hidden, e.g. an exhaust between puffs) that have its
+    centre inside the central box; behind the camera counts as outside. Also the mean centre."""
+    shown = [s for s in samples if s]
+    seen = [s for s in shown if s.get("x") is not None]
+    inside = [s for s in seen if abs(s["x"] - .5) <= FRAME_BOX and abs(s["y"] - .5) <= FRAME_BOX]
+    share = len(inside) / len(shown) if shown else 0.0
+    mx = statistics.mean(s["x"] for s in seen) if seen else float("nan")
+    my = statistics.mean(s["y"] for s in seen) if seen else float("nan")
+    return share, mx, my, len(seen)
+
 
 CAM_NUDGE = r"""events => {
   const render=window.renderAt;
@@ -910,8 +1185,9 @@ PROBE = r"""async ([frame,fps,mutate]) => {
   const sceneName=[...document.querySelectorAll('.overlay[data-scene]')]
     .find(e=>getComputedStyle(e).display!=='none')?.dataset.scene;
   const ui=probe.uiSnapshot();
-  if(!scene)return {frame,scene:sceneName,objects:[],clear:window.CLEAR,ui,camera:null};
+  if(!scene){probe.popStep(frame,null,null);return {frame,scene:sceneName,objects:[],clear:window.CLEAR,ui,camera:null};}
   scene.updateMatrixWorld(true);
+  probe.popStep(frame,scene,probe.camera);
   const tracked=[];
   scene.traverse(o=>{
     if(o.userData.track===true || /robot|end.?effector|held.?head|rotor/i.test(o.name||'')) {
@@ -990,7 +1266,8 @@ async def main(a):
     marker = "const TL = window.TIMELINE"
     if marker not in source:
         raise RuntimeError("page lacks the rv compositor marker")
-    source = source.replace(marker, HOOK + "\nwindow.__motion.uiSnapshot=" + UI_SNAPSHOT + ";\n  " + marker, 1)
+    source = source.replace(marker, HOOK + "\nwindow.__motion.uiSnapshot=" + UI_SNAPSHOT + ";\nwindow.__motion.popStep=" +
+                            POP_STEP + ";\n  " + marker, 1)
     errors, rows = [], []
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(executable_path=CHROME, headless=True, args=CHROME_ARGS)
@@ -1012,8 +1289,29 @@ async def main(a):
             .filter(s=>['follow','explode','action'].includes(s.kind)&&typeof s.subject==='string').map(s=>s.subject))];
         }""", kinds)
         await p.evaluate("window.__motion.sampling=true")
+        await p.evaluate("([onset, need]) => { window.__motion.popOnset = onset; window.__motion.popNeed = need; }",
+                         [POP_ONSET, max(POP_FRAMES, round(POP_PEAK_S * a.fps))])
         transitions, looks, blend_s = await p.evaluate(
             "[window.TRANSITIONS||{}, window.SCENE_LOOK||{}, Math.max(1.5, window.THEME_PLAN?.blend_s||2)]")
+        if a.mutate == "popin":
+            # Inside scenes, away from declared cuts and transition edges (a pop there is exempt and would not be caught).
+            edges = transition_spans(tl, transitions, looks, blend_s)
+            mids = [(s, tl["modules"][s]["start"] + tl["modules"][s]["duration"] * f) for s in tl["order"]
+                    for f in (.5, .7, .35) if not a.scene or s == a.scene]
+            mids = [m for s, m in mids
+                    if tl["modules"][s]["start"] + edges[s][0] + 1.0 <= m - .6
+                    and m <= tl["modules"][s]["start"] + tl["modules"][s]["duration"] - edges[s][1] - 1.0
+                    and not any(abs(tl["modules"][s2]["start"] + c - x) <= 1.0
+                                for s2, cs in cuts.items() if s2 in tl["modules"] for c in cs
+                                for x in (m, m - .6))]
+            pick = await p.evaluate(POP_PICK, mids)
+            if not pick:
+                print("POP_MUTATION SKIP no steady overlay element to hide")
+                print("MUTATION_SKIP")
+                await browser.close()
+                return 0
+            await p.evaluate(POP_HIDE, [pick["sel"], pick["t"] - .6, pick["t"]])
+            pop_mutation = round(pick["t"] * a.fps)
         if a.mutate == "transglide":
             leads = transition_spans(tl, transitions, looks, blend_s)
             scene = next((s for s in tl["order"] if leads[s][0] > 0), None)
@@ -1048,6 +1346,8 @@ async def main(a):
             }""", [first, min(first + 120, count), a.fps, a.mutate == "teleport", PROBE])
             rows.extend(batch)
         mutation = await p.evaluate("window.__motion.mutation")
+        if a.mutate == "popin":
+            mutation = {"kind": "popin", "frame": pop_mutation}
         if a.mutate == "transglide":
             mutation = {"kind": "transglide", "scene": mutation_scene}
         ui_events = ui_appearances(rows, a.fps)
@@ -1057,6 +1357,7 @@ async def main(a):
                       for e in ui_events if round(e["t"] * a.fps) in cameras]
             await p.evaluate(CAM_NUDGE, nudges)
             rows = []
+            await p.evaluate("window.__motion.pop = null")
             for first in range(lo, count, 120):
                 rows.extend(await p.evaluate("""async ([first,end,fps,code])=>{
                   const sample=eval('('+code+')'),out=[];
@@ -1064,6 +1365,11 @@ async def main(a):
                   return out;
                 }""", [first, min(first + 120, count), a.fps, PROBE]))
             mutation = {"kind": "camnudge", "appearances": len(nudges)}
+        pop_records = await p.evaluate("(() => { const P = window.__motion.pop; return P ? P.done.concat(P.open).map("
+                                       "c => ({frame: c.frame, prev: c.prev, name: c.name, group: c.group, ws: c.ws})) : []; })()")
+        await p.evaluate("window.__motion.pop = null")
+        pop_failures, pop_rows, pop_exempt = pop_findings(
+            pop_records, rows, tl, a.fps, transition_spans(tl, transitions, looks, blend_s), cuts, lo)
         camera_failures, camera_rows = camera_findings(rows, ui_events, kinds, cuts, tl, a.fps,
                                                        transition_spans(tl, transitions, looks, blend_s))
         camera_caught = a.mutate == "camnudge" and any(
@@ -1096,6 +1402,11 @@ async def main(a):
         match_linked = match_caught = False
         if a.mutate == "actreverse":
             mutation = {"kind": "actreverse", "handles": await p.evaluate(ACT_REVERSE)}
+        if a.mutate == "offcenter":
+            await p.evaluate(CAM_TURN, [[b, e] for _, b, e, _, _ in spans])
+            await p.evaluate("window.__camTurnOn = true")
+            mutation = {"kind": "offcenter", "spans": len(spans)}
+        frame_rows, frame_failures, offcenter_caught = [], [], False
         for scene, begin, end, text, origin in spans:
             end = min(end, tl["modules"][scene]["start"] + tl["modules"][scene]["duration"] - 1 / a.fps)
             if end <= begin:
@@ -1115,7 +1426,10 @@ async def main(a):
             head = max(scene_lo, begin - MATCH_HEAD_S)
             tail = min(scene_lo + tl["modules"][scene]["duration"] - 1 / a.fps, end + MATCH_TAIL_S)
             n = max(1, math.ceil((tail - head) * 8))
-            hts = sorted({head + (tail - head) * i / n for i in range(n + 1)} | {begin, end})
+            # Grid times closer than 20 ms to the span edges are dropped: a near-duplicate sample shows almost no
+            # change and stopped match_run from extending a rise back to where it started.
+            hts = sorted({x for x in (head + (tail - head) * i / n for i in range(n + 1))
+                          if abs(x - begin) > .02 and abs(x - end) > .02} | {begin, end})
             probe = await p.evaluate(PROCESS_PROBE, hts)
             live = [i for i in range(len(probe["parts"])) if any(r[i] is not None for r in probe["rows"])]
             parts = [probe["parts"][i] for i in live]
@@ -1135,6 +1449,7 @@ async def main(a):
                     ok, why = match_part(part["kind"], cls, hts, [r[k] for r in probe["rows"]], begin, end)
                     results.append((ok, f"target={part['kind']}:{part['names'][0]!r} want={cls or 'move'} {why}"))
                 ok, md = next((r for r in results if r[0]), results[0])
+                chosen = targets[next((i for i, r in enumerate(results) if r[0]), 0)]
                 md += f" thresholds rest<={MATCH_REST} full>={MATCH_FULL} move>={MATCH_MOVE}"
                 action_rows.append(f"ACTION_MATCH {scene} {text!r} {'PASS' if ok else 'FAIL'} {md}")
                 if ok:
@@ -1142,11 +1457,49 @@ async def main(a):
                 else:
                     action_failures.append((round(begin * a.fps), scene, "action_mismatch", md + f" action={text!r}"))
                     match_caught = match_caught or a.mutate == "actreverse"
+            # Explained subject near the camera centre: the linked part, else the declared action/follow subject.
+            scene_lo = tl["modules"][scene]["start"]
+            if targets:
+                parts_, names_ = [chosen], []
+                label = f"{probe['parts'][chosen]['kind']}:{probe['parts'][chosen]['names'][0]!r}"
+            else:
+                shots = kinds.get(scene, [])
+                names_ = sorted({s["subject"] for i, s in enumerate(shots)
+                                 if s.get("kind") in ("action", "follow") and isinstance(s.get("subject"), str)
+                                 and scene_lo + s["t"] <= end and scene_lo + s.get("end", shots[i + 1]["t"] if i + 1 < len(shots)
+                                                                         else tl["modules"][scene]["duration"]) >= begin})
+                parts_, label = [], "declared:" + ",".join(repr(n) for n in names_)
+            if parts_ or names_:
+                lead_in = min(FRAME_LEAD_S, .4 * (end - begin))
+                n = max(4, math.ceil((end - begin - lead_in) * 8))
+                fts = [begin + lead_in + (end - begin - lead_in) * i / n for i in range(n + 1)]
+                if a.mutate == "offcenter":   # caught only where the unmutated camera passed and the turned one fails
+                    await p.evaluate("window.__camTurnOn = false")
+                    base_ok = frame_verdict(await p.evaluate(SUBJECT_PROBE, [fts, parts_, names_]))[0] >= FRAME_SHARE
+                    await p.evaluate("window.__camTurnOn = true")
+                share, mx, my, seen = frame_verdict(await p.evaluate(SUBJECT_PROBE, [fts, parts_, names_]))
+                fok = share >= FRAME_SHARE
+                if a.mutate == "offcenter" and base_ok and not fok:
+                    offcenter_caught = True
+                fd = (f"subject={label} centred={share:.2f} need>={FRAME_SHARE} box=|x-.5|,|y-.5|<={FRAME_BOX} "
+                      f"mean_x={mx:.2f} mean_y={my:.2f} samples={len(fts)} seen={seen} span={begin + lead_in:.3f}..{end:.3f}s")
+                frame_rows.append(f"SUBJECT_FRAME {scene} {text!r} {'PASS' if fok else 'FAIL'} {fd}")
+                if not fok:
+                    frame_failures.append((round(begin * a.fps), scene, "subject_off_center", fd + f" action={text!r}"))
+            else:
+                frame_rows.append(f"SUBJECT_FRAME {scene} {text!r} SKIP no linked or declared subject "
+                                  f"(name the part: KIT.process.part(obj, {{name, state}}))")
             if not moving:
                 action_failures.append((round(begin * a.fps), scene, "action_static", detail + f" action={text!r}"))
                 if freeze:
                     freeze_caught = True
                     mutation = {"kind": "freeze", "scene": scene, "span": [begin, end]}
+        action_failures.extend(frame_failures + pop_failures)
+        action_rows.extend(frame_rows + pop_rows)
+        if a.mutate == "offcenter":
+            match_caught = offcenter_caught
+        if a.mutate == "popin":
+            match_caught = any(abs(f[0] - pop_mutation) <= 1 and f[2] == "pop_in" for f in pop_failures)
         mids = [tl["modules"][s_]["start"] + tl["modules"][s_]["duration"] / 2 for s_ in tl["order"] if not a.scene or s_ == a.scene]
         for hc in await p.evaluate(HATCH_COVER_PROBE, mids):
             scene_ = next(s_ for s_ in reversed(tl["order"]) if hc["t"] + 1e-7 >= tl["modules"][s_]["start"])
@@ -1263,6 +1616,11 @@ async def main(a):
         print("CAMERA_UI_CHECK " + ("FAIL" if camera_failures else "PASS"))
     if not spans:
         print("ACTION_MOTION_CHECK 실제 SKIP (동작 낱말/단계 카드 없음)")
+    print(f"POP_IN_CHECK {'FAIL' if pop_failures else 'PASS'} pops={len(pop_failures)} exempt={pop_exempt} "
+          f"onsets={len(pop_records)}")
+    framed = [r for r in frame_rows if " SKIP " not in r]
+    print(f"SUBJECT_FRAME_CHECK {'FAIL' if frame_failures else 'PASS' if framed else '실제 SKIP'} "
+          f"spans={len(framed)} off_center={len(frame_failures)} skipped={len(frame_rows) - len(framed)}")
     if not objects_seen and spans and not errors:
         print("MOTION_CHECK 실제 SKIP (추적할 물체 없음; 동작 화면 검사는 별도 수행)")
     if not objects_seen and not errors and not spans and not failures and not ui_events:
@@ -1285,7 +1643,8 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("html")
     ap.add_argument("--fps", type=float, default=30)
-    ap.add_argument("--mutate", choices=["teleport", "freeze", "camnudge", "transglide", "actreverse", "textcut"])
+    ap.add_argument("--mutate", choices=["teleport", "freeze", "camnudge", "transglide", "actreverse", "textcut",
+                                         "popin", "offcenter"])
     ap.add_argument("--scene", help="limit trajectory/action probes to one timeline scene")
     a = ap.parse_args()
     if a.fps <= 0:

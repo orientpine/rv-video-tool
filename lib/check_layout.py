@@ -54,7 +54,8 @@ COLLECT = r"""() => {
     const fg=rgba(e instanceof SVGElement?s.fill:s.color);
     if(e instanceof SVGElement) fg[3]*=+s.fillOpacity;
     if(fg[3]===0) continue;
-    out.push({id,text:direct(e).replace(/\s+/g,' '),r,opacity,
+    let path='';for(let a=e;a&&a!==document.body;a=a.parentElement)path=a.tagName+':'+[...a.parentElement.children].indexOf(a)+'/'+path;
+    out.push({id,path,scene:!!e.closest('.overlay[data-scene]'),text:direct(e).replace(/\s+/g,' '),r,opacity,
       tag:e.tagName.toLowerCase()+(typeof e.className==='string'&&e.className.trim()?'.'+e.className.trim().replace(/\s+/g,'.'):''),
       fg,layers,size:parseFloat(s.fontSize),bold:+s.fontWeight>=700,
       overflow:e instanceof HTMLElement && e.clientWidth>0 && e.scrollWidth>e.clientWidth,
@@ -64,6 +65,27 @@ COLLECT = r"""() => {
   }
   return out;
 }"""
+
+# Same element places (path) as COLLECT, opacity only (0 when hidden). Used to tell a fade in progress from a resting state.
+OPACITY = r"""() => {
+  const direct = e => [...e.childNodes].filter(n=>n.nodeType===3).map(n=>n.textContent).join(' ').trim();
+  const els=[...document.querySelectorAll('body *')].filter(e=>
+    !['SCRIPT','STYLE','NOSCRIPT'].includes(e.tagName) && direct(e));
+  const out={};
+  els.forEach(e=>{
+    let opacity=1;
+    for(let a=e;a;a=a.parentElement){const s=getComputedStyle(a);
+      if(s.display==='none'||s.visibility==='hidden'||s.visibility==='collapse'){opacity=0;break;}
+      opacity*=+s.opacity;}
+    let path='';for(let a=e;a&&a!==document.body;a=a.parentElement)path=a.tagName+':'+[...a.parentElement.children].indexOf(a)+'/'+path;
+    out[path]=opacity;   // keyed by DOM place, so a caption emptying elsewhere does not shift the match
+  });
+  return out;
+}"""
+# A text whose opacity differs by more than FADE_DELTA FADE_S before or after the sample is mid-fade: contrast
+# and overlap are judged on its resting frames, not while it fades (a fading label read as low contrast made
+# authors switch labels on in one frame instead - the pop-in the owner saw).
+FADE_S, FADE_DELTA = .2, .05
 
 MUTATE = r"""how => {
   const make=(txt,x,y,bg='#16323c',fg='#f7f9f9')=>{
@@ -355,6 +377,21 @@ async def main(a):
                 if target["fraction"] < .5 or target["cardFraction"] >= .4:
                     failures.append((t, target["text"], "occlude", values))
                     mutation_caught |= target["mutation"]
+            fading = set()
+            if any(.05 < row["opacity"] < 1 - FADE_DELTA for row in rows):
+                around = []
+                for dt in (-FADE_S, FADE_S):
+                    await p.evaluate("async t => {window.__LAYOUT_VIEWS.clear(); await window.renderAt(t);}", max(0, t + dt))
+                    around.append(await p.evaluate(OPACITY))
+                await p.evaluate("""async t => {window.__LAYOUT_VIEWS.clear(); await window.renderAt(t);
+                    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))}""", t)
+                # Scene content only: rv's own step chips and captions open with a clip reveal and keep full contrast.
+                fading = {row["id"] for row in rows if row["scene"] and row["opacity"] < 1 - FADE_DELTA and
+                          any(abs(o.get(row["path"], 0) - row["opacity"]) > FADE_DELTA for o in around)}
+                for row in rows:
+                    if row["id"] in fading:
+                        print(f"LAYOUT_FADE t={t:.3f} text={row['text'][:60]!r} opacity={row['opacity']:.3f} "
+                              f"(mid-fade: contrast/overlap judged on resting frames)")
             image = None
             if any(row["opacity"] < 1 or not any(c[3] >= 1 for c in row["layers"]) for row in rows):
                 # Hide DOM while preserving canvas and layout, so foreground glyphs
@@ -376,11 +413,15 @@ async def main(a):
                         if box[0] < 40 or box[1] < 130 or box[2] > 1880 or box[3] > 870:
                             bad("safe", f"rect={box}; required x=40..1880 y=130..870")
                             break
+                if row["id"] in fading:
+                    continue
                 ratio = contrast(row, image)
                 threshold = 3 if row["size"] >= 24 and row["bold"] else 4.5
                 if ratio < threshold:
                     bad("contrast", f"ratio={ratio:.3f} required={threshold} size={row['size']} bold={row['bold']}")
                 for other in rows[j + 1:]:
+                    if other["id"] in fading:
+                        continue
                     if (row["index"] in other["ancestors"]
                             or other["index"] in row["ancestors"]):
                         continue

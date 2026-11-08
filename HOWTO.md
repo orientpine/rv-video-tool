@@ -98,6 +98,7 @@ my-project/
 | 앉은 운전자 | `KIT.fx.seat(person, {seat, floor, levers: [leftLever, rightLever]})` (Z-up 장면은 `up: [0,0,1]`) |
 | 공정 단계 동작(밸브·계기 바늘·뚜껑·부품 옮기기·배기) | `KIT.process.valve/gauge/hatch/move/exhaust` + `KIT.process.steps(NAME, [...])` (4-1) |
 | 주인공(초점) 지정 | `KIT.fx.focus(물체)` 또는 `scene.userData.subject = 물체` |
+| 요소를 서서히 등장(기본 전환) | 3D: `KIT.fx.reveal(물체, KIT.win(t, a, b, 0.4))` (0 이면 숨김, 0→1 동안 원점에서 자람). 이름표·카드: `L.place(cam, p, dx, dy, KIT.win(t, a, b, 0.3))`, `el.style.opacity = KIT.win(t, a, b, 0.3)`. `obj.visible = t >= a`, `t >= a && t < b ? 1 : 0` 처럼 한 프레임에 켜면 `POP_IN` FAIL(5절). 페이드 중인 글자는 대비·격침 검사에서 빠지므로(`LAYOUT_FADE`) 페이드를 끄지 않는다 |
 | 앞을 스치는 기둥(깊이감) | `post = KIT.fx.prop(scene)` |
 | 숫자 카드(값은 출처표에서만) | `KIT.info.numCard(ov, {id: "synthetic-size", i: 1, caption: "…"})` |
 
@@ -116,6 +117,7 @@ my-project/
 - 장면 경계 컷과 장면 전환 구간(dip 앞뒤 절반·테마 섞기·크로스페이드)은 글자 규칙에서 세지 않고 같은 장면 안의 움직임만 센다. 뺀 글자 수와 구간은 `CAMERA_UI_TRANSITION` 으로 찍힌다. 주 카메라 = 화면 전체를 그리는 카메라. 작은 뷰포트·scissor 확대 창이나 렌더 타깃에 그리는 카메라는 빼고, 같은 장면에서 화면 전체 카메라가 바뀌면 `CAMERA_UI_SWITCH` 로 따로 찍는다(이동으로 안 셈).
 - **전환 중에는 카메라를 세워 둔다**: dip 앞뒤 절반·테마 섞기(2 s)·크로스페이드 구간에서 그 장면 그림이 보이는 만큼(그림 무게 ≥ 0.2) 카메라 위치나 시선점이 2 cm 넘게 움직이면 글자와 상관없이 `transition_camera_motion` FAIL(`CAMERA_TRANSITION` 줄, 변이 `transglide`). 한 카메라 객체를 여러 장면이 같이 쓰면 새 장면 처음에 앞 장면 값에서 미끄러져 오기 쉽다. 장면 t = 0 에서 카메라를 제 자리에 바로 놓고, 움직임은 전환이 끝난 뒤 시작한다. 추적하는 follow/explode 샷만 예외다.
 - 설명하는 동안 구도를 고정하고 그 부품을 작동·분해·강조한다: `KIT.fx.explode`, `KIT.process.*`, `KIT.fx.focus`.
+- **설명하는 부품은 화면 가운데에**: 동작 말 구간(`ACTION_SPAN`)마다 그 말의 대상(`ACTION_MATCH` 가 찾은 부품, 없으면 그 구간의 action/follow 샷 subject)의 화면 중심이, 구간 앞 0.5 s(카메라가 가는 시간)를 뺀 표본의 절반 이상에서 가운데 30% 상자(|x−.5|, |y−.5| ≤ .15) 안에 있어야 `SUBJECT_FRAME` PASS. 고정 구도라면 그 구도에서 설명할 부품이 가운데 오게 잡고, 그렇지 않으면 `KIT.shot.action(NAME, {t, at: 부품, …})` 으로 동작 순간 그 부품으로 간다(부품이 샷 끝에 같은 가운데 상자 안에 오는 자리를 고름). 3분할 자리(x ≈ .33)는 가운데가 아니다.
 - 카드만 바뀌는 구간은 `KIT.shot.declare(NAME, [{t: KIT.wordT(NAME, "structure"), kind: "ui-only", end: KIT.wordT(NAME, "next")}])` 로 선언하면 그 구간의 카메라 움직임은 아주 작아도 FAIL(검사 계약일 뿐, 카메라를 자동으로 고정하지는 않음).
 - "말은 동작, 화면은 정지" 검사는 카메라 이동을 빼고 물체 자체의 움직임만 센다. 카메라를 움직여서는 통과할 수 없다.
 
@@ -187,6 +189,9 @@ const steps = KIT.process.steps(NAME, [
 - `check_motion` 관통·순간이동.
 - `check_motion` 동작어 구간(`ACTION_SPAN`) → 말·카드는 동작인데 3D 가 안 움직이거나, 같은 구도에서 카드만 바뀌는 2.5초 이하 반복 컷이면 FAIL. 4-1 처럼 묶는다.
 - `check_motion` 말과 애니메이션 맞춤(`ACTION_MATCH`) → 동작 말 구간마다 그 말의 대상(낱말 또는 같은 절 앞 25자 안의 부품 이름)을 찾는다. 없으면 `action_unlinked` FAIL(부품에 이름을 붙인다). 찾으면 그 대상이 말대로 움직였는지 본다: 열기·풀기·켜기·옮기기·빼기·끼우기·꽂기·넣기 = 상태 0.05 이하에서 0.95 이상까지, 닫기·덮기·잠그기·끄기 = 0.2 넘게 내려 0.05 이하에서 멈춤, 올리기·내리기 = 높이 ±2 cm, 돌리기 = 10°, 공기 빼기 = 구간 안에 보임. 시작·끝은 말 구간 안에서 같은 방향으로 가장 크게 움직인 구간으로 잰다(한 문장 안에서 열었다 다시 닫아도 됨). 대상이 안 움직이면(다른 물체만 움직여도) `action_mismatch` FAIL. 변이 `actreverse`.
+- `check_motion` 갑자기 등장(`POP_IN`) → 화면 요소(장면 overlay 의 카드·이름표·그림, 보이는 3D 메시)가 서서히 나타나기·밀려 들어오기·카메라가 비춰 드러내기 없이 두 프레임 안에(30 fps) 자기 최대 무게(화면 넓이 비 × 불투명도, 다음 0.5 s 최대)의 5% 이하에서 50% 이상으로 뛰면 FAIL. 같은 프레임에 튀는 요소는 한 줄(`element=` 가장 큰 것 `+n more`)이고 합이 화면의 0.2%(64×64 px) 이상일 때만 셈다. 장면 첫 프레임·장면 전환 구간·선언한 컷(`SHOTCUTS`)·카메라 컷(한 프레임에 0.25 m 또는 8° 넘게 뛴)은 `EXEMPT` 로 따로 찍힌다. 고침: 4절 표 '요소를 서서히 등장'. 배경 없는 맨 글자(숫자 읽음값·글 한 줄)는 자막처럼 세지 않는다(상자·그림·3D 만). clip-path inset·overflow 가림은 보이는 부분만 잰다. 변이 `popin`(떠 있던 상자 하나를 0.6 s 감췄다 한 프레임에 켬). 못 잡는 것: 가려진 곳(닫힌 함 안)에서 켜지는 부품도 잡힘(가림은 안 봄), SVG 선을 `stroke-dashoffset` 으로 그리기·3D 선 `setDrawRange` 는 상자 크기가 그대로라 한 프레임 등장으로 보일 수 있음.
+- `check_motion` 설명 대상 화면 가운데(`SUBJECT_FRAME`) → 4-0 '설명하는 부품은 화면 가운데에'. 줄에 대상·가운데 비율·평균 화면 위치(`mean_x`, `mean_y`, 0~1)가 나온다. 대상을 못 찾으면 `SKIP`(그때는 `ACTION_MATCH` 가 `action_unlinked` 로 잡음). 변이 `offcenter`(설명 구간에 카메라 25° 돌림). 동사 목록은 '바꿔 끼웁니다'·'교체합니다'·'갈아 끼우고' 도 읽는다(끼우기 = 상태 0→1).
+- `check_layout` 페이드 중 글자(`LAYOUT_FADE`) → 재는 순간 불투명도가 1 보다 작고 0.2 s 앞이나 뒤와 0.05 넘게 다른 글자는 대비·격침을 그 순간에 재지 않고 쉬는 프레임에서 잰다(잘림·안전 영역은 그대로). 계속 반투명한 글자는 그대로 재고 잡는다.
 - `check_motion` 닫힘 자세 덮음(`HATCH_COVER`) → 만든 자세(닫힘)에서 문이 `frame` 구멍 약 200 점의 80% 이상을 덮는지(법선 ±0.5 m) 본다. 덜 덮거나 frame 이 없으면 FAIL. 장면 좌표 부호를 틀려 닫혀도 출입구 옆에 있는 문을 잡는다.
 - `check_motion` 글자 중 전환(`TEXT_TRANSITION`) → 전환이 시작될 때 글자가 보이거나, 전환 안에서 새 글자가 뜨거나, 전환 직전 읽을 시간(1.5 s 이상, 글자 수 × 0.15 s + 0.25) 안에 글자가 뜨면 FAIL. 단계 칩도 센다. 장면 끝 글자는 전환 전에 내리고, 장면 첫 글자는 전환이 끝난 뒤에. `rv timeline` 이 장면 첫 문장을 들어오는 전환 끝 + lead 뒤로 자동으로 늦추고, 더 늦추려면 `scenes[].lead_s`. `intro_s` 가 없어도 첫 문장은 0 s 앞에 놓이지 않는다. 변이 `textcut`.
 - `check_motion` 전환 구간(`CAMERA_TRANSITION`) → dip 앞뒤·테마 섞기·크로스페이드 동안 보이는 장면의 카메라가 2 cm 넘게 움직이면 `transition_camera_motion` FAIL(장면·구간·m 가 줄에 나옴). 장면 t = 0 에서 카메라를 제 자리에 놓고 움직임은 전환 뒤로(4-0).

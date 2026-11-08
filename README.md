@@ -142,6 +142,8 @@ Times are wall-clock seconds from `out/CHECKS.timing.tsv` of the run above (93 s
 | Text across transitions (`TEXT_TRANSITION`): text visible when a transition starts, new text inside one, or text shown too briefly before one to be read | `check_motion` | in the 28.0 s |
 | Speech to animation (`ACTION_MATCH`): each spoken action word is tied to the named part it talks about, and that part moves the way the words say | `check_motion` | in the 28.0 s (no action words in the example) |
 | Doors and lids (`HATCH_COVER`): a closed hatch covers at least 80% of its frame opening | `check_motion` | in the 28.0 s (no hatch in the example) |
+| Pop-in (`POP_IN`): a card, label or 3D part that appears in one or two frames with no fade, slide or camera reveal | `check_motion` | in the `check_motion` time |
+| Explained part near the centre (`SUBJECT_FRAME`): during each spoken action the part it names stays in the middle 30% of the frame | `check_motion` | in the `check_motion` time (no action words in the example) |
 | Parts buried in or detached from their mounts, labelled parts floating, machine collisions, seated contact | `check_clearance` | 34.5 s |
 | People: only `KIT.fx.human` figures, body parts, contacts, outfit matches the site | `check_human` | 16.1 s (skipped, mutations ran) |
 | Numbers on screen or in narration without a source in `sources.json` | `check_numbers` | 14.3 s (skipped, no `sources.json`) |
