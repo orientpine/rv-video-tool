@@ -2,9 +2,9 @@
 
     uv run -q --no-project --with playwright --with pillow python tests/look_sao_probe.py <look 켠 video.html> <lib 폴더>
 출력 한 줄 JSON: {"bg": {"on": [r,g,b], "off": [...]}, "dome": {...}, "contact": {"on": l, "off": l},
-                "see": {"glass": d, "clear": d, "dust": d, "beam": d, "crease": {"on": l, "off": l}}}
-  see: 벽 앞 유리판(불투명도 0.15)·거의 투명한 판(0.02)·입자(Points + 스프라이트)·additive 빛줄기 뒤에서
-       AO 를 켜면 AO 끈 것보다 밝기가 8 넘게 어두워진 칸의 비율(d, 0..1). crease = 불투명 상자 둘 사이 틈의 밝기.
+                "see": {"glass": d, "clear": d, "dust": d, "beam": d, "ghost": d, "crease": {"on": l, "off": l}}}
+  see: 벽 앞 유리판(불투명도 0.15)·거의 투명한 판(0.02)·입자(Points + 스프라이트)·additive 빛줄기·세기 0 렌즈 플레어 고스트(가산 스프라이트, depthTest false) 뒤에서
+       AO 를 켜면 AO 끈 것보다 밝기가 8 넘게 어두워진 칸의 비율(d, 0..1). crease = 불투명 상자 앞 바닥(상자와 맞닿은 곳)의 밝기.
 """
 import asyncio
 import base64
@@ -55,7 +55,7 @@ PROBE = r"""async () => {
     const std = (color, o) => new THREE.MeshStandardMaterial(Object.assign({color, roughness: 1}, o));
     const wall = new THREE.Mesh(new THREE.PlaneGeometry(30, 12), std(0xcbbfae)); wall.position.set(0, 3, -3); S.add(wall);
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(30, 12), std(0x9a948c)); floor.rotation.x = -Math.PI / 2; floor.position.z = 1; S.add(floor);
-    // turned glass pane: before the fix the whole pane went black (measured 74 % of its box), a square-on pane got a dark rim
+    // turned glass pane: before the fix the whole pane went black (measured 81 % of its box), a square-on pane got a dark rim
     const glass = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.8), std(0xcfe8ff, {roughness: .1, transparent: true, opacity: .15, side: THREE.DoubleSide}));
     glass.position.set(-2.4, 1.8, -1.2); glass.rotation.y = 1.0; S.add(glass);
     const clear = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.8), std(0xffffff, {transparent: true, opacity: .02}));
@@ -67,6 +67,11 @@ PROBE = r"""async () => {
     S.add(new THREE.Points(pg, new THREE.PointsMaterial({color: 0xfff4e0, size: 0.02})));
     for (let i = 0; i < 6; i++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({color: 0xfff4e0, transparent: true, opacity: .5, blending: THREE.AdditiveBlending, depthWrite: false}));
       s.scale.set(.15, .15, 1); s.position.set(0.6 + i * 0.25, 1.3 + (i % 3) * 0.35, -1.6); S.add(s); }
+    // lens-flare ghosts at strength 0: additive, depthTest false, opacity 0 (invisible with AO off; before the fix black squares on a diagonal)
+    const ghosts = new THREE.Group();
+    for (let i = 0; i < 4; i++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({color: 0xffc58a, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false}));
+      s.scale.set(.3, .3, 1); s.position.set(-1.6 + i * 0.45, 2.7 + i * 0.12, 0.6); ghosts.add(s); }
+    S.add(ghosts);
     const beam = new THREE.Mesh(new THREE.CylinderGeometry(.12, .3, 2.4, 24, 1, true), new THREE.MeshBasicMaterial({color: 0xfff0c0, transparent: true, opacity: .35, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide}));
     beam.position.set(3.0, 1.7, -1.6); beam.rotation.z = .25; S.add(beam);
     const b1 = new THREE.Mesh(new THREE.BoxGeometry(.6, .6, .6), std(0xc8b070)), b2 = b1.clone();
@@ -82,7 +87,7 @@ PROBE = r"""async () => {
       return [Math.max(0, Math.min(...u) + pad) | 0, Math.max(0, Math.min(...v) + pad) | 0, Math.min(1920, Math.max(...u) - pad) | 0, Math.min(1080, Math.max(...v) - pad) | 0]; };
     const dustBox = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.6, 1.2)); dustBox.position.set(1.2, 1.8, -1.6); dustBox.updateMatrixWorld();
     const sb = new THREE.Vector3(-0.45, 0.01, 0.32).project(cam), cu = Math.round((sb.x + 1) / 2 * 1920), cv = Math.round((1 - sb.y) / 2 * 1080);
-    const out = {L, rects: {glass: rect(glass, -14), clear: rect(clear, -14), dust: rect(dustBox, 0), beam: rect(beam, 0)}, crease: L[cv * 1920 + cu]};
+    const out = {L, rects: {glass: rect(glass, -14), clear: rect(clear, -14), dust: rect(dustBox, 0), beam: rect(beam, 0), ghost: rect(ghosts, -14)}, crease: L[cv * 1920 + cu]};
     if (window.__SAO_SHOT) out.png = c.toDataURL('image/png');
     R.dispose(); return out;
   };
