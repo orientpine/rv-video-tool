@@ -154,7 +154,7 @@ checks() {   # mp4 하나에 모든 검사. 하나라도 FAIL 이면 종료 코�
   # 부품이 지지대에 붙어 있는지 · 사람과 기계가 겹치지 않는지 · 앉은 자세 접촉(2026-11-05 X 센서 공중, 운전자 겹침). 장면이 KIT.fx.attach/seat 를 선언할 때만
   g_mesh() { run "부품 부착·인체/기계·좌석 접촉 (check_clearance --rules mesh)" "${UVPW[@]}" "$L/check_clearance.py" "$B/video.html" --rules mesh || strict_fail
     if grep -Eq '^CLEARANCE_TARGETS attach=[1-9][0-9]*|^CLEARANCE_TARGETS .*auto=[1-9][0-9]*' "$R"; then
-      mut "변이: 부품 20 mm 이탈" "${UVPW[@]}" "$L/check_clearance.py" "$B/video.html" --rules mesh --mutate detach
+      mut "변이: 부품 20 mm 이상 이탈" "${UVPW[@]}" "$L/check_clearance.py" "$B/video.html" --rules mesh --mutate detach
     fi
     if grep -Eq '^CLEARANCE_TARGETS .*seat=[1-9][0-9]*' "$R"; then
       mut "변이: 사람 100 mm 침하" "${UVPW[@]}" "$L/check_clearance.py" "$B/video.html" --rules mesh --mutate sink
