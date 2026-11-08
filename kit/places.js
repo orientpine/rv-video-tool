@@ -63,7 +63,7 @@
   function canvasTex(w, h, draw) {
     const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
     draw(cv.getContext("2d"), w, h);
-    const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; return t;
+    const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; t.userData.rvSurface = true; return t;
   }
   function texture(kind, seed = 1) {
     const key = kind + "|" + seed; if (TEX.has(key)) return TEX.get(key);
