@@ -159,7 +159,7 @@
   function install(renderer, options) {
     R = renderer; cfg = merge(PRESETS[(options && options.preset) || "cinema"] || PRESETS.cinema, options || {});
     const W = 1920, H = 1080;
-    const mk = () => new THREE.WebGLRenderTarget(W, H, {type: THREE.HalfFloatType, samples: cfg.msaa || 4});
+    const mk = () => new THREE.WebGLRenderTarget(W, H, {type: THREE.HalfFloatType, samples: cfg.msaa || 4, stencilBuffer: true});
     hdrRT = mk();
     accRT = new THREE.WebGLRenderTarget(W, H, {type: THREE.HalfFloatType});   // 누적 타깃(반정밀이면 충분). 검은 화면의 진짜 원인은 아래 textureID 였음(Float32 의심은 2026-11-04 시험으로 반증)
     composer = new THREE.EffectComposer(R, hdrRT);
