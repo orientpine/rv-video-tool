@@ -3,7 +3,8 @@
   uv run -q --no-project --with numpy python scripts/human_body.py <AnimationLibrary_Godot_Standard.gltf> [kit/human_body.js]
 
 Source: https://quaternius.com/packs/universalanimationlibrary.html (free version, CC0 1.0), as mirrored in
-https://github.com/J-Ponzo/gltf-universal-animation-library (commit e24c23c, glTF/AnimationLibrary_Godot_Standard.gltf).
+https://github.com/J-Ponzo/gltf-universal-animation-library (commit e24c23c, glTF/AnimationLibrary_Godot_Standard.gltf sha256 0ff075c7ad6855c5c2c37a171592ee8f0d6ab2f58259e2be77a9b63dd8027765,
+.bin sha256 6e65377d81558333c4093dbb144a48fd19019343d82b1a3a7992a98ec0e0543c).
 Only the mesh and its skin weights are used; no animation clip is kept.
 
 What it writes: the mannequin re-posed from its T-pose to rv's rest pose (arms hanging, bare-head height 1.75 m,

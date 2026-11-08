@@ -29,7 +29,7 @@ jobs:
           # match 2 min; rv_best alone about 18 min and the layout check in new_checks
           # over 14 min, so those two run in groups of their own.
           - group: human
-            tests: human sao_numbers timeline_transition machine_collision timeline_captions
+            tests: human human_act sao_numbers timeline_transition machine_collision timeline_captions
           - group: render
             tests: theme occlusion
           - group: rv_best
