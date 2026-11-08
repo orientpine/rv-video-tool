@@ -123,6 +123,22 @@ async def main():
     named = bool(anon["fails"]) and all("[machine-a / machine-b]" in f[0] for f in anon["fails"])
     print(f"{'PASS' if named else 'FAIL'} unnamed top groups: the row names the nearest named ancestors: {anon['fails']}")
     ok = ok and same and named
+    # Two pages, interleaved frames: the pair is first seen apart on page 1 (frame 0) and only page 2 sees it 0.1 m in
+    # (frame 30). The base must come from page 1's sighting (0 mm), so the 100 mm penetration is still a finding.
+    seen = lambda key, sig, **m: {"count": 1, "findings": [], "measurements": [], "machines": [dict(key=key, sig=sig, **m)]}
+    deep = dict(head="a <-> b", worst="", cross="", depth=.1, depth_text="100", uuid="u")
+    page1 = [[0, None, seen("1|2", "0|1|a <-> b", apart=True)]]
+    page2 = [[30, None, seen("1|2", "0|1|a <-> b", **deep)]]
+    rows = sorted(page1 + page2, key=lambda r: r[0])
+    agree = check_clearance.keys_agree([(page1,), (page2,)])
+    check_clearance.machine_findings(rows)
+    split = agree and [round(f["mm"]) for f in rows[1][2]["findings"]] == [100]
+    print(f"{'PASS' if split else 'FAIL'} pages split the frames: first sighting on another page sets the base: {rows[1][2]['findings']}")
+    moved = [[30, None, seen("1|2", "1|0|a <-> b", **deep)]]   # same key, other bodies: ids were created in another order
+    first = [[0, None, seen("1|2", "0|1|a <-> b", apart=True)]]   # fresh rows: machine_findings consumed page1's
+    differ = not check_clearance.keys_agree([(first,), (moved,)])
+    print(f"{'PASS' if differ else 'FAIL'} a key that names other bodies on another page is caught (measured again on one page)")
+    ok = ok and split and differ
     print("MACHINE_COLLISION", "PASS" if ok else "FAIL")
     return 0 if ok else 1
 

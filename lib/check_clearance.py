@@ -21,7 +21,10 @@ from human_detection import LEGACY_HUMAN, PERSON_NAME  # noqa: E402
 # vertices inside. This is a sampled penetration estimate, not an AABB verdict.
 MESH_CHECK = "() => {\n" + LEGACY_HUMAN + "\nconst PERSON_NAME=" + PERSON_NAME + ";\n" + r"""
   const scenes = new Set(), cameras = new Map(), cache = new WeakMap(), pairs = new WeakMap();
-  const seenApart = new Set();   // 기계 짝이 떨어져 보인 것을 이 페이지에서 처음 한 번만 알림(처음 깊이는 machine_findings 가 프레임 순서로 정함)
+  const seenApart = new Set(), seenKey = new Set();   // 기계 짝이 떨어져 보인 것을 이 페이지에서 처음 한 번만 알림(처음 깊이는 machine_findings 가 프레임 순서로 정함)
+  // 짝을 처음 본 때 장면 안 자리(자식 번호 길)와 이름을 함께 보냄: 페이지마다 같은 키가 같은 물체인지 keys_agree 가 확인
+  const place = o => { const p = []; for (let x = o; x.parent; x = x.parent) p.push(x.parent.children.indexOf(x)); return p.reverse().join('.'); };
+  const sigOf = (key, A, B, head) => { if (seenKey.has(key)) return undefined; seenKey.add(key); return place(A.top) + '|' + place(B.top) + '|' + head; };
   let frameHumans = null;
   const previous = THREE.Scene.prototype.onBeforeRender;
   THREE.Scene.prototype.onBeforeRender = function(...args) {
@@ -498,7 +501,8 @@ MESH_CHECK = "() => {\n" + LEGACY_HUMAN + "\nconst PERSON_NAME=" + PERSON_NAME +
         }
         for (let i = 0; i < bodies.length; i++) for (let j = i + 1; j < bodies.length; j++) {
           const A = bodies[i], B = bodies[j], key = A.top.id + '|' + B.top.id;   // Object3D.id counts creation order, the same in every page (uuid is random per page)
-          if (!A.b.intersectsBox(B.b)) { if (!seenApart.has(key)) { seenApart.add(key); machines.push({key, apart: true}); } continue; }   // 떨어져서 처음 보인 짝은 처음 깊이 0
+          if (!A.b.intersectsBox(B.b)) { if (!seenApart.has(key)) { seenApart.add(key);
+            machines.push({key, apart: true, sig: sigOf(key, A, B, (A.top.name || label(A.top)) + ' <-> ' + (B.top.name || label(B.top)))}); } continue; }   // 떨어져서 처음 보인 짝은 처음 깊이 0
           count++; targets.machine++; let depth = 0, worst = '', cross = '';
           const overlap = A.b.clone().intersect(B.b), near = list => list.filter(o => bounds(o).intersectsBox(overlap));
           const nearB = near(B.parts);
@@ -514,7 +518,7 @@ MESH_CHECK = "() => {\n" + LEGACY_HUMAN + "\nconst PERSON_NAME=" + PERSON_NAME +
           // 새로 파고든 깊이만 셈: 처음부터 겹친 것(기계 받침에 꽂힌 헤드 30 mm)은 의도, 움직여 들어간 것(팔이 적재함 벽을 뚫음)은 FAIL
           // (처음 깊이 빼기·면 교차 판정은 machine_findings 가 프레임 순서로 함 — 페이지 여럿이 프레임을 나눠 재도 같은 줄)
           const head = (A.top.name || label(A.top)) + ' <-> ' + (B.top.name || label(B.top));
-          machines.push({key, head, worst, cross, depth, depth_text: (depth * 1000).toFixed(0), uuid: A.top.uuid});
+          machines.push({key, head, worst, cross, depth, depth_text: (depth * 1000).toFixed(0), uuid: A.top.uuid, sig: sigOf(key, A, B, head)});
         }
       }
       return {count,findings,measurements,targets,machines};
@@ -553,10 +557,26 @@ def machine_findings(rows):
                 row = {"rule": "machine penetration",
                        "name": m["head"] + (" : " + m["worst"] if m["worst"] else "")
                        + f" (depth {m['depth_text']} mm, first {base_text} mm)",
-                       "mm": max(0.0, depth - base) * 1000, "target_id": m["uuid"]}
+                       "mm": (depth - base) * 1000 if math.isnan(depth - base) else max(0.0, depth - base) * 1000,
+                       "target_id": m["uuid"]}
             ext["measurements"].append(row)
-            if row["mm"] is None or row["mm"] > 20 + 1e-5:
+            if row["mm"] is None or not math.isfinite(row["mm"]) or row["mm"] > 20 + 1e-5:
                 ext["findings"].append(row)
+
+
+def keys_agree(parts):
+    """Machine pairs are keyed by Object3D.id, which only names the same object in every page when the pages built
+    their objects in the same order. Each page reports, at a pair's first sighting, where the two bodies sit in the
+    scene graph and their names; the keys agree when every key has one such signature and every signature one key."""
+    by_key, by_sig = {}, {}
+    for rows, *_ in parts:
+        for _, _, ext in rows:
+            for m in ext.get("machines", ()):
+                if m.get("sig") is None:
+                    continue
+                if by_key.setdefault(m["key"], m["sig"]) != m["sig"] or by_sig.setdefault(m["sig"], m["key"]) != m["key"]:
+                    return False
+    return True
 
 
 async def measure(pw, html, a, batches):
@@ -609,6 +629,9 @@ async def main(a):
     n = 1 if a.mutate else max(1, min(a.shards, len(batches)))
     async with async_playwright() as pw:
         parts = await asyncio.gather(*(measure(pw, html, a, batches[k::n]) for k in range(n)))
+        if n > 1 and not keys_agree(parts):   # objects built in a different order per page: measure on one page instead
+            print("CLEARANCE_SHARDS machine pair keys differ between pages; measured again on one page")
+            parts = [await measure(pw, html, a, batches)]
     rows = sorted((row for part in parts for row in part[0]), key=lambda row: row[0])
     errs = [e for part in parts for e in part[1]]
     lost, canvases = any(part[2] for part in parts), max(part[3] for part in parts)
