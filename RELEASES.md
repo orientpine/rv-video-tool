@@ -6,6 +6,40 @@ Every release is a git tag `vX.Y.Z` (Z for fixes, Y for features). Each tag gets
 
 릴리스는 git 태그 `vX.Y.Z` 하나다(고침 = Z, 기능 = Y). 태그마다 이 파일과 GitHub 릴리스 페이지에 한국어·영어 노트를 쓴다. 설치는 `scripts/install.sh`, 확인은 `scripts/verify.sh`.
 
+## v0.2.0
+
+### English
+
+`rv check` is about 4x faster on the two regression projects and catches at least as much as before; `rv make` encodes the picture once.
+
+| project | video | v0.1.2 `rv check` | v0.2.0 `rv check` | mutations caught |
+|---|---:|---:|---:|---|
+| A | 177 s | 731 s | 153 s | 33 / 33 |
+| B (machine fleet) | 224 s | 1312 s | 502 s | 23 / 25 |
+
+- A mutation run (a checker's self-test on a deliberately broken copy) stops at the first frame that catches it; it only has to be caught once. Real checks still measure every frame.
+- The long real `check_clearance --rules mesh` and `check_layout` runs share their frames over `RV_CHECK_SHARDS` browsers (default 4). A machine pair's first measured depth is decided in frame order whatever the split. Every page checks, at the frame where another page first saw a pair, that the two bodies have the same box and the same triangles; if not, the mesh check is measured again on one page and says so (`CLEARANCE_SHARDS`).
+- `encode.sh` encodes the frames once and adds the sound to that picture (97 s -> 49 s on 900 frames at 1080p; same decoded frames and sound).
+- New default: `script.json` `"badge": {"text", "scenes"}` draws one label above the scenes instead of a copy in every scene, so it stays still through transitions between those scenes. It is checked as chrome for the safe area and its numbers go through the number check.
+- Fixed: on project B the occlude mutation was skipped, because a mutation run of `check_layout` printed `OCCLUSION_CHECK 실제 SKIP`. Only the real run prints it now, so that mutation runs and is caught (23 -> 25 caught lines).
+- The real-check sections of `CHECKS.md` are the same as v0.1.2 on both projects (project B real mesh `FAIL (212 프레임)` both).
+
+### 한국어
+
+`rv check` 가 두 회귀 프로젝트에서 약 4배 빨라졌고 잡는 것은 그대로이거나 늘었다. `rv make` 는 그림을 한 번만 인코딩한다.
+
+| 프로젝트 | 영상 | v0.1.2 `rv check` | v0.2.0 `rv check` | 잡힌 변이 |
+|---|---:|---:|---:|---|
+| A | 177 s | 731 s | 153 s | 33 / 33 |
+| B (기계 여러 대) | 224 s | 1312 s | 502 s | 23 / 25 |
+
+- 변이 실행(일부러 망가뜨린 사본으로 검사기를 시험하는 것)은 처음 잡힌 프레임에서 멈춘다. 한 번만 잡히면 되기 때문이다. 본 검사는 여전히 모든 프레임을 잰다.
+- 오래 걸리는 본 `check_clearance --rules mesh`·`check_layout` 은 프레임을 브라우저 `RV_CHECK_SHARDS` 개(기본 4)에 나눠 잰다. 기계 짝의 처음 깊이는 어떻게 나눠도 프레임 순서로 정한다. 다른 페이지가 짝을 처음 본 프레임에서 모든 페이지가 두 몸체의 상자·삼각형 지문이 같은지 확인하고, 다르면 한 페이지로 다시 재고 그렇다고 적는다(`CLEARANCE_SHARDS`).
+- `encode.sh` 는 프레임을 한 번만 인코딩하고 그 그림에 소리를 붙인다(1080p 900장 97 s -> 49 s, 풀어 본 그림·소리 같음).
+- 새 기본값: `script.json` `"badge": {"text", "scenes"}` 는 장면마다 사본을 붙이는 대신 장면 위에 표지 하나를 그린다. 적힌 장면끼리의 전환에서 그대로 서 있고, 안전 영역은 공용 표시로 재며, 숫자는 숫자 검사를 거친다.
+- 고침: 프로젝트 B 에서 가림 변이가 건너뛰어졌다. `check_layout` 변이 실행이 `OCCLUSION_CHECK 실제 SKIP` 을 찍었기 때문이다. 이제 본 실행만 그 줄을 찍어 그 변이가 돌고 잡힌다(잡힘 줄 23 -> 25).
+- `CHECKS.md` 의 본 검사 절은 두 프로젝트 모두 v0.1.2 와 같다(프로젝트 B 본 충돌 `FAIL (212 프레임)` 그대로).
+
 ## v0.1.2
 
 ### English
