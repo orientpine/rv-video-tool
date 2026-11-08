@@ -69,6 +69,9 @@ my-project/
 - 효과음: `"auto_cues": true` (또는 `"cues": "auto"`) 면 장면 리그가 실제로 움직인 순간에 자동으로 나온다. 발이 땅에 닿을 때(footstep), 팔이 움직일 때(servo), 헤드를 잡거나 놓을 때(click), 도는 부품(드럼)이 보이는 동안(rotor, 장면 회전 속도대로), 숫자 카드가 나타날 때(tone). 뽑힌 큐는 `build/cues_auto.json`(큐마다 `why`). 손으로 더 넣으려면 `"cues": [{"t": 81.4, "sfx": "click", "gain_lu": -12}]`. `gain_lu` 는 말 대비 LU(예전 `gain_db`·`music_db` 절대값은 무시됨). 종류: click · footstep · servo · rotor · drone · tone · <wav>.
 - 합성음은 모두 200 Hz~5 kHz 배음을 갖는다(이어폰·폰 스피커는 200 Hz 아래를 거의 못 냄). 배경·효과음은 로컬에서 합성하므로 라이선스 문제가 없다. 바깥 음악·효과음 파일을 쓰려면 라이선스(CC0 등)를 확인하고 프로젝트 출처표에 적은 뒤 `"music": "music/track.wav"`.
 
+### Aspect ("aspect": "2.35:1")
+영화 화면비는 script.json `"aspect": "2.35:1"`(더 넓으면 위아래 검은 막대, `"4:3"` 처럼 좁으면 좌우 막대). 장면은 그대로 16:9 전체를 그리고, 막대는 합성기가 장면 위(자막·단계 칩 아래)에 한 번 그린다. 장면 안에 손으로 막대를 그리지 않는다(카드로 잡히고, 깜빡임 변이가 막대 안에 들어가 못 잡힘). 검사·변이는 그림 영역(`window.PICTURE`)만 본다. 주인공·이름표는 그림 영역 안에 둔다.
+
 ### Scene looks (scenes[].look = cinema | relief | clean), default cinema
 `look` 을 안 적은 장면은 cinema 로 그려진다.
 - **cinema (기본)**: 실제 현장에서 일어나는 것을 믿게 해야 하는 장면. 예: 로봇이 방에 걸어 들어옴, 부품을 5 mm 거리에서 붙잡음, 공구를 바꿔 끼움, 시설 전경.

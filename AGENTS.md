@@ -39,6 +39,7 @@ Then edit `projects/<name>/script.json`:
 - `"voice"`: an edge-tts voice in the user's language, e.g. `en-US-AriaNeural`, `ko-KR-SunHiNeural`, `ko-KR-InJoonNeural`.
 - Keep `"checks": "strict"`. Without it most checks only report and never fail, so a PASS would mean little.
 - Set `"site"` (`lab`, `construction` or `office`) to where the story takes place. People in the video are dressed for it.
+- `"aspect"` (optional): `"2.35:1"` for a cinema frame (bars top and bottom), `"4:3"` for side bars. rv draws the bars and the checks measure only the picture inside them. Never draw bars in a scene.
 - `"scenes"`: one entry per scene folder, in order, with a `dip` transition between scenes like the example. `extra_s` adds seconds after the last line of a scene.
 - `"lines"`: `{"scene", "text", "keywords"}`. `text` is narrated and shown as captions (`|` splits a caption). `say` overrides what is spoken. `keywords` must be words from that line. The scene highlights them on screen at the moment they're spoken.
 

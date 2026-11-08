@@ -6,6 +6,16 @@ Every release is a git tag `vX.Y.Z` (Z for fixes, Y for features). Each tag gets
 
 릴리스는 git 태그 `vX.Y.Z` 하나다(고침 = Z, 기능 = Y). 태그마다 이 파일과 GitHub 릴리스 페이지에 한국어·영어 노트를 쓴다. 설치는 `scripts/install.sh`, 확인은 `scripts/verify.sh`.
 
+## Unreleased
+
+### English
+
+- Aspect: `"aspect": "2.35:1"` (or `"4:3"`, `"1:2"`) in `script.json` draws letterbox or pillarbox bars once above the scenes (under captions and step chips) and sets `window.PICTURE`. `check_layout` no longer reads a bar as an opaque card over the subject, and the flicker mutation lands inside the picture instead of in a bar, where it could not be caught. Without `aspect` nothing changes.
+
+### 한국어
+
+- 화면비: `script.json` 의 `"aspect": "2.35:1"`(또는 `"4:3"`, `"1:2"`)이면 위아래(좌우) 검은 막대를 장면 위(자막·단계 칩 아래)에 한 번 그리고 `window.PICTURE` 를 정한다. `check_layout` 이 막대를 대상 위 불투명 카드로 보지 않고, 깜빡임 변이는 막대가 아니라 그림 안에 넣어 잡힌다. `aspect` 가 없으면 바뀌는 것 없음.
+
 ## v0.2.1
 
 ### English
