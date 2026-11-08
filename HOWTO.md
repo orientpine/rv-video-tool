@@ -73,6 +73,21 @@ my-project/
 영화 화면비는 script.json `"aspect": "2.35:1"`(더 넓으면 위아래 검은 막대, `"4:3"` 처럼 좁으면 좌우 막대). 장면은 그대로 16:9 전체를 그리고, 막대는 합성기가 장면 위(자막·단계 칩 아래)에 한 번 그린다. 장면 안에 손으로 막대를 그리지 않는다(카드로 잡히고, 깜빡임 변이가 막대 안에 들어가 못 잡힘). `check_layout` 은 막대를 카드로 세지 않고 깜빡임 변이는 그림 영역(`window.PICTURE`) 안에 넣는다. 다른 검사는 여전히 16:9 전체를 보므로 주인공·이름표는 그림 영역 안에 둔다(막대 밑은 가려짐). 값이 `W:H` 꼴이 아니면 빌드가 멈춘다.
 이미 장면이 막대를 직접 그린 프로젝트(`aspect` 없음)도 거짓 FAIL 은 안 난다: `check_layout` 은 화면 한 가장자리에 붙은 불투명 검은 띠(전폭이면 높이 ≤ 1/4, 전고면 폭 ≤ 1/4)가 맞은편 가장자리에 같은 두께의 짝과 함께 모든 샘플에서 같은 자리에 있으면 막대로 보고(`LAYOUT_PICTURE bars=…` 줄), 막대 밑은 화면 밖처럼 센다(가린 것이 아님). 어떤 샘플에서 없거나 자리가 바뀌는 띠는 막대가 아니라 카드다(`LAYOUT_PICTURE not_fixed`). 깜빡임 변이는 그 프레임의 검은 막대(가장자리부터 90% 넘게 검은 행·열, 양쪽 같은 두께, 사이 그림 1/4 이상)를 뺀 그림 안 같은 비율 자리에 넣고, 그 자리가 어두우면(평균 밝기 < 128) 검정 대신 흰색으로 칠한다(검은 자리에 검정은 바뀌는 게 없어 못 잡힘).
 
+### Story and place (scenes[].beat, scenes[].place)
+한두 줄 요청이어도 영상은 이야기가 있어야 한다. 사용자가 따로 지침을 주지 않으면 이 틀을 기본으로 쓴다(`examples/story`).
+```json
+"scenes": [
+  {"name": "street", "beat": "problem", "place": "sidewalk", "site": "office"},
+  {"name": "inside", "beat": "inside",  "place": "lab",      "site": "lab"},
+  {"name": "climb",  "beat": "result",  "place": "sidewalk", "site": "office"},
+  {"name": "after",  "beat": "after",   "place": "sidewalk", "site": "office"}
+]
+```
+- `beat`: `problem`(실제 장소에서 사람이 겪는 문제, 5~8 s 안에 '아 저게 곤란하구나') → `inside`(기술이 어떻게 작동하나: 단면·확대·분해) → `result`(해내는 한 순간, `KIT.shot.action`) → `after`(같은 장소·같은 사람이 달라진 모습). 박자 하나에 장면 여럿도 된다. 빠지거나 첫 박자가 problem 이 아니면 `QUALITY_STORY`.
+- `place`: `KIT.place` 종류(`sidewalk` 도시 보도·건물 입구 · `factory` 공장 홀 · `recycling` 재활용장 · `clinic` 진료·재활실 · `kitchen` 부엌 · `lab` 연구실)나, 세트를 직접 지으면 그 장소를 말로. 장면 코드에서 `const P = KIT.place(NAME, scene)` 한 줄로 앞·중·뒤 층, 소품, 빛(해·창·조명), 공기(먼지·수증기·빛줄기), 배경에서 움직이는 것(차·지게차·컨베이어·나뭇잎)이 생긴다. render 에서 `P.update(t)`. 주인공은 `P.stage` 에, 쓸 자리는 `P.spots`(입구 계단·높은 선반·쓰레기 더미 등). 사람 복식은 `KIT.place.site(종류)` 를 `scenes[].site` 에(보도·부엌·진료실 office, 공장·연구실 lab, 재활용장 construction). 장소는 모두 절차 생성이라 바깥 그림·모델 라이선스 문제가 없다.
+- 장소·기계·과정을 모르면 먼저 웹에서 찾는다(기관 보도자료·논문·설명서). 화면·내레이션에 쓰는 사실·숫자는 `sources.json` 에 URL·라이선스·본 날짜와 함께 적는다.
+- 이 장면은 일부러 비웠다(제목 카드, 부품 하나 클로즈업)처럼 품질 신호가 맞지 않는 장면은 이유를 적는다: `"quality_ok": {"EMPTY": "부품 하나만 단면으로 보여 주는 원리 장면"}` (장면마다, 또는 맨 위에 STORY·NO_PEOPLE). 이유 15자 미만은 안 친다. 고칠 수 있는 것을 예외로 넘기지 않는다.
+
 ### Scene looks (scenes[].look = cinema | relief | clean), default cinema
 `look` 을 안 적은 장면은 cinema 로 그려진다.
 - **cinema (기본)**: 실제 현장에서 일어나는 것을 믿게 해야 하는 장면. 예: 로봇이 방에 걸어 들어옴, 부품을 5 mm 거리에서 붙잡음, 공구를 바꿔 끼움, 시설 전경.
@@ -85,7 +100,7 @@ my-project/
 - 한 화면에 읽을 것은 3덩어리 이하. 주제와 상관없는 장비·무늬는 부조·안개·심도로 흐리게.
 
 ### Numbers and sources (sources.json)
-`numbers[]` 마다 `id` · `show` · `src` · `kind` (`fetched` | `design` | `label`) · `quote`. 나레이션에 표에 없는 숫자가 있으면 **빌드가 멈춘다**. 화면 숫자는 `KIT.info.numCard(ov, {id, i, caption, sub})` 로 표에서만 가져온다(출처 꼬리표 자동). 글자 4단은 `KIT.info.TYPE` (96 · 44 · 34 · 26).
+`numbers[]` 마다 `id` · `show` · `src` · `kind` (`fetched` | `design` | `label`) · `quote`. 나레이션에 표에 없는 숫자가 있으면 **빌드가 멈춘다**. 화면 숫자는 `KIT.info.numCard(ov, {id, i, caption, sub})` 로 표에서만 가져온다(출처 꼬리표 자동). 기본 카드는 작고(숫자 64 px, 너비 ≤ 440 px) 오른쪽 위(`right: 64, top: 150`)에 있어 가운데 주인공을 가리지 않는다. `left`·`top` 을 주면 그 자리, `size: "l"` 은 예전 큰 카드(숫자 96 px, 숫자 하나만 보여 주는 장면에서만). 카드들이 화면의 6% 넘게 덮으면 `QUALITY_CARD`. 글자 4단은 `KIT.info.TYPE` (96 · 44 · 34 · 26).
 
 ## 4. KIT helpers (kit/scene_kit.js, kit/process.js)
 | 하고 싶은 것 | 부품 |
@@ -94,8 +109,12 @@ my-project/
 | 말 박자에 맞춘 짧은 컷 | `SH = [{t: 0, K: K1}, {t: KIT.wordT(장면, "키워드") - 0.5, K: K2}]` → `KIT.shotAt(SH, t).state` |
 | 전경 → 밀어 들어가기 → 돌아보기 | `KIT.shot.establish / pushIn / orbit / crane / lookback / follow / chain` |
 | 벽을 걷어 안을 보이기(투시) | `cut = KIT.fx.cutaway(R, 벽 그룹)` → render 에서 `cut.set(1, [0,0,-1], 2.9)` |
+| 물체를 잘라 속 보이기(단면, 자른 면을 빗금으로 채움) | `C = KIT.fx.section(root, {normal: [0,0,-1], offset: 0, renderer: R})` → render 에서 `C.set(KIT.win(t, a, b, 0.6))`(0 그대로, 1 이면 평면 `offset` 까지 잘림, 그 사이는 먼 쪽에서 밀려 들어옴). 닫힌 입체(Box·Cylinder·Lathe·Extrude)만 면이 채워진다. 물체 앞에 반투명 판을 세워 단면인 척하면 `QUALITY_FAKE_FX` |
+| 연기·증기·먼지 | `S = KIT.fx.smoke(parent, {at: [x,y,z], kind: "smoke"\|"steam"\|"dust", seed, rate, life, wind: [x,y,z]})`, `KIT.fx.steam(parent, o)` → render 에서 `S.update(t, KIT.win(t, a, b, 0.6))`. 입자 덩어리가 피어오르고 바람에 흐른다. 납작한 판 한 장에 연기 그림을 붙이면 `QUALITY_FAKE_FX` |
+| 불꽃·플라즈마 토치 | `F = KIT.fx.flame(parent, {at, dir: [0,1,0], length, radius, color: "plasma"\|"fire"\|0xRRGGBB, light: true})` → render 에서 `F.update(t, on)`. 빛이 주변을 비추고 깜빡임은 t 의 함수 |
 | 부품을 벌려 보이기(분해) | `ex = KIT.fx.explode(헤드 그룹, [1,0,0])` → `ex.set(0.09 * KIT.win(t, a, b, 0.25))` |
 | 크기 대비 사람(현장 복식) | `man = KIT.fx.human(scene, 1.75, 0xE4E8EA, {site: "lab"\|"construction"\|"office", suit: "cleanroom"})` → render 에서 `man.pose("stand"\|"walk"\|"point"\|"tablet"\|"sit", {t, target})`, `man.visible = true`. 걷고 손으로 누르는 장면은 `man.act(t, {walk: {from: [x,0,z], to: [x,0,z], t0, t1}, look: 버튼위치, press: {target: 버튼위치, normal: 버튼면에서밖으로, t0, touch, press, release, t1}})` 하나로: 발자국을 경로에서 정해 디딘 발이 미끄러지지 않고(위치도 act 가 정함), 손끝이 목표에 닿았다 떼며, 고개가 먼저 본다. 몸은 CC0 마네킹(kit/human_body.js, Quaternius UAL)을 관절로 휘게 한 보통 메시라 검사기가 자세 그대로의 표면을 잰다. lab = 작업복·안전모·안전화·장갑, construction = 형광 조끼·안전모·작업화, office = 작업 점퍼. script.json `"site"` 가 기본값, 장면마다 현장이 다르면 `scenes[].site`. **사람은 반드시 KIT.fx.human 으로**: 구·원기둥·상자로 만든 사람 모양이나 이름이 operator·worker·person 같은 자작 물체는 check_human FAIL. 복식이 그 장면 현장과 다르거나 사람이 나오는데 현장이 어디에도 안 적혀 있어도 FAIL(5절). 앉힐 때는 `contacts.seat`(골반 아래끝)를 좌석 윗면에 맞추고 `KIT.fx.seat` 를 선언 |
+| 물체에 붙는 3D 이름판(앞을 지나는 배관·부품에 안 가림) | `KIT.sign(parent, "벤젠", {at: [x,y,z], width: 0.8})` → render 에서 `s.place(cam, KIT.win(t, a, b, 0.3))`. 깊이 검사 없이 장면 뒤에 그려 늘 보인다. 손으로 만든 글자 판(캔버스 글자 평면)이 다른 물체에 15% 넘게 가리면 `QUALITY_TEXT_HIDDEN` |
 | 이름표가 가리키는 설명 대상(가림 검사용) | `KIT.label(overlay, "Sensor", {target: sensorMesh})`. 생략하면 이름표 점에 있는 가장 작은 메시 |
 | "이 부품은 저 지지대에 붙어 있다" | render 마다 `KIT.fx.attach(sensor, mount, {tol_mm: 2})` |
 | (자동) 이름표가 가리키는 부품이 떠 있지 않게 | 선언 없이도 검사: 보이는 `KIT.label` 대상이 다른 실물 메시와 5 mm 안에 안 닿으면 FAIL(지지대나 로봇 손에 닿으면 통과). 개념 이름표가 엉뚱한 부품을 가리키면 `opts.target` 으로 실제 대상을 준다 |
@@ -107,7 +126,9 @@ my-project/
 | 글자가 떠 있는 동안 빈 자리에서 대상이 움직이게(4-2) | 구도 `KIT.shot.free(NAME, {from, at: 대상, avoid: [카드]})` · 강조 `KIT.fx.pulse(대상, t, {on})` · 작동 `KIT.process.spin(부품, {turns})` · 흐름 `KIT.process.exhaust(부모, {path})` |
 | 움직임으로 보이기 힘든 뜻(4-2) | 풍부한 정지 그림 `KIT.info.picture(ov, {src: "자산 이름", left, top, width, height})` → `show(KIT.win(t, a, b, 0.5))` |
 | 앞을 스치는 기둥(깊이감) | `post = KIT.fx.prop(scene)` |
-| 숫자 카드(값은 출처표에서만) | `KIT.info.numCard(ov, {id: "synthetic-size", i: 1, caption: "…"})` |
+| 숫자 카드(값은 출처표에서만) | `KIT.info.numCard(ov, {id: "synthetic-size", i: 1, caption: "…"})` (기본 작게 오른쪽 위) |
+| 실제 장소(배경·깊이·빛·공기·주변 움직임) | `const P = KIT.place(NAME, scene, {seed, time: "day"\|"golden"\|"dusk"\|"night", stage: [x,0,z], clear: 2.5})` → render 에서 `P.update(t)`. 종류는 `scenes[].place`(없으면 `opts.kind`). `P.stage`·`P.spots`·`P.ground`. 사람 복식 `KIT.place.site(kind)` |
+| 결이 있는 재질(콘크리트·아스팔트·도장 금속·플라스틱·나무·타일·천·유리) | `KIT.place.mat("metal", {color, seed})` — 단색 재질 대신 |
 
 효과(fx)는 합성기가 장면마다 끄고 시작하므로 render 안에서 매번 켜야 한다(앞 장면 상태에 기대지 않음).
 프로젝트가 자기 `shared/scene_kit.js` 에서 `window.KIT = {...}` 로 통째로 바꿔도 합쳐진다(같은 이름은 프로젝트 것, `KIT.fx` 등은 남음).
@@ -183,7 +204,7 @@ pic.show(KIT.win(t, c, d, 0.5));                               // 정지 그림:
 - 검사기가 죽으면(Traceback·페이지 오류) 그 검사는 통과가 아니다: `CHECK_ERROR` 로 적고 strict 여부와 상관없이 판정 FAIL.
 
 ### Mutation lines
-검사마다 일부러 결함을 넣은 판(변이)을 한 번 더 돌린다. 낱말 시각 +1.2 s, 가운데 프레임 검게, 작은 자리 깜빡임, 목표 간극 −5 mm, 이름표 겹치기, 글자색 = 바탕색, 설명 대상 위 불투명 카드, 흰 블록 네 번, 밝은 화면 피로, 테마 하드 컷, +12 dB, 배경음 −20 dB / +15 dB / 120 Hz 아래만, 효과음 −25 dB, 부품 20 mm 이상 이탈, 사람 100 mm 침하, 자작 사람, 복식 현장 바꾸기, 접촉점 삭제, 잘못된 인체 부위, 1 m 순간이동, 글 변경 때 카메라 이동, 전환 구간 카메라 0.3 m 미끄러짐, 동작 구간 3D 정지, 글자 구간 화면 멈춤, 출처 없는 숫자, 초점 빗나감(거리 3배), 0.3 Mb/s(화면이 거의 안 상하는 어두운 장면은 해상도 1/2 · 1/4 까지 낮춤, 잴 결이 없는 화면은 이유 붙은 `MUTATION_SKIP`).
+검사마다 일부러 결함을 넣은 판(변이)을 한 번 더 돌린다. 낱말 시각 +1.2 s, 가운데 프레임 검게, 900x500 카드, 모든 물체 숨김, 사람 숨김, 작은 자리 깜빡임, 목표 간극 −5 mm, 이름표 겹치기, 글자색 = 바탕색, 설명 대상 위 불투명 카드, 흰 블록 네 번, 밝은 화면 피로, 테마 하드 컷, +12 dB, 배경음 −20 dB / +15 dB / 120 Hz 아래만, 효과음 −25 dB, 부품 20 mm 이상 이탈, 사람 100 mm 침하, 자작 사람, 복식 현장 바꾸기, 접촉점 삭제, 잘못된 인체 부위, 1 m 순간이동, 글 변경 때 카메라 이동, 전환 구간 카메라 0.3 m 미끄러짐, 동작 구간 3D 정지, 글자 구간 화면 멈춤, 출처 없는 숫자, 초점 빗나감(거리 3배), 0.3 Mb/s(화면이 거의 안 상하는 어두운 장면은 해상도 1/2 · 1/4 까지 낮춤, 잴 결이 없는 화면은 이유 붙은 `MUTATION_SKIP`).
 변이는 한 번이라도 잡히면 통과이므로, 프레임을 차례로 도는 변이(부품 이탈·사람 침하·이름표 겹치기·글자색·불투명 카드)는 처음 잡힌 프레임에서 멈춘다. 본 검사는 늘 모든 프레임을 잰다. 변이 줄 `MUTATION_CAUGHT` 은 검사기가 제대로 일한다는 뜻이다. 검사기 출력이 스스로 `MUTATION_CAUGHT` 를 말해야 하고, 종료 코드 1 만으로는 안 친다. `MUTATION_NOT_CAUGHT` 가 나오면 도구 버그이니 이슈로 알린다. 대상이 없는 변이는 `MUTATION_SKIP` 으로 넘어가고 실패로 세지 않는다(예: 효과음 큐 0개면 `SFX_MUTATION SKIP no cues`, 동작 부품을 `KIT.process.part`·`steps` 의 run 콜백으로만 움직여 거꾸로 돌릴 `KIT.process` 손잡이가 없거나 손잡이가 말에 이어진 부품에 없으면(배기는 거꾸로 돌려도 똑같아 세지 않는다) `ACTION_MUTATION SKIP`). 손잡이가 말에 이어져 있는데 못 잡으면 여전히 `MUTATION_NOT_CAUGHT` 다.
 부품 이탈 변이는 attach 대상의 세계 좌표 경계 상자를 지지대 밖으로 가장 짧게 빼는 축 방향으로 옮겨, 지지대와 허용 간극보다 20 mm 더 떨어뜨린다. 소매처럼 지지대를 감싼 부품도 실제로 떨어진다. 자동 이름표 대상은 기존처럼 +Y 20 mm 이동 뒤 표면 접촉이 끊긴 대상만 쓴다. 이탈시킬 대상이 없고 본래 결함·페이지 오류도 없으면 이유 줄과 정확히 `MUTATION_SKIP` 한 줄을 출력하고 종료 0이다.
 
@@ -191,6 +212,15 @@ pic.show(KIT.win(t, c, d, 0.5));                               // 정지 그림:
 아래 새 검사들의 지적은 script.json `"checks": "strict"` 일 때 판정에 들어간다. 아니면 `참고: checks=strict 아님` 으로 적기만 하고 CHECKS.md 끝에 `RV_CHECKS_REFERENCE_FAILS n` 으로 건수를 모은다. **새 프로젝트는 처음부터 `"checks": "strict"`**. 아니면 사람·전환 카메라·테마 피로 지적이 있어도 `RV_CHECKS PASS` 가 나온다. 변이는 strict 와 상관없이 늘 잡혀야 한다.
 
 ### Common failures and fixes
+- `check_quality` 품질 신호(strict 면 판정에 들어감, 장면 안에서 전환 앞뒤 0.8 s 를 뺀 구간을 1 s 마다 쟸). 장면마다 `QUALITY_SCENE` 줄(빈 타일 비율 중앙값·물체 수 중앙값·사람·카드 최대 면적·장소)이 나오고, 모자라면:
+  - `QUALITY_EMPTY` 48 px 칸 중 결·모서리 없는 칸(8x8 평균 밝기 차 < 5)이 장면 중앙값 45% 초과: 단색 벽·빈 바닥·빈 하늘. → `KIT.place`, 결 있는 재질, 앞·중·뒤 층.
+  - `QUALITY_SPARSE` 화면 0.1% 이상인 따로인 물체(장면 자식, 장소·큰 세트는 그 자식)가 중앙값 10 미만.
+  - `QUALITY_NO_PEOPLE` 영상 전체에 `KIT.fx.human` 0, 또는 사람이 나오는 영상에서 problem·after 장면에 사람 없음.
+  - `QUALITY_CARD` 카드(불투명 글자 판, rv 자막·단계 칩·배지·`KIT.info.picture` 는 빼고)가 화면 6% 초과. → 기본 numCard, 카드 수 줄이기.
+  - `QUALITY_TEXT_HIDDEN` 3D 글자 판(캔버스 글자를 붙인 납작한 메시)에 카메라에서 7x3 광선을 쏴 15% 넘게 다른 실물이 먼저 맞으면(깊이 기준). 같은 KIT.process 계기 부품(바늘)은 빼고, `KIT.sign`·`KIT.label` 은 늘 위라 안 셈. → `KIT.sign` 이나 `KIT.label`, 아니면 가리는 물체·카메라를 옮김.
+  - `QUALITY_FAKE_FX` 연기·증기·불꽃·단면 이름의 납작한 판, 또는 화면 2% 넘는 납작한 반투명 판(장소·사람·KIT.fx 것 제외). → `KIT.fx.smoke`·`steam`·`flame`·`section`.
+  - `QUALITY_STORY`·`QUALITY_PLACE` → 3절 Story and place.
+  - 예외는 `quality_ok` (이유 15자 이상, `QUALITY_EXEMPT` 로 찍힘).
 - `check_layout` 글자 겹침·잘림·대비·안전 영역 → 표에 시각·글자·규칙이 나온다. 그 시각을 `rv still` 로 보고 고친다. 겹침 줄은 상대 요소를 id·태그·크기로 찍는다.
 - `check_layout` 가림 → 이름표가 가리키는 대상이 다른 물체·불투명 카드에 가려 50% 아래만 보이면 FAIL. 카메라를 옮기거나 카드를 비킨다. 세부 규칙:
   - 설명 대상 = 이름표 대상 · `KIT.fx.focus` · 강조색 메시 · 초점 주인공.
