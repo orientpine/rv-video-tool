@@ -136,8 +136,13 @@ def main():
         portions.append("window.SCENE_SITE=" + js_json(scene_sites) + ";")
     if transitions:
         portions.append("window.TRANSITIONS=" + js_json(transitions) + ";")
-    if isinstance(script.get("aspect"), str):   # "2.35:1" letterbox / "4:3" pillarbox (kit/shell.html #matte, window.PICTURE)
-        portions.append("window.ASPECT=" + js_json(script["aspect"]) + ";")
+    if "aspect" in script:   # "2.35:1" letterbox / "4:3" pillarbox (kit/shell.html #matte, window.PICTURE)
+        try:
+            aw, ah = (float(x) for x in str(script["aspect"]).split(":"))
+            assert aw > 0 and ah > 0
+        except (ValueError, AssertionError):
+            raise SystemExit(f'script.json "aspect" must be "W:H" with two positive numbers, e.g. "2.35:1"; got {script["aspect"]!r}')
+        portions.append("window.ASPECT=" + js_json(f"{aw:g}:{ah:g}") + ";")
     if isinstance(script.get("badge"), dict):   # one label that stays on screen across the listed scenes (kit/shell.html #badge)
         portions.append("window.BADGE=" + js_json(script["badge"]) + ";")
     portions.extend([
