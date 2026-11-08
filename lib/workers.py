@@ -38,8 +38,12 @@ def free_gib():
         return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 2 ** 30 / 2
 
 
+def memory_browsers():
+    return max(1, int(free_gib() * MEMORY_SHARE / BROWSER_GIB))
+
+
 def browsers():
-    return max(1, min(cores(), int(free_gib() * MEMORY_SHARE / BROWSER_GIB)))
+    return min(cores(), memory_browsers())
 
 
 def capture_jobs():
@@ -51,13 +55,15 @@ def check_jobs():
 
 
 def check_shards():
-    # The two long real checks (mesh clearance, layout) each spread over this many browsers while the other
-    # check groups keep their slots, so a third of the budget each keeps the total near one browser per core.
-    return max(1, check_jobs() // 3)
+    # The two long real checks (mesh clearance, layout) each hold one check slot but open this many browsers,
+    # so at most check_jobs + 2 * (shards - 1) browsers run at once: a third of the slots each, and never more
+    # than the memory share holds.
+    return max(1, min(check_jobs() // 3, (memory_browsers() - check_jobs()) // 2 + 1))
 
 
 def render_mem_gib(jobs):
-    return int(jobs * BROWSER_GIB + 4.999)
+    # A cap for the render's memory scope, never below the 24 GiB the render had before for 4 browsers.
+    return max(24, int(jobs * BROWSER_GIB + 4.999))
 
 
 def main():

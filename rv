@@ -66,7 +66,7 @@ checks() {   # mp4 하나에 모든 검사. 하나라도 FAIL 이면 종료 코�
           rm -f "$tmp"; return $ec; }
   "${UVPW[@]}" "$L/cutlist.py" "$B/video.html" --out "$B/cuts.json" >/dev/null 2>&1 || echo '{"cuts": []}' > "$B/cuts.json"   # 장면이 선언한 의도 컷
   # 검사를 묶음으로 나눠 동시에: 묶음·변이마다 제 조각 파일에 쓰고
-  # 끝에 원래 순서대로 이어 붙여 CHECKS.md 는 하나씩 돌 때와 같은 바이트. 검사기(브라우저) 동시 수는 RV_CHECK_JOBS(기본 6), 1 이면 예전처럼 하나씩
+  # 끝에 원래 순서대로 이어 붙여 CHECKS.md 는 하나씩 돌 때와 같은 바이트. 검사기(브라우저) 동시 수는 RV_CHECK_JOBS(기본 = lib/workers.py, 코어·남은 메모리), 1 이면 예전처럼 하나씩
   local SEC; SEC=$(mktemp -d); local JOBS_N="${RV_CHECK_JOBS:-$(python3 "$L/workers.py" check)}"; local -a SUBS=()
   export RV_CHECK_SHARDS="${RV_CHECK_SHARDS:-$(python3 "$L/workers.py" shards)}"
   need_count RV_CHECK_JOBS "$JOBS_N"; need_count RV_CHECK_SHARDS "$RV_CHECK_SHARDS"

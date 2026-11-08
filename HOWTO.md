@@ -53,7 +53,7 @@ my-project/
 5. `lib/srt.py`, 썸네일(`thumb_t`, 기본 1.5 s), `--discord` 면 `lib/discord.sh` (원본이 조각 한도에 들어가면 `lib/discord_copy.py` 가 키프레임에서 잘라 복사만 함, 아니면 2패스 인코딩)
 6. 검사 → `out/CHECKS.md` (5절)
 
-만들어지는 것: `out/<name>.mp4`(1080p30 H.264 High + AAC 48 kHz, 나레이션 −16 LUFS), `<name>.srt`, `<name>_thumb.jpg`, `<name>_discord.mp4`(≤ 20 MiB, 2패스), `CHECKS.md`, `sheets/`.
+만들어지는 것: `out/<name>.mp4`(1080p30 H.264 High + AAC 48 kHz, 나레이션 −16 LUFS), `<name>.srt`, `<name>_thumb.jpg`, `<name>_discord.mp4`(≤ 20 MiB; 원본이 들어가면 복사, 아니면 2패스), `CHECKS.md`, `sheets/`.
 
 ## 3. Looks, transitions and sound (script.json)
 ```json
