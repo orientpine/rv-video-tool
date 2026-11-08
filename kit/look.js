@@ -184,10 +184,14 @@
       // 페이드 끝 한 프레임에 톡 생기지 않고 반쯤 보일 때 들어온다.
       const seeThrough = x => !x || (x.transparent && x.opacity < 0.5) || x.transmission > 0 || x.depthWrite === false || x.blending === THREE.AdditiveBlending;
       const override = sao.renderOverride.bind(sao);
-      sao.renderOverride = (r, m, t, c, al) => { const bg = sao.scene.background, hid = []; if (m === sao.depthMaterial) sao.scene.background = null;
-        sao.scene.traverseVisible(o => { if (o.isPoints || o.isSprite || (o.material && [].concat(o.material).every(seeThrough))) hid.push(o); });
-        for (const o of hid) o.visible = false;
-        try { override(r, m, t, c, al); } finally { sao.scene.background = bg; for (const o of hid) o.visible = true; } };
+      // 물체가 아니라 재질을 끈다(three 는 덮어쓰기 전에 원래 재질의 visible 을 본다): 유리 판 아래 불투명 자식, 유리·금속 섞인 메시의 불투명 쪽은 그대로 AO 를 받는다
+      sao.renderOverride = (r, m, t, c, al) => { const bg = sao.scene.background, hid = new Set();
+        try {
+          if (m === sao.depthMaterial) sao.scene.background = null;
+          sao.scene.traverseVisible(o => { for (const x of [].concat(o.material || [])) if (x && x.visible && (o.isPoints || o.isSprite || seeThrough(x))) hid.add(x); });
+          for (const x of hid) x.visible = false;
+          override(r, m, t, c, al);
+        } finally { sao.scene.background = bg; for (const x of hid) x.visible = true; } };
       const sm = sao.saoMaterial;
       sm.uniforms.aoFade = {value: new THREE.Vector2(...(a.fade || [1e9, 2e9]))};
       sm.fragmentShader = sm.fragmentShader.replace("uniform float bias;", "uniform float bias;\nuniform vec2 aoFade;")
