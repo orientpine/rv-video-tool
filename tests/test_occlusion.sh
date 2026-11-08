@@ -127,7 +127,7 @@ if(mode.startsWith('selflid')){
     scene.add(new THREE.Points(geo,new THREE.PointsMaterial({color:0xfff0d0,size:48,sizeAttenuation:false,opacity:.9,
       transparent:true,depthWrite:false,blending:THREE.AdditiveBlending})));
   }
-  if(mode==='selflidblock'){   // another object in front of 75% of the device
+  if(mode==='selflidblock'){   // another object in front of about four fifths of the device
     const block=new THREE.Mesh(new THREE.PlaneGeometry(1.4,2.5),new THREE.MeshBasicMaterial({color:0x16323c}));
     block.position.set(-.25,0,.6); scene.add(block);
   }
@@ -285,6 +285,9 @@ run selflidnear 0
 grep -q "text='Closed-lid device' visible_fraction=1.000000 .*source=focus" "$W/selflidnear.log"
 run selflidblock 1
 grep -q '| 0.500 | Closed-lid device | occlude |' "$W/selflidblock.log"
+lidded=$(grep -o 'pixels=[0-9]*/[0-9]*' "$W/selflid.log" | head -1 | cut -d/ -f2)
+blocked=$(grep -o 'pixels=[0-9]*/[0-9]*' "$W/selflidblock.log" | head -1 | cut -d/ -f2)
+[[ -n "$lidded" && "$lidded" == "$blocked" ]] || { echo "selflid: device pixels $lidded, with the block $blocked"; exit 1; }   # the block hides the device, it is not the device
 run accenthidden 0
 grep -q 'accent part hidden by the scene itself' "$W/accenthidden.log"
 run capcover 0
