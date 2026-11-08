@@ -74,15 +74,26 @@ flick() {   # flick <name> <picture colour> <filters>: rv check on a 4 s video, 
   bash "$T/tool/rv" check "$R" > "$T/rv-$1.log" 2>&1 || true
   awk '/^## 변이: 프레임 .* 작은 자리 깜빡임/{f=1;print;next} /^## /{f=0} f' "$R/out/CHECKS.md"
 }
-# C1: 2.35:1 bars (131 px, a caption box inside the bottom one) and a dark set where the box lands: inside the picture, white.
-sec=$(flick drawn 0x606060 "drawbox=x=0:y=560:w=900:h=300:color=black:t=fill,drawbox=x=0:y=0:w=iw:h=131:color=black:t=fill,drawbox=x=0:y=949:w=iw:h=131:color=black:t=fill,drawbox=x=440:y=960:w=1040:h=60:color=0x808080:t=fill")
-echo "$sec" | grep -E 'FLICKER_MUTATION_BOX|MUTATION_'
+# C1: 2.35:1 bars (131 px) and a dark set where the box lands: the box goes inside the picture, white.
+sec=$(flick drawn 0x606060 "drawbox=x=0:y=560:w=900:h=300:color=black:t=fill,drawbox=x=0:y=0:w=iw:h=131:color=black:t=fill,drawbox=x=0:y=949:w=iw:h=131:color=black:t=fill")
+echo "$sec" | grep -E 'MUTATION'
 grep -q 'FLICKER_MUTATION_BOX x=0.0000\*iw+1.0000\*iw/8:y=0.1213\*ih+0.7574\*ih\*5/8:.*:color=white$' <<<"$sec"
 grep -qx MUTATION_CAUGHT <<<"$sec"
-# C2: side bars 690 px wide: the old spot (x = iw/8..iw/4) lies wholly in the left bar; the box goes inside the picture.
-sec=$(flick pillar 0xa0a0a0 "drawbox=x=0:y=0:w=690:h=ih:color=black:t=fill,drawbox=x=1230:y=0:w=690:h=ih:color=black:t=fill")
-echo "$sec" | grep -E 'FLICKER_MUTATION_BOX|MUTATION_'
+# C1b: the same with a caption box inside the bottom bar: that edge is no longer a whole bar, so no letterbox is taken and the
+# old box (inside any letterbox picture whose bars are under 270 px) is used, white on the dark spot.
+sec=$(flick caption 0x606060 "drawbox=x=0:y=560:w=900:h=300:color=black:t=fill,drawbox=x=0:y=0:w=iw:h=131:color=black:t=fill,drawbox=x=0:y=949:w=iw:h=131:color=black:t=fill,drawbox=x=440:y=960:w=1040:h=60:color=0x808080:t=fill")
+grep -q 'FLICKER_MUTATION_BOX x=0.0000\*iw+1.0000\*iw/8:y=0.0000\*ih+1.0000\*ih\*5/8:.*:color=white$' <<<"$sec"
+grep -qx MUTATION_CAUGHT <<<"$sec"
+# C2: side bars 690 px wide with a badge inside the right one: the old spot (x = iw/8..iw/4) lies wholly in the left bar;
+# the box goes inside the picture.
+sec=$(flick pillar 0xa0a0a0 "drawbox=x=0:y=0:w=690:h=ih:color=black:t=fill,drawbox=x=1230:y=0:w=690:h=ih:color=black:t=fill,drawbox=x=1660:y=40:w=210:h=60:color=0xdddddd:t=fill")
+echo "$sec" | grep -E 'MUTATION'
 grep -q 'FLICKER_MUTATION_BOX x=0.3594\*iw+0.2812\*iw/8:y=0.0000\*ih+1.0000\*ih\*5/8:.*:color=black$' <<<"$sec"
+grep -qx MUTATION_CAUGHT <<<"$sec"
+# C4: side bars 420 px with a logo in a corner of the left bar (black-ended rows inside a pillarbox are not a letterbox):
+# the box stays inside the picture.
+sec=$(flick logo 0xa0a0a0 "drawbox=x=0:y=0:w=420:h=ih:color=black:t=fill,drawbox=x=1500:y=0:w=420:h=ih:color=black:t=fill,drawbox=x=10:y=10:w=100:h=20:color=0xc8c8c8:t=fill")
+grep -q 'FLICKER_MUTATION_BOX x=0.2188\*iw+0.5625\*iw/8:y=0.0000\*ih+1.0000\*ih\*5/8:.*:color=black$' <<<"$sec"
 grep -qx MUTATION_CAUGHT <<<"$sec"
 # C3: a bright 16:9 video keeps the old box: x = iw/8, y = ih*5/8, black.
 sec=$(flick plain 0xa0a0a0 null)
