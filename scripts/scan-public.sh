@@ -9,7 +9,7 @@
 # Prints one count per check and exits 1 if any count is not 0 (2 if no pattern file).
 set -uo pipefail
 # grep -P refuses to run in a multibyte locale that is not UTF-8, and a silent grep error would read as 0.
-export LC_ALL=C.UTF-8
+export LC_ALL=C
 
 DIR="${1:?usage: scan-public.sh <dir> [--git]}"
 MODE="${2:-}"
@@ -45,8 +45,19 @@ else
   echo "gitleaks not installed: regex checks only"
 fi
 
-# a grep that could not run (bad pattern, locale) is a finding, never a silent 0
-g() { grep -rInP --exclude-dir=.git "$@" "$DIR" | sed "s|^$DIR/||"; local s=${PIPESTATUS[0]}; [[ $s -lt 2 ]] || echo "grep failed (exit $s)" >> "$TMP/errors"; }
+# Every pattern runs twice and either hit counts: bytewise in C (a byte that is not UTF-8 never hides a line
+# and . matches it) and in C.UTF-8 (. matches one Korean character). A grep that could not run (bad pattern)
+# is a finding, never a silent 0.
+gp() {
+  local loc s
+  : > "$TMP/gp"
+  for loc in C C.UTF-8; do
+    LC_ALL=$loc grep "$@" >> "$TMP/gp"; s=$?
+    [[ $s -lt 2 ]] || echo "grep failed (exit $s)" >> "$TMP/errors"
+  done
+  sort -u "$TMP/gp"
+}
+g() { gp -rInP --exclude-dir=.git "$@" "$DIR" | sed "s|^$DIR/||"; }
 if [[ "$MODE" == "--git" ]]; then
   git -C "$DIR" log --all -p --format='%x1ecommit %H%x1e%n%an <%ae>%n%cn <%ce>%n%B' > "$TMP/raw" || { echo "history read failed: git log" >&2; exit 2; }
   # allowed identity lines are blanked only in the two header lines of a commit, never elsewhere
@@ -58,12 +69,7 @@ if [[ "$MODE" == "--git" ]]; then
     i == 1 || i == 2 { if ($0 in ok) { print ""; next } print "git-log-identity:" NR ":" $0 > identf }
     { print }' "$TMP/raw" > "$TMP/log" || { echo "history read failed: identity filter" >&2; exit 2; }
 fi
-gl() {
-  [[ -f "$TMP/log" ]] || return 0
-  grep -nP "$@" "$TMP/log" | sed 's/^/git-log:/'; local s=${PIPESTATUS[0]}
-  [[ $s -lt 2 ]] || echo "grep failed (exit $s)" >> "$TMP/errors"
-  return 0
-}
+gl() { [[ -f "$TMP/log" ]] || return 0; gp -nP "$@" "$TMP/log" | sed 's/^/git-log:/'; }
 IP='\b(?:10|172\.(?:1[6-9]|2\d|3[01])|192\.168|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7]))\.\d{1,3}\.\d{1,3}(?:\.\d{1,3})?\b'
 { g "$IP"; gl "$IP"; } | grep -vP '\b\d+\.\d+\.\d+\.\d+\.\d+' > "$TMP/ips"
 KEY='gh[pousr]_[A-Za-z0-9]{20,}|github_pa[t]_|\bsk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[abposr]-|-----BEGIN [A-Z ]*PRIVATE KEY|(?:discord|bot)[_-]?token\s*[:=]\s*\S{20,}'

@@ -114,6 +114,21 @@ check published-tree-leak 1 "$ZERO"
 g --git-dir="$T/remote.git" update-ref -d refs/heads/published-tree
 g switch -q topic
 
+# Matching must not depend on the caller's locale: a byte that is not UTF-8 hides a line from a UTF-8
+# grep, and . matches one byte, not one Korean character, in C.
+printf '%s\n' '^.*SyntheticForbiddenMarker' '합.금지' > "$T/locale-patterns"
+g switch -qc invalid-byte "$clean_tip"
+printf 'caf\xe9 SyntheticForbiddenMarker\n' > invalid-byte.txt
+g add invalid-byte.txt
+g commit -qm "Invalid byte"
+LC_ALL=C.UTF-8 RV_SCAN_PATTERNS="$T/locale-patterns" check invalid-byte-utf8-caller 1 "$ZERO" 'private-patterns(2).* [1-9]'
+g switch -qc korean-dot "$clean_tip"
+printf '%s\n' '합성금지 문구' > korean.txt
+g add korean.txt
+g commit -qm "Korean text"
+LC_ALL=C RV_SCAN_PATTERNS="$T/locale-patterns" check korean-dot-c-caller 1 "$ZERO" 'private-patterns(2).* [1-9]'
+g switch -q topic
+
 # A leak earlier in the branch must be caught even when the tip is clean.
 g switch -qc own-message "$clean_tip"
 g commit -q --allow-empty -m "SyntheticForbiddenMarker"
