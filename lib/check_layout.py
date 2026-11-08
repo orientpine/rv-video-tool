@@ -55,7 +55,7 @@ COLLECT = r"""() => {
     if(e instanceof SVGElement) fg[3]*=+s.fillOpacity;
     if(fg[3]===0) continue;
     let path='';for(let a=e;a&&a!==document.body;a=a.parentElement)path=a.tagName+':'+[...a.parentElement.children].indexOf(a)+'/'+path;
-    out.push({id,path,text:direct(e).replace(/\s+/g,' '),r,opacity,
+    out.push({id,path,scene:!!e.closest('.overlay[data-scene]'),text:direct(e).replace(/\s+/g,' '),r,opacity,
       tag:e.tagName.toLowerCase()+(typeof e.className==='string'&&e.className.trim()?'.'+e.className.trim().replace(/\s+/g,'.'):''),
       fg,layers,size:parseFloat(s.fontSize),bold:+s.fontWeight>=700,
       overflow:e instanceof HTMLElement && e.clientWidth>0 && e.scrollWidth>e.clientWidth,
@@ -385,7 +385,8 @@ async def main(a):
                     around.append(await p.evaluate(OPACITY))
                 await p.evaluate("""async t => {window.__LAYOUT_VIEWS.clear(); await window.renderAt(t);
                     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))}""", t)
-                fading = {row["id"] for row in rows if row["opacity"] < 1 - FADE_DELTA and
+                # Scene content only: rv's own step chips and captions open with a clip reveal and keep full contrast.
+                fading = {row["id"] for row in rows if row["scene"] and row["opacity"] < 1 - FADE_DELTA and
                           any(abs(o.get(row["path"], 0) - row["opacity"]) > FADE_DELTA for o in around)}
                 for row in rows:
                     if row["id"] in fading:
