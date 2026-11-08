@@ -78,7 +78,7 @@ rv discord <project> [--min-kbps 1200]
 - `preview` is a fast draft: post effects off, 15 fps, 960 px, no checks, written to `out/<name>_preview.mp4`.
 - `board` writes one storyboard sheet per scene (start, keyword moments, end) to `out/board/`.
 - `still` saves PNGs of single moments to `build/stills/`, `scrub` saves PNGs every 0.2 s between A and B.
-- `check` reruns the checks on the existing mp4. `discord` rebuilds only the share copy (at most 20 MiB per file, split at scene borders when one file would drop below the bitrate floor) and then checks.
+- `check` reruns the checks on the existing mp4. `discord` rebuilds only the share copy (at most 20 MiB per file, split at scene borders when one file would drop below the bitrate floor) and then checks. When the original already fits (whole, or cut at key frames into parts of at most 20 MiB that keep the bitrate floor), it is copied without encoding again, so the share copy has the original picture.
 
 ### How many browsers
 

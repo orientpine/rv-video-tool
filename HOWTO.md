@@ -50,7 +50,7 @@ my-project/
 2. `lib/build.py`: 장면 모듈 + `kit/scene_kit.js` + three r147 → `build/video.html` 한 파일
 3. `lib/narration.py` → `lib/master.py` (loudnorm 2패스 −16 LUFS / −1.5 dBTP), `sound` 가 있으면 `lib/mix.py`
 4. `lib/render.sh`: 헤드리스 Chromium 으로 `renderAt(t)` 프레임마다 찍기(기본 = 이 머신 코어·남은 메모리로 정한 수, `lib/workers.py`; `--jobs N` 이 우선) → H.264 → `check_flicker` → 걸린 프레임만 다시 찍기(최대 2번) → 다시 인코딩. GPU 가 드물게 덜 그린 프레임을 내는 경우가 있어 이 단계가 있다.
-5. `lib/srt.py`, 썸네일(`thumb_t`, 기본 1.5 s), `--discord` 면 `lib/discord.sh`
+5. `lib/srt.py`, 썸네일(`thumb_t`, 기본 1.5 s), `--discord` 면 `lib/discord.sh` (원본이 조각 한도에 들어가면 `lib/discord_copy.py` 가 키프레임에서 잘라 복사만 함, 아니면 2패스 인코딩)
 6. 검사 → `out/CHECKS.md` (5절)
 
 만들어지는 것: `out/<name>.mp4`(1080p30 H.264 High + AAC 48 kHz, 나레이션 −16 LUFS), `<name>.srt`, `<name>_thumb.jpg`, `<name>_discord.mp4`(≤ 20 MiB, 2패스), `CHECKS.md`, `sheets/`.

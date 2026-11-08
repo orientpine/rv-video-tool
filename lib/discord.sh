@@ -26,8 +26,11 @@ enc() {   # enc <in> <out> <ss> <t>  → 한 파일 2패스, 크기 LIM 이하. 
   rm -f "$P"*; echo "DISCORD 실패: $out $SZ B > $LIM MiB" >&2; return 1
 }
 
-N=$(awk -v l="$LIM" -v d="$DUR" -v m="$MIN" 'BEGIN{n=d*(m+128)*1000/(l*1048576*8*0.96); k=int(n); if (k<n) k++; if (k<1) k=1; print k}')
 rm -f "$BASE"_part*.mp4 "$BASE"_parts.json
+# 원본이 조각 한도에 들어가면 다시 인코딩하지 않는다: 한 파일이면 그대로, 아니면 키프레임(장면 경계 근처)에서 잘라 복사한다(화질 손실 0).
+# 조각마다 크기 ≤ LIM, 그림 비트레이트 ≥ 바닥일 때만. 안 되면 아래 2패스 다시 인코딩(예전 길). 측정 예: 3분 원본 1.99 Mb/s 를 2000k 로 다시 뽑은 조각이 check_sharp FAIL.
+if python3 "$(dirname "$0")/discord_copy.py" "$IN" "$OUT" --limit-mib "$LIM" --min-kbps "$MIN" ${TL:+--timeline "$TL"}; then exit 0; fi
+N=$(awk -v l="$LIM" -v d="$DUR" -v m="$MIN" 'BEGIN{n=d*(m+128)*1000/(l*1048576*8*0.96); k=int(n); if (k<n) k++; if (k<1) k=1; print k}')
 if [ "$N" -le 1 ]; then
   read -r V SZ < <(enc "$IN" "$OUT" 0 "$DUR")
   echo "DISCORD ${V}k → $SZ B (≤ $LIM MiB)"; exit 0
