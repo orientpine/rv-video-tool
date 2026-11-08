@@ -15,7 +15,8 @@ for case in ("normal", "depth75", "depth25", "dom75", "dom25", "own", "fallback"
              "lookoff", "arc86", "effective516", "effective430", "card39", "late",
              "accenthidden", "capcover", "fadecover", "focustiny", "looktiny",
              "letterbox", "letterboxcard", "letterboxlate", "pillarbox", "letterboxpanel",
-             "glow", "glowshader", "rain", "glowdepth75", "ownparts", "shaderwall", "ownsparks"):
+             "glow", "glowshader", "rain", "glowdepth75", "ownparts", "shaderwall", "ownsparks",
+             "selflid", "selflidblock", "selflidnear"):
     html = """<!doctype html><meta charset="utf-8"><style>
 html,body{margin:0;width:1920px;height:1080px;--ui:sans-serif}
 #stage,.overlay{position:absolute;inset:0}
@@ -97,6 +98,40 @@ if(mode==='accenthidden'||mode==='focustiny'||mode==='looktiny'){   // accent pa
   const block=new THREE.Mesh(new THREE.PlaneGeometry(3,3),new THREE.MeshBasicMaterial({color:0x16323c}));
   block.position.set(0,0,.2); scene.add(block);
 }
+// Self-occlusion: a focused device whose closed lid (pivot > lid > shell) hides its inner deck, disc ring and axle,
+// in a room: a back wall with bright scene particles behind it. The device's own parts hiding each other are not cover,
+// and the particles behind the wall are not the device. Another object in front of most of it still is cover.
+let device=null;
+if(mode.startsWith('selflid')){
+  target.visible=false;
+  if(mode==='selflidnear'){camera.position.set(0,0,2.5); camera.updateMatrixWorld();}
+  const part=(parent,geo,color,z,turn=true)=>{const m=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color,side:THREE.DoubleSide}));
+    if(turn) m.rotation.x=Math.PI/2; m.position.z=z; parent.add(m); return m;};
+  device=new THREE.Group(); device.name='Closed-lid device'; scene.add(device);
+  part(device,new THREE.CylinderGeometry(.9,.9,.3,48),0x9aa8b0,0);              // body
+  part(device,new THREE.CylinderGeometry(.93,.93,.05,48),0x56636b,-.12);        // lower band
+  part(device,new THREE.CircleGeometry(.8,48),0x3a4a52,.16,false);              // deck under the lid
+  part(device,new THREE.RingGeometry(.6,.66,64),0xcdd3d8,.165,false);           // disc seat ring
+  part(device,new THREE.CylinderGeometry(.05,.05,.06,16),0x222222,.18);         // axle
+  const led=new THREE.Mesh(new THREE.TorusGeometry(.95,.02,8,64),new THREE.MeshBasicMaterial({color:0x1fa8ff}));
+  led.position.z=.1; device.add(led);
+  const pivot=new THREE.Group(), lid=new THREE.Group(); pivot.position.set(0,.9,.2); lid.position.set(0,-.9,0);
+  device.add(pivot); pivot.add(lid);
+  part(lid,new THREE.CylinderGeometry(.9,.88,.03,48),0xd9e7ee,.015);             // closed lid shell over the inner parts
+  part(lid,new THREE.CircleGeometry(.2,24),0x88aacc,.032,false);                 // window
+  const wall=new THREE.Mesh(new THREE.PlaneGeometry(14,8),new THREE.MeshStandardMaterial({color:0x2a3a40}));
+  wall.position.z=-1; scene.add(wall); scene.add(new THREE.AmbientLight(0xffffff,1.5));
+  if(mode!=='selflidnear'){
+    const pos=[]; for(let i=0;i<20;i++) for(let j=0;j<10;j++) pos.push(-4+8*i/19,-2+4*j/9,-2);
+    const geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+    scene.add(new THREE.Points(geo,new THREE.PointsMaterial({color:0xfff0d0,size:48,sizeAttenuation:false,opacity:.9,
+      transparent:true,depthWrite:false,blending:THREE.AdditiveBlending})));
+  }
+  if(mode==='selflidblock'){   // another object in front of 75% of the device
+    const block=new THREE.Mesh(new THREE.PlaneGeometry(1.4,2.5),new THREE.MeshBasicMaterial({color:0x16323c}));
+    block.position.set(-.25,0,.6); scene.add(block);
+  }
+}
 const overlay=document.querySelector('.overlay');
 const bars=[];
 if(mode.startsWith('letterbox')||mode==='pillarbox')   // fixed black frame bars over the stage, outside the picture
@@ -111,7 +146,7 @@ if(mode==='letterboxcard'){   // a real card over the target inside the picture 
   card.style.cssText='position:absolute;left:700px;top:600px;width:520px;height:349px;background:rgba(10,22,30,.86)';
 }
 const label=KIT.label(overlay,'Explained target',mode==='fallback'?{}:{target:explained});
-if(mode==='legacy'||automatic||mode==='accenthidden'||mode==='focustiny'||mode==='looktiny') delete window.__KIT_LABELS;
+if(mode==='legacy'||automatic||mode.startsWith('selflid')||mode==='accenthidden'||mode==='focustiny'||mode==='looktiny') delete window.__KIT_LABELS;
 if(mode==='capcover'||mode==='fadecover'){   // rv's own caption box / scene fade over the target: not explanation cards
   const ui=document.createElement('div'); ui.id=mode==='capcover'?'cap':'fade'; document.body.append(ui);
   const inner=mode==='capcover'?Object.assign(document.createElement('div'),{className:'box',textContent:'5 mm caption'}):ui;
@@ -143,10 +178,11 @@ window.renderReady=Promise.resolve();
 window.renderAt=async t=>{
   KIT.fx.reset();
   if(['focus45','effective516','effective430','card39','late','focustiny','looktiny'].includes(mode)) KIT.fx.focus(target);
+  if(device) KIT.fx.focus(device);
   if(mode==='late') card.style.opacity=t>=.5?'1':'0';
   if(mode==='letterboxlate') bars[1].style.opacity=t>=.5?'1':'0';   // a black strip that is not there all the time is a card
   window.HL='Explained target';
-  label.place(camera,new THREE.Vector3(),mode==='own'?0:500,mode==='own'?0:-170,1);
+  label.place(camera,new THREE.Vector3(),mode==='own'?0:device?-760:500,mode==='own'?0:device?-420:-170,1);   // device cases: tag in the corner, off the device
   renderer.render(scene,camera);
 };
 </script>""".replace("MODE", repr(case))
@@ -242,6 +278,13 @@ sparks=$(grep -o 'visible_fraction=[0-9.]* required>=0.500 pixels=[0-9]*/[0-9]*'
 [[ "$sparks" == visible_fraction=1.000000* ]] && (( ${sparks##*/} > plate + 1000 )) || { echo "ownsparks: $sparks, plate alone $plate"; exit 1; }
 run shaderwall 1
 grep -q "pixels=$(grep -o 'pixels=[0-9]*/[0-9]*' "$W/depth75.log" | head -1 | cut -d= -f2) " "$W/shaderwall.log"
+# Self-occlusion: the closed lid over the device's inner parts is the device, the particles behind the wall are not.
+run selflid 0
+grep -q "text='Closed-lid device' visible_fraction=1.000000 .*source=focus" "$W/selflid.log"
+run selflidnear 0
+grep -q "text='Closed-lid device' visible_fraction=1.000000 .*source=focus" "$W/selflidnear.log"
+run selflidblock 1
+grep -q '| 0.500 | Closed-lid device | occlude |' "$W/selflidblock.log"
 run accenthidden 0
 grep -q 'accent part hidden by the scene itself' "$W/accenthidden.log"
 run capcover 0
