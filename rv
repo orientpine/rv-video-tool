@@ -183,7 +183,7 @@ checks() {   # mp4 하나에 모든 검사. 하나라도 FAIL 이면 종료 코�
       sub motion5 mut "변이: 동작 부품 거꾸로 (말↔애니메이션)" "${UVPW[@]}" "$L/check_motion.py" "$B/video.html" --mutate actreverse
     fi
     # 갑자기 등장(POP_IN): 떠 있던 화면 요소 하나를 0.6 s 감춘 뒤 한 프레임에 다시 켜면 잡아야(감출 요소가 없으면 MUTATION_SKIP)
-    if ! grep -q "MOTION_CHECK 실제 SKIP" "$R"; then sub motion6 mut "변이: 화면 요소를 한 프레임에 켬" "${UVPW[@]}" "$L/check_motion.py" "$B/video.html" --mutate popin; fi
+    if grep -q "^POP_IN_CHECK " "$R"; then sub motion6 mut "변이: 화면 요소를 한 프레임에 켬" "${UVPW[@]}" "$L/check_motion.py" "$B/video.html" --mutate popin; fi
     if grep -q "^SUBJECT_FRAME .* PASS " "$R"; then   # 설명 대상 화면 가운데: 설명 구간에 카메라를 25° 돌리면 잡아야
       sub motion7 mut "변이: 설명 구간 카메라 25° 돌림 (설명 대상 가운데)" "${UVPW[@]}" "$L/check_motion.py" "$B/video.html" --mutate offcenter
     fi; sub_join; }
