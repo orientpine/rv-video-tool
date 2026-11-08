@@ -62,6 +62,32 @@
         textNode.style.opacity = leaderSvg.style.opacity = alpha.toFixed(3);
       }};
   }
+  // 3D name plate that is never hidden by what stands in front of it (a pipe before a tank, check_quality TEXT_HIDDEN):
+  // KIT.sign(parent, text, {at: [x,y,z], width: 0.8, color, ink, face: "camera" | [nx,ny,nz]}) -> mesh with set(text) and
+  // place(camera, alpha). Drawn after the scene with no depth test, so it reads like a label fixed to the object. For a tag
+  // that follows the screen, KIT.label (page overlay) is still the first choice.
+  function sign(parent, content, o = {}) {
+    const cv = document.createElement("canvas"), g = cv.getContext("2d"), tex = new THREE.CanvasTexture(cv);
+    const mat = new THREE.MeshBasicMaterial({map: tex, transparent: true, depthTest: false, depthWrite: false, toneMapped: false});
+    const plate = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
+    plate.renderOrder = 50; plate.userData.rvSign = true; plate.name = o.name || "sign";
+    const draw = text => {
+      g.font = "700 64px var(--ui), sans-serif"; const w = Math.ceil(g.measureText(text).width) + 72;
+      cv.width = w; cv.height = 112; g.font = "700 64px var(--ui), sans-serif";
+      g.fillStyle = o.color || "#16323C"; g.fillRect(0, 0, w, 112);
+      g.fillStyle = o.ink || "#F7F9F9"; g.textBaseline = "middle"; g.fillText(text, 36, 58);
+      const width = o.width ?? Math.min(1.2, 0.18 * text.length + 0.2); plate.scale.set(width, width * 112 / w, 1); tex.needsUpdate = true;
+    };
+    draw(content); if (o.at) plate.position.set(...o.at); parent.add(plate);
+    const face = o.face ?? "camera";
+    if (Array.isArray(face)) plate.lookAt(plate.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(...face)));
+    plate.set = text => draw(text);
+    plate.place = (camera, alpha = 1) => {
+      if (face === "camera") plate.quaternion.copy(camera.quaternion);
+      mat.opacity = alpha; plate.visible = alpha > 0.001;
+    };
+    return plate;
+  }
   function rng(seed) {
     let state = seed >>> 0;
     return () => {
@@ -328,15 +354,20 @@
     return n;
   }
   // 숫자 카드: 값은 출처표에서만(id + show 순번). 출처 꾸리표는 자동(fetched = "출처: …", design = "설계 목표")
+  // 기본은 작게(숫자 64 px, 너비 ≤ 440 px ≈ 화면 4%) 오른쪽 위: 가운데 주인공을 안 가림(check_quality QUALITY_CARD 6%).
+  // left/top 을 주면 그 자리, right 를 주면 오른쪽에서. size: "l" 은 예전 큰 카드(숫자 96 px, 한 장면에 숫자 하나뿐일 때만)
   function numCard(ov, o) {
-    const n = source(o.id), val = n ? n.show[o.i || 0] : "?";
+    const n = source(o.id), val = n ? n.show[o.i || 0] : "?", big = o.size === "l";
+    const T = big ? TYPE : {num: 64, body: 28, tag: 20};
     const cardBox = document.createElement("div");
     cardBox.dataset.rvCue = "tone";   // lib/cues.py: 카드가 나타나는 순간 짧은 톤
-    cardBox.style.cssText = `position:absolute;left:${o.left ?? 80}px;top:${o.top ?? 160}px;background:${PANEL};border-left:8px solid ${ACC};padding:22px 34px 20px;opacity:0;font-family:var(--ui)`;
-    cardBox.innerHTML = `<div style="font:700 ${TYPE.num}px/1 var(--ui);color:${ACC};letter-spacing:-2px">${val}</div>` +
-      (o.caption ? `<div style="font:700 ${TYPE.body}px/1.3 var(--ui);color:${INK};margin-top:12px">${o.caption}</div>` : "") +
-      (o.sub ? `<div style="font:600 ${TYPE.tag + 4}px/1.3 var(--ui);color:${INK};margin-top:6px">${o.sub}</div>` : "") +
-      `<div style="font:500 ${TYPE.tag}px/1.3 var(--ui);color:${MUTE};margin-top:12px">${n && n.kind === "fetched" ? "출처: " + n.src : "설계 목표"}</div>`;
+    const x = o.left != null ? `left:${o.left}px` : `right:${o.right ?? 64}px`;
+    cardBox.style.cssText = `position:absolute;${x};top:${o.top ?? 150}px;background:${PANEL};border-left:${big ? 8 : 6}px solid ${ACC};` +
+      `padding:${big ? "22px 34px 20px" : "14px 22px 12px"};max-width:${big ? 760 : 440}px;opacity:0;font-family:var(--ui)`;
+    cardBox.innerHTML = `<div style="font:700 ${T.num}px/1 var(--ui);color:${ACC};letter-spacing:-2px">${val}</div>` +
+      (o.caption ? `<div style="font:700 ${T.body}px/1.3 var(--ui);color:${INK};margin-top:${big ? 12 : 8}px">${o.caption}</div>` : "") +
+      (o.sub ? `<div style="font:600 ${T.tag + 4}px/1.3 var(--ui);color:${INK};margin-top:6px">${o.sub}</div>` : "") +
+      `<div style="font:500 ${T.tag}px/1.3 var(--ui);color:${MUTE};margin-top:${big ? 12 : 8}px;overflow-wrap:anywhere">${n && n.kind === "fetched" ? "출처: " + n.src : "설계 목표"}</div>`;
     ov.append(cardBox);
     return {box: cardBox, show(a, rise = 24) { cardBox.style.opacity = a.toFixed(3); cardBox.style.transform = `translateY(${((1 - a) * rise).toFixed(1)}px)`; }};
   }
@@ -1063,6 +1094,6 @@
 
   // Merge assigned helper overrides into the stable object so unrelated effect hooks remain available.
   // An override replaces matching functions without removing the compositor's emphasis and reset APIs.
-  const K = {clamp, smooth, win, wordT, lineSpan, label, rng, camAt, camSet, shot, shotAt, easeEnds, info, fx};
+  const K = {clamp, smooth, win, wordT, lineSpan, label, sign, rng, camAt, camSet, shot, shotAt, easeEnds, info, fx};
   Object.defineProperty(window, "KIT", {configurable: true, get: () => K, set: v => { Object.assign(K, v); }});
 })();

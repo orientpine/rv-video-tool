@@ -129,7 +129,8 @@
       }
     }});
   }
-  function steps(scene, definitions, {overlay, left = 80, top = 160} = {}) {
+  // Step cards default to the top right, small (28 px), so the explained part in the middle stays clear (QUALITY_CARD).
+  function steps(scene, definitions, {overlay, left, right = 64, top = 150} = {}) {
     const lines = ((window.DATA.words || {}).lines || []).filter(l => l.scene === scene);
     const starts = definitions.map(s => KIT.wordT(scene, s.word, s.n || 0));
     if (starts.some(t => t >= 1e9) || starts.some((t, i) => i && t <= starts[i - 1]))
@@ -145,7 +146,7 @@
       if (!card && overlay) {
         const box = document.createElement("div");
         box.dataset.rvCue = "tone";
-        box.style.cssText = `position:absolute;left:${left}px;top:${top}px;padding:22px 34px;background:${KIT.info.PANEL};color:${KIT.info.INK};border-left:8px solid ${KIT.info.ACC};font:700 34px/1.3 var(--ui)`;
+        box.style.cssText = `position:absolute;${left != null ? `left:${left}px` : `right:${right}px`};top:${top}px;max-width:440px;padding:14px 22px;background:${KIT.info.PANEL};color:${KIT.info.INK};border-left:6px solid ${KIT.info.ACC};font:700 28px/1.3 var(--ui)`;
         box.textContent = s.text || s.word; overlay.append(box);
         card = {box, show(a) { box.style.display = a ? "block" : "none"; }};
       }
