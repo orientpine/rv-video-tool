@@ -106,6 +106,14 @@ if grep -qx -- "api -X PATCH repos/{owner}/{repo}/pulls/41 -F body=@.*text.txt" 
 else
   echo "FAIL clean-pr-edit-default-repo-path"; cat "$T/gh.log" 2>/dev/null; fail=1
 fi
+run leak-in-issue-create 1 'private-patterns(1): text line 2' issue-create "$T/leak.md" --title "Scan gap"
+run issue-create-without-title 1 'issue-create needs --title' issue-create "$T/clean.md" -l bug
+run clean-issue-create 0 - issue-create "$T/clean.md" --title "Scan gap" -l bug
+if grep -qx -- "issue create --body-file .*text.txt --title Scan gap -l bug" "$T/gh.log" && cmp -s "$T/clean.md" "$T/posted"; then
+  echo "PASS clean-issue-create-posts-scanned-text"
+else
+  echo "FAIL clean-issue-create-posts-scanned-text"; cat "$T/gh.log" 2>/dev/null; fail=1
+fi
 run clean-release-notes 0 - release-notes "$T/clean.md" v9.9.9 --verify-tag
 if grep -qx -- "release create --notes-file .*text.txt v9.9.9 --verify-tag" "$T/gh.log" &&
   cmp -s "$T/clean.md" "$T/posted"; then
