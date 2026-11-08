@@ -69,6 +69,12 @@ const isHomemadeHuman = g => {
     const d=o.geometry.boundingBox.getSize(new THREE.Vector3()).toArray();
     return Math.max(...d)/Math.min(...d)<=1.35;
   });
+  // A ball: sphere-like geometry that is still round in world space (an egg-scaled sphere is no ball).
+  const balls=meshes.map((o,i)=>{
+    if(!/^(Sphere|Icosahedron|Dodecahedron|Octahedron)Geometry$/.test(o.geometry.type))return 0;
+    const d=boxes[i].getSize(new THREE.Vector3()).toArray();
+    return Math.max(...d)/Math.min(...d)<=1.35?Math.max(...d):0;
+  });
   const ancestor=(a,b)=>{for(let p=b;p;p=p.parent)if(p===a)return true;return false;};
   const separateLimbs=(a,b)=>{
     const x=meshes[a.j].parent,y=meshes[b.j].parent;
@@ -83,6 +89,10 @@ const isHomemadeHuman = g => {
       const diameter=Math.max(...lengths), centre=head.getCenter(new THREE.Vector3());
       if(!roundish[i]||diameter/Math.min(...lengths)>1.35||diameter<height*.08||diameter>height*.25||
         centre[up]<bounds.max[up]-height*.2)return false;
+      // A ball-and-stick model: another ball of about the head's size joined to it by a stick (one long part
+      // touching both). Hands and joints hang off limbs, and a snowman has no stick between its balls.
+      const stick=j=>elongated.some((e,k)=>e&&k!==i&&k!==j&&boxes[k].intersectsBox(boxes[i])&&boxes[k].intersectsBox(boxes[j]));
+      if(balls.some((b,j)=>j!==i&&b>=diameter*.5&&stick(j)))return false;
       const below=boxes.map((box,j)=>({box,j,centre:box.getCenter(new THREE.Vector3())}))
         .filter(b=>b.j!==i&&b.centre[up]<head.min[up]);
       if(!below.length)return false;
