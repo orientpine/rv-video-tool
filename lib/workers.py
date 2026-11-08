@@ -15,7 +15,9 @@ import sys
 BROWSER_GIB = 1.5        # per browser: 1.3 GiB measured peak, rounded up
 MEMORY_SHARE = 0.75      # of the memory free now; the rest stays for the encoder, the OS and other work
 CAPTURE_MAX = 12         # one GB10 GPU: 900 frames took 26.4 s with 12 browsers, 28.2 s with 16, 30.3 s with 20
-CHECK_MAX = 20           # the largest check concurrency measured (20 cores); a bigger machine stays there
+CHECK_BROWSERS = 12      # check browsers open at once, shards included: with up to 30 (20 checks, 6 shards) a
+                         # 3-minute 3D project's sync_check page failed to compile its shaders, a false FAIL
+SHARDS_MAX = 4
 
 
 def cores():
@@ -50,15 +52,18 @@ def capture_jobs():
     return max(1, min(browsers(), CAPTURE_MAX))
 
 
-def check_jobs():
-    return min(browsers(), CHECK_MAX)
+def check_budget():
+    return min(memory_browsers(), CHECK_BROWSERS)
 
 
 def check_shards():
-    # The two long real checks (mesh clearance, layout) each hold one check slot but open this many browsers,
-    # so at most check_jobs + 2 * (shards - 1) browsers run at once: a third of the slots each, and never more
-    # than the memory share holds.
-    return max(1, min(check_jobs() // 3, (memory_browsers() - check_jobs()) // 2 + 1))
+    return max(1, min(SHARDS_MAX, check_budget() // 3))
+
+
+def check_jobs():
+    # The two long real checks (mesh clearance, layout) each hold one check slot but open check_shards()
+    # browsers, so check_jobs + 2 * (shards - 1) browsers can be open at once; that stays within the budget.
+    return max(1, min(cores(), check_budget() - 2 * (check_shards() - 1)))
 
 
 def render_mem_gib(jobs):

@@ -82,7 +82,7 @@ rv discord <project> [--min-kbps 1200]
 
 ### 브라우저 몇 개
 
-`rv make`·`rv preview`·`rv check` 는 브라우저 수를 머신에 맞춘다: CPU 코어 하나에 브라우저 하나, 시작할 때 남은 메모리의 4분의 3 에 1.5 GiB 씩 들어가는 만큼(`lib/workers.py`; `python3 lib/workers.py explain` 이 숫자를 찍음). 프레임 찍기는 최대 12 개다. GPU 하나에서 그보다 많으면 더 빨라지지 않았다. 또 Python 프로세스 하나에 브라우저 넷씩 나눠 프레임이 한 프로세스 뒤에 줄 서지 않게 한다. 오래 걸리는 `check_clearance`·`check_layout` 본 검사는 각각 브라우저의 3분의 1 에 프레임을 나눈다(`RV_CHECK_SHARDS`). `--jobs N`·`RV_CHECK_JOBS`·`RV_CHECK_SHARDS` 로 손으로 정할 수 있고, `RV_CORES`·`RV_MEM_GIB` 는 잰 값 대신 쓴다(다른 일 몫을 남길 때). 프레임과 검사 결과는 이 수와 상관없다.
+`rv make`·`rv preview`·`rv check` 는 브라우저 수를 머신에 맞춘다: CPU 코어 하나에 브라우저 하나, 시작할 때 남은 메모리의 4분의 3 에 1.5 GiB 씩 들어가는 만큼(`lib/workers.py`; `python3 lib/workers.py explain` 이 숫자를 찍음). 프레임 찍기는 최대 12 개다. GPU 하나에서 그보다 많으면 더 빨라지지 않았다. 또 Python 프로세스 하나에 브라우저 넷씩 나눠 프레임이 한 프로세스 뒤에 줄 서지 않게 한다. 검사는 샤드까지 합쳐 브라우저를 한 번에 12 개까지만 연다(여기서는 검사 6, 오래 걸리는 `check_clearance`·`check_layout` 본 검사는 각각 브라우저 4 개, `RV_CHECK_SHARDS`). 검사 20·샤드 6 에서는 3분짜리 3D 프로젝트의 한 페이지가 셰이더를 못 만들었고 검사도 더 빨라지지 않았다. `--jobs N`·`RV_CHECK_JOBS`·`RV_CHECK_SHARDS` 로 손으로 정할 수 있고, `RV_CORES`·`RV_MEM_GIB` 는 잰 값 대신 쓴다(다른 일 몫을 남길 때). 프레임과 검사 결과는 이 수와 상관없다.
 
 프로젝트 폴더에는 `script.json`(목소리, 문장, 장면), `scenes/<이름>/module.js`, 선택으로 `deps.json`, `shared/`, `sources.json` 이 들어간다. 전체 안내: [HOWTO.md](HOWTO.md).
 
