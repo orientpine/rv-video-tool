@@ -6,6 +6,28 @@ Every release is a git tag `vX.Y.Z` (Z for fixes, Y for features). Each tag gets
 
 릴리스는 git 태그 `vX.Y.Z` 하나다(고침 = Z, 기능 = Y). 태그마다 이 파일과 GitHub 릴리스 페이지에 한국어·영어 노트를 쓴다. 설치는 `scripts/install.sh`, 확인은 `scripts/verify.sh`.
 
+## v0.2.1
+
+### English
+
+Fix: `check_cuts --theme --mp4` failed bright videos that fade through black between scenes.
+
+- A non-white stretch shorter than 2 s between white pictures, or at the start or end of the video, is now a dip (`THEME_DIP` line) and not a white -> real -> white switch, when its luma changes no more than the existing per-frame limit (12/255). Before, each 1.6 s scene dip counted as two switches, and the fade in/out at the ends as short holds, so a calm bright video failed hold and switch rules. A dark block that cuts in hard is still a switch and fails as before. The white-picture definition and the 12 s / 2-per-60 s rules are unchanged.
+- `THEME_FATIGUE` joins a fade in/out under 2 s at either end with the bright run next to it when that run is 2 s or longer (a shorter one stays a flash), as it already did for gaps inside the video.
+- The fatigue mutation counts two planned blocks that are moved past the same white run to one spot once. Before, it put both on the same seconds (one block) and could report `MUTATION_CAUGHT` only because of an unrelated finding. With room for fewer than two blocks it prints `MUTATION_SKIP`, as documented.
+- Same output as v0.2.0 on the two regression projects (real check, theme mutation and fatigue mutation lines).
+- Docs: `AGENTS.md` (also read as `CLAUDE.md`) and a README section for handing rv work to a coding agent: how to lay out a project, which checks fail and how to read their lines.
+
+### 한국어
+
+고침: `check_cuts --theme --mp4` 가 장면 사이를 검정으로 페이드하는 밝은 영상을 FAIL 내던 것.
+
+- 흰 화면 사이나 영상 앞뒤 끝의 2 s 보다 짧은 흰 화면이 아닌 구간은 밝기가 프레임마다 기존 한도(12/255) 안에서 바뀌면 dip(`THEME_DIP` 줄)이고 흰 -> 실사 -> 흰 전환이 아니다. 전에는 1.6 s 장면 dip 하나가 전환 두 번, 앞뒤 페이드가 짧은 유지로 세여 차분한 밝은 영상이 유지·전환 규칙에 걸렸다. 딱 끊기며 들어오는 어두운 블록은 여전히 전환이고 전처럼 걸린다. 흰 화면 정의와 12 s · 60 s 에 2번 규칙은 그대로다.
+- `THEME_FATIGUE` 도 앞뒤 끝의 2 s 보다 짧은 페이드를 옆 밝은 구간이 2 s 이상이면 그 구간에 합친다(더 짧으면 그대로 번쩍임, 영상 안 끊김은 전부터 합쳤다).
+- 피로 변이는 같은 흰 구간 뒤로 밀려 한 자리에 모인 블록 둘을 하나로 여긴다. 전에는 둘을 같은 초에 넣어(실제로 블록 하나) 상관없는 다른 걸림 덕에만 `MUTATION_CAUGHT` 가 나올 수 있었다. 블록 둘을 넣을 자리가 없으면 적힌 대로 `MUTATION_SKIP` 을 찍는다.
+- 두 회귀 프로젝트에서 v0.2.0 과 출력이 같다(본 검사·테마 변이·피로 변이 줄).
+- 문서: rv 일을 코딩 에이전트에게 맡길 때 쓰는 `AGENTS.md`(`CLAUDE.md` 로도 읽힘)와 README 절: 프로젝트 구성, 어떤 검사가 걸리고 그 줄을 어떻게 읽는지.
+
 ## v0.2.0
 
 ### English
