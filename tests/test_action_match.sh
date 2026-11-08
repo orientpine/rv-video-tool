@@ -105,4 +105,66 @@ run_case noframe; grep -q "^HATCH_COVER proc FAIL .*frame not declared" "$W/nofr
 MODE=good run_case actreverse --mutate actreverse
 grep -qx MUTATION_CAUGHT "$W/actreverse.log" || { echo "FAIL actreverse: not caught"; ok=0; }
 grep -h -E "^(ACTION_MATCH|HATCH_COVER)" "$W"/{good,reverse,half,wrong,unlinked,uncovered,noframe}.log
+# A spinning wheel that carries the named part is the action, not background: the collar ('와이어') is pulled just
+# before '풀어' (so it moved in the window that marks background motion) and rises in the span while the wheel turns.
+# good: wheel turns, collar rises -> ACTION_SPAN PASS (before: both pinned as background, state 0, FAIL)
+# pullonly: wheel holds, the collar moved just before and rises in the span -> PASS (before: the collar was pinned)
+# spinonly: collar holds, only the wheel that carries it turns -> PASS (the explained part turning is the action)
+# bg: wheel and collar hold, only an unrelated fan turns -> FAIL (real background motion stays background)
+SP="$W/spin"; mkdir -p "$SP/build" "$SP/scenes/spin"
+python3 - "$SP" <<'PY'
+import json, sys
+from pathlib import Path
+p = Path(sys.argv[1])
+def save(name, data): (p/name).write_text(json.dumps(data, ensure_ascii=False))
+text = "와이어를 당기면, 와이어를 풀어 줍니다"
+save("script.json", {"scenes": [{"name": "spin"}]})
+save("build/timeline.json", {"fps": 30, "total_s": 7, "fade_in_s": 0, "fade_out_s": 0,
+    "order": ["spin"], "modules": {"spin": {"start": 0, "duration": 7}},
+    "lines": [{"scene": "spin", "start": 1.5, "end": 6.5, "text": text}]})
+save("build/word_times.json", {"lines": [{"scene": "spin", "speech_start": 1.5, "speech_end": 6.5, "text": text,
+    "words": [{"word": "당기면", "t": 2.0, "t_scene": 2.0}, {"word": "풀어", "t": 3.2, "t_scene": 3.2},
+              {"word": "줍니다", "t": 4.6, "t_scene": 4.6}]}]})
+save("scenes/spin/deps.json", {"data": {"spin.fixture": "fixture.json"}})
+PY
+cat <<'JS' > "$SP/scenes/spin/module.js"
+(function(){
+  let r,scene,cam,mode,wheel,fan,tension;
+  const u=(t,a,b)=>KIT.clamp((t-a)/(b-a),0,1);
+  SCENES.spin={duration:7,init(renderer){
+    r=renderer;mode=DATA["spin.fixture"].mode;
+    scene=new THREE.Scene();scene.background=new THREE.Color(0x172B38);
+    scene.add(new THREE.HemisphereLight(0xffffff,0x607080,2));
+    const m=c=>new THREE.MeshStandardMaterial({color:c});
+    wheel=new THREE.Group();wheel.position.set(-.6,1.2,0);scene.add(wheel);
+    wheel.add(new THREE.Mesh(new THREE.TorusGeometry(.9,.06,8,40),m(0x9aa4aa)));
+    for(let i=0;i<6;i++){const s=new THREE.Mesh(new THREE.BoxGeometry(1.8,.04,.04),m(0xd0d6da));s.rotation.z=i*Math.PI/6;wheel.add(s);}
+    const collar=new THREE.Mesh(new THREE.TorusGeometry(.12,.04,8,24),m(0xF2A33A));collar.name="와이어 고리";wheel.add(collar);
+    tension=KIT.process.move(collar,[[0,.2,.08],[0,.7,.08]],{name:"와이어"});
+    fan=new THREE.Group();fan.position.set(2.4,2.2,-1.5);scene.add(fan);
+    for(let i=0;i<3;i++){const b=new THREE.Mesh(new THREE.BoxGeometry(.9,.12,.03),m(0x6BD8EE));b.rotation.z=i*Math.PI/3;fan.add(b);}
+    cam=new THREE.PerspectiveCamera(45,16/9,.1,100);cam.position.set(0,1.4,6);cam.lookAt(0,1.2,0);
+  },render(t){
+    fan.rotation.z=t*2.0;
+    wheel.rotation.z=mode==="bg"||mode==="pullonly"?0:t*1.2;
+    tension.set(u(t,2.0,3.0)*.4+(mode==="good"||mode==="pullonly"?u(t,3.2,4.4)*.6:0));
+    r.render(scene,cam);
+  }};
+})();
+JS
+spin_case() {
+  printf '{"mode":"%s"}\n' "$1" > "$SP/scenes/spin/fixture.json"
+  VIDEO_HTML="$W/spin_$1.html" python3 "$ROOT/lib/build.py" "$SP" > "$W/spin_$1.build.log"
+  "${PW[@]}" "$ROOT/lib/check_motion.py" "$W/spin_$1.html" > "$W/spin_$1.log" 2>&1 || true
+  ! grep -q Traceback "$W/spin_$1.log"
+}
+spin_want() { local case="$1" verdict="$2"
+  spin_case "$case" || { echo "FAIL spin $case: traceback"; ok=0; }
+  if ! grep -q "^ACTION_SPAN spin '풀어' $verdict " "$W/spin_$case.log"; then
+    echo "FAIL spin $case: '풀어' span is not $verdict"; grep "^ACTION_SPAN" "$W/spin_$case.log" || true; ok=0; fi
+  grep "^ACTION_SPAN spin '풀어'" "$W/spin_$case.log" || true; }
+spin_want good PASS
+spin_want pullonly PASS
+spin_want spinonly PASS
+spin_want bg FAIL
 [ "$ok" = 1 ] && echo "ACTION_MATCH_TESTS PASS" || { echo "ACTION_MATCH_TESTS FAIL"; exit 1; }
