@@ -213,15 +213,32 @@ POP_STEP = r"""(frame, scene, cam) => {
       for (const el of [top, ...top.querySelectorAll('*')]) {
         const tag = el.tagName.toLowerCase();
         if (skip.test(tag) || el.closest('defs,mask,marker,clipPath,pattern')) continue;
-        const text = [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim());
         const s = getComputedStyle(el), bg = s.backgroundColor;
-        const painted = el instanceof SVGElement || text || /^(img|canvas|video)$/.test(tag) ||
+        // Boxes, shapes and pictures only. Bare text (no background of its own) is read like a caption: its text
+        // may change or start in one frame (counters, readouts, a line of text) without counting as a pop.
+        const painted = el instanceof SVGElement || /^(img|canvas|video)$/.test(tag) ||
           (bg && bg !== 'transparent' && !/^rgba\(.*,\s*0\)$/.test(bg));
         if (!painted) continue;
         const a = alphaOf(el); if (a <= 0) continue;
-        const r = el.getBoundingClientRect();
-        const w = Math.max(0, Math.min(W, r.right) - Math.max(0, r.left)) * Math.max(0, Math.min(H, r.bottom) - Math.max(0, r.top)) / (W * H);
-        put('u' + id(el), w * a, name, group);
+        // Visible part only: clip-path inset() and overflow-clipping ancestors (wipes, masks) cut the box.
+        const b = el.getBoundingClientRect();
+        let x0 = Math.max(0, b.left), x1 = Math.min(W, b.right), y0 = Math.max(0, b.top), y1 = Math.min(H, b.bottom);
+        for (let e = el; e && e !== document.body; e = e.parentElement) {
+          const z = e === el ? s : getComputedStyle(e), q = e.getBoundingClientRect();
+          const inset = z.clipPath && z.clipPath.match(/^inset\(([^)]+)\)$/);
+          if (inset) {
+            const v = inset[1].trim().split(/\s+/), f = [v[0], v[1] || v[0], v[2] || v[0], v[3] || v[1] || v[0]];
+            const px = (x, n) => parseFloat(x) * (x.endsWith('%') ? n / 100 : 1);
+            x0 = Math.max(x0, q.left + px(f[3], q.width)); x1 = Math.min(x1, q.right - px(f[1], q.width));
+            y0 = Math.max(y0, q.top + px(f[0], q.height)); y1 = Math.min(y1, q.bottom - px(f[2], q.height));
+          }
+          if (e !== el && /hidden|clip/.test(z.overflow)) { x0 = Math.max(x0, q.left); x1 = Math.min(x1, q.right); y0 = Math.max(y0, q.top); y1 = Math.min(y1, q.bottom); }
+        }
+        const w = Math.max(0, x1 - x0) * Math.max(0, y1 - y0) / (W * H);
+        // Keyed by place in the overlay, not by node: a box rebuilt with innerHTML every frame is the same box.
+        let path = '';
+        for (let e = el; e && e !== ov; e = e.parentElement) path = e.tagName + ':' + [...e.parentElement.children].indexOf(e) + '/' + path;
+        put('u' + ov.dataset.scene + '/' + path, w * a, name, group);
       }
     });
   }
@@ -286,6 +303,8 @@ POP_PICK = r"""async (times) => {
         if (getComputedStyle(ov).display === 'none') continue;
         for (const el of ov.querySelectorAll('div')) {
           if (![...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) continue;
+          const bg = getComputedStyle(el).backgroundColor;
+          if (!bg || bg === 'transparent' || /^rgba\(.*,\s*0\)$/.test(bg)) continue;   // a box, as POP_STEP counts
           let a = 1; for (let e = el; e; e = e.parentElement) { const s = getComputedStyle(e); if (s.display === 'none' || s.visibility === 'hidden') { a = 0; break; } a *= +s.opacity; }
           const r = el.getBoundingClientRect();
           if (a >= .99 && r.width * r.height >= .004 * innerWidth * innerHeight && r.left >= 0 && r.right <= innerWidth) {
@@ -334,7 +353,7 @@ CAM_TURN = r"""spans => {
     const c = window.__motion.camera;
     if (!window.__motion.scene || !c) return;
     previous = {c, q: c.quaternion.clone()};
-    if (spans.some(([a, b]) => t >= a && t <= b)) c.rotateY(25 * Math.PI / 180);
+    if (window.__camTurnOn && spans.some(([a, b]) => t >= a && t <= b)) c.rotateY(25 * Math.PI / 180);
     c.updateMatrixWorld(true);
   };
 }"""
@@ -1265,8 +1284,12 @@ async def main(a):
         await p.evaluate("([onset, need]) => { window.__motion.popOnset = onset; window.__motion.popNeed = need; }",
                          [POP_ONSET, max(POP_FRAMES, round(POP_PEAK_S * a.fps))])
         if a.mutate == "popin":
+            # Inside scenes, away from declared cuts (a pop at a cut is exempt and would not be caught).
             mids = [tl["modules"][s]["start"] + tl["modules"][s]["duration"] * f for s in tl["order"]
                     for f in (.5, .7, .35) if not a.scene or s == a.scene]
+            mids = [m for m in mids if not any(abs(tl["modules"][s]["start"] + c - x) <= 1.0
+                                              for s, cs in cuts.items() if s in tl["modules"] for c in cs
+                                              for x in (m, m - .6))]
             pick = await p.evaluate(POP_PICK, mids)
             if not pick:
                 print("POP_MUTATION SKIP no steady overlay element to hide")
@@ -1369,8 +1392,9 @@ async def main(a):
             mutation = {"kind": "actreverse", "handles": await p.evaluate(ACT_REVERSE)}
         if a.mutate == "offcenter":
             await p.evaluate(CAM_TURN, [[b, e] for _, b, e, _, _ in spans])
+            await p.evaluate("window.__camTurnOn = true")
             mutation = {"kind": "offcenter", "spans": len(spans)}
-        frame_rows, frame_failures = [], []
+        frame_rows, frame_failures, offcenter_caught = [], [], False
         for scene, begin, end, text, origin in spans:
             end = min(end, tl["modules"][scene]["start"] + tl["modules"][scene]["duration"] - 1 / a.fps)
             if end <= begin:
@@ -1437,8 +1461,14 @@ async def main(a):
                 lead_in = min(FRAME_LEAD_S, .4 * (end - begin))
                 n = max(4, math.ceil((end - begin - lead_in) * 8))
                 fts = [begin + lead_in + (end - begin - lead_in) * i / n for i in range(n + 1)]
+                if a.mutate == "offcenter":   # caught only where the unmutated camera passed and the turned one fails
+                    await p.evaluate("window.__camTurnOn = false")
+                    base_ok = frame_verdict(await p.evaluate(SUBJECT_PROBE, [fts, parts_, names_]))[0] >= FRAME_SHARE
+                    await p.evaluate("window.__camTurnOn = true")
                 share, mx, my, seen = frame_verdict(await p.evaluate(SUBJECT_PROBE, [fts, parts_, names_]))
                 fok = share >= FRAME_SHARE
+                if a.mutate == "offcenter" and base_ok and not fok:
+                    offcenter_caught = True
                 fd = (f"subject={label} centred={share:.2f} need>={FRAME_SHARE} box=|x-.5|,|y-.5|<={FRAME_BOX} "
                       f"mean_x={mx:.2f} mean_y={my:.2f} samples={len(fts)} seen={seen} span={begin + lead_in:.3f}..{end:.3f}s")
                 frame_rows.append(f"SUBJECT_FRAME {scene} {text!r} {'PASS' if fok else 'FAIL'} {fd}")
@@ -1455,7 +1485,7 @@ async def main(a):
         action_failures.extend(frame_failures + pop_failures)
         action_rows.extend(frame_rows + pop_rows)
         if a.mutate == "offcenter":
-            match_caught = bool(frame_failures)
+            match_caught = offcenter_caught
         if a.mutate == "popin":
             match_caught = any(abs(f[0] - pop_mutation) <= 1 and f[2] == "pop_in" for f in pop_failures)
         mids = [tl["modules"][s_]["start"] + tl["modules"][s_]["duration"] / 2 for s_ in tl["order"] if not a.scene or s_ == a.scene]

@@ -54,7 +54,8 @@ COLLECT = r"""() => {
     const fg=rgba(e instanceof SVGElement?s.fill:s.color);
     if(e instanceof SVGElement) fg[3]*=+s.fillOpacity;
     if(fg[3]===0) continue;
-    out.push({id,text:direct(e).replace(/\s+/g,' '),r,opacity,
+    let path='';for(let a=e;a&&a!==document.body;a=a.parentElement)path=a.tagName+':'+[...a.parentElement.children].indexOf(a)+'/'+path;
+    out.push({id,path,text:direct(e).replace(/\s+/g,' '),r,opacity,
       tag:e.tagName.toLowerCase()+(typeof e.className==='string'&&e.className.trim()?'.'+e.className.trim().replace(/\s+/g,'.'):''),
       fg,layers,size:parseFloat(s.fontSize),bold:+s.fontWeight>=700,
       overflow:e instanceof HTMLElement && e.clientWidth>0 && e.scrollWidth>e.clientWidth,
@@ -65,18 +66,19 @@ COLLECT = r"""() => {
   return out;
 }"""
 
-# Same element ids as COLLECT, opacity only (0 when hidden). Used to tell a fade in progress from a resting state.
+# Same element places (path) as COLLECT, opacity only (0 when hidden). Used to tell a fade in progress from a resting state.
 OPACITY = r"""() => {
   const direct = e => [...e.childNodes].filter(n=>n.nodeType===3).map(n=>n.textContent).join(' ').trim();
   const els=[...document.querySelectorAll('body *')].filter(e=>
     !['SCRIPT','STYLE','NOSCRIPT'].includes(e.tagName) && direct(e));
   const out={};
-  els.forEach((e,i)=>{
+  els.forEach(e=>{
     let opacity=1;
     for(let a=e;a;a=a.parentElement){const s=getComputedStyle(a);
       if(s.display==='none'||s.visibility==='hidden'||s.visibility==='collapse'){opacity=0;break;}
       opacity*=+s.opacity;}
-    out[e.id || `${e.closest('.overlay')?.dataset.scene||'chrome'}:${i}`]=opacity;
+    let path='';for(let a=e;a&&a!==document.body;a=a.parentElement)path=a.tagName+':'+[...a.parentElement.children].indexOf(a)+'/'+path;
+    out[path]=opacity;   // keyed by DOM place, so a caption emptying elsewhere does not shift the match
   });
   return out;
 }"""
@@ -384,7 +386,7 @@ async def main(a):
                 await p.evaluate("""async t => {window.__LAYOUT_VIEWS.clear(); await window.renderAt(t);
                     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))}""", t)
                 fading = {row["id"] for row in rows if row["opacity"] < 1 - FADE_DELTA and
-                          any(abs(o.get(row["id"], 0) - row["opacity"]) > FADE_DELTA for o in around)}
+                          any(abs(o.get(row["path"], 0) - row["opacity"]) > FADE_DELTA for o in around)}
                 for row in rows:
                     if row["id"] in fading:
                         print(f"LAYOUT_FADE t={t:.3f} text={row['text'][:60]!r} opacity={row['opacity']:.3f} "

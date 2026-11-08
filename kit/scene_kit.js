@@ -498,7 +498,8 @@
     isFocus(o) { for (let x = o; x; x = x.parent) if (this.extra.has(x)) return true;
       const m = o.material; return !!(m && m.color && Math.abs(m.color.r - ACCENT.r) + Math.abs(m.color.g - ACCENT.g) + Math.abs(m.color.b - ACCENT.b) < 0.12); },
     clayFor(m) { let c = this.clay.get(m); if (!c) { c = new THREE.MeshStandardMaterial({color: 0xB9C0C5, roughness: 0.9, metalness: 0.0, envMapIntensity: 0.6});
-      c.clippingPlanes = m.clippingPlanes; c.clipShadows = m.clipShadows; c.side = m.side; this.clay.set(m, c); } c.clippingPlanes = m.clippingPlanes; return c; },
+      c.clippingPlanes = m.clippingPlanes; c.clipShadows = m.clipShadows; c.side = m.side; this.clay.set(m, c); } c.clippingPlanes = m.clippingPlanes;
+      c.transparent = !!m.transparent; c.opacity = m.transparent ? m.opacity : 1; c.depthWrite = m.depthWrite !== false; return c; },   // a fading part stays faded in clay
     wrap(s, c, raw) {
       const swapped = [], hidden = [], bg = s.background, fog = s.fog, env = s.environment;
       s.traverse(o => { if (!o.isMesh || !o.visible || o.material.isMeshBasicMaterial || o.material.isShadowMaterial || this.isFocus(o)) return;
@@ -518,19 +519,26 @@
   // (hidden at 0, own materials at 1). Geometry and pose stay as they are, so contact and clearance checks see the
   // real part. Call it after the scene assigns materials for the frame. Switching obj.visible on in one frame is a
   // pop (check_motion POP_IN).
+  // Copies are kept per mesh, so meshes that share a material can fade at different times.
   const revealCopies = new WeakMap(), revealOriginal = new WeakMap();
   function reveal(obj, u) {
     const k = smooth(0, 1, clamp(u, 0, 1));
     obj.visible = k > 0;
-    const fade = m => {
-      const own = revealOriginal.get(m) || m;
-      if (k >= 1) return own;
-      let copy = revealCopies.get(own);
-      if (!copy) { copy = own.clone(); revealCopies.set(own, copy); revealOriginal.set(copy, own); }
-      copy.transparent = true; copy.opacity = own.opacity * k; copy.depthWrite = own.depthWrite && k > .5;
-      return copy;
-    };
-    obj.traverse(o => { if (o.material) o.material = Array.isArray(o.material) ? o.material.map(fade) : fade(o.material); });
+    obj.traverse(o => {
+      if (!o.material) return;
+      let copies = revealCopies.get(o);
+      const fade = m => {
+        const own = revealOriginal.get(m) || m;
+        if (k >= 1) return own;
+        if (!copies) revealCopies.set(o, copies = new Map());
+        let copy = copies.get(own);
+        if (!copy) { copy = own.clone(); copies.set(own, copy); revealOriginal.set(copy, own); }
+        copy.color && own.color && copy.color.copy(own.color);
+        copy.transparent = true; copy.opacity = own.opacity * k; copy.depthWrite = own.depthWrite && k > .5;
+        return copy;
+      };
+      o.material = Array.isArray(o.material) ? o.material.map(fade) : fade(o.material);
+    });
     return obj;
   }
   const fx = {cutaway, explode, human, prop, emphasis, reveal, focus(...objs) { for (const o of objs) if (o) emphasis.extra.add(o); }, env(...objs) { for (const o of objs) if (o) emphasis.env.add(o); },
