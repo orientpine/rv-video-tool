@@ -2,6 +2,14 @@
   "name": "hello",
   "voice": "en-US-AriaNeural",
   "checks": "strict",
+  "quality": "strict",
+  "quality_ok": {
+    "EMPTY": "hello is the smallest API demo (a probe on a plate); examples/story is the full video (examples/hello only)",
+    "SPARSE": "hello is the smallest API demo (a probe on a plate); examples/story is the full video (examples/hello only)",
+    "PLACE": "hello is the smallest API demo (a probe on a plate); examples/story is the full video (examples/hello only)",
+    "STORY": "hello is the smallest API demo (a probe on a plate); examples/story is the full video (examples/hello only)",
+    "NO_PEOPLE": "hello is the smallest API demo (a probe on a plate); examples/story is the full video (examples/hello only)"
+  },
   "site": "lab",
   "lead_s": 0.5,
   "tail_s": 1.0,
