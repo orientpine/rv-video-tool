@@ -238,6 +238,8 @@ POP_STEP = r"""(frame, scene, cam) => {
         // Keyed by place in the overlay, not by node: a box rebuilt with innerHTML every frame is the same box.
         let path = '';
         for (let e = el; e && e !== ov; e = e.parentElement) path = e.tagName + ':' + [...e.parentElement.children].indexOf(e) + '/' + path;
+        // Cut by the screen edge: it slides in or the camera reveals it, it does not pop.
+        if (b.left < 0 || b.right > W || b.top < 0 || b.bottom > H) straddle.add('u' + ov.dataset.scene + '/' + path);
         put('u' + ov.dataset.scene + '/' + path, w * a, name, group);
       }
     });
@@ -260,6 +262,8 @@ POP_STEP = r"""(frame, scene, cam) => {
         x0 = Math.min(x0, v.x); x1 = Math.max(x1, v.x); y0 = Math.min(y0, v.y); y1 = Math.max(y1, v.y);
       }
       if (!front) return;
+      // Cut by the screen edge: a part sliding in or revealed by the camera, not a pop (small parts cross the edge in 1-2 frames).
+      if (x0 < -1 || x1 > 1 || y0 < -1 || y1 > 1) straddle.add('m' + id(o));
       const area = Math.max(0, Math.min(1, x1) - Math.max(-1, x0)) * Math.max(0, Math.min(1, y1) - Math.max(-1, y0)) / 4;
       // A box reaching behind the camera (a room or a big body the camera is close to) has no reliable screen
       // area: corners swap sides as the camera moves. No onset is counted for it in this frame or the next.
@@ -1283,13 +1287,19 @@ async def main(a):
         await p.evaluate("window.__motion.sampling=true")
         await p.evaluate("([onset, need]) => { window.__motion.popOnset = onset; window.__motion.popNeed = need; }",
                          [POP_ONSET, max(POP_FRAMES, round(POP_PEAK_S * a.fps))])
+        transitions, looks, blend_s = await p.evaluate(
+            "[window.TRANSITIONS||{}, window.SCENE_LOOK||{}, Math.max(1.5, window.THEME_PLAN?.blend_s||2)]")
         if a.mutate == "popin":
-            # Inside scenes, away from declared cuts (a pop at a cut is exempt and would not be caught).
-            mids = [tl["modules"][s]["start"] + tl["modules"][s]["duration"] * f for s in tl["order"]
+            # Inside scenes, away from declared cuts and transition edges (a pop there is exempt and would not be caught).
+            edges = transition_spans(tl, transitions, looks, blend_s)
+            mids = [(s, tl["modules"][s]["start"] + tl["modules"][s]["duration"] * f) for s in tl["order"]
                     for f in (.5, .7, .35) if not a.scene or s == a.scene]
-            mids = [m for m in mids if not any(abs(tl["modules"][s]["start"] + c - x) <= 1.0
-                                              for s, cs in cuts.items() if s in tl["modules"] for c in cs
-                                              for x in (m, m - .6))]
+            mids = [m for s, m in mids
+                    if tl["modules"][s]["start"] + edges[s][0] + 1.0 <= m - .6
+                    and m <= tl["modules"][s]["start"] + tl["modules"][s]["duration"] - edges[s][1] - 1.0
+                    and not any(abs(tl["modules"][s2]["start"] + c - x) <= 1.0
+                                for s2, cs in cuts.items() if s2 in tl["modules"] for c in cs
+                                for x in (m, m - .6))]
             pick = await p.evaluate(POP_PICK, mids)
             if not pick:
                 print("POP_MUTATION SKIP no steady overlay element to hide")
@@ -1298,8 +1308,6 @@ async def main(a):
                 return 0
             await p.evaluate(POP_HIDE, [pick["sel"], pick["t"] - .6, pick["t"]])
             pop_mutation = round(pick["t"] * a.fps)
-        transitions, looks, blend_s = await p.evaluate(
-            "[window.TRANSITIONS||{}, window.SCENE_LOOK||{}, Math.max(1.5, window.THEME_PLAN?.blend_s||2)]")
         if a.mutate == "transglide":
             leads = transition_spans(tl, transitions, looks, blend_s)
             scene = next((s for s in tl["order"] if leads[s][0] > 0), None)
