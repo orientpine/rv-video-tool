@@ -22,6 +22,8 @@ main() {
 TOOL="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 L="$TOOL/lib"
 UVPW=(uv run -q --no-project --with playwright --with pillow python)
+# 브라우저 수는 양의 정수여야 한다: lib/workers.py 가 없거나(깨진 설치) 값이 이상하면 슬롯을 영영 못 잡고 멈추는 대신 바로 끝낸다
+need_count() { [[ "$2" =~ ^[1-9][0-9]*$ ]] || { echo "rv: $1 이 양의 정수가 아님('$2') — lib/workers.py 가 있는지, 값을 직접 줬다면 숫자인지 확인" >&2; exit 2; }; }
 cmd="${1:-}"; shift || true
 P="$(cd "${1:?프로젝트 폴더를 주십시오}" && pwd)"; shift
 B="$P/build"; O="$P/out"
@@ -67,6 +69,7 @@ checks() {   # mp4 하나에 모든 검사. 하나라도 FAIL 이면 종료 코�
   # 끝에 원래 순서대로 이어 붙여 CHECKS.md 는 하나씩 돌 때와 같은 바이트. 검사기(브라우저) 동시 수는 RV_CHECK_JOBS(기본 6), 1 이면 예전처럼 하나씩
   local SEC; SEC=$(mktemp -d); local JOBS_N="${RV_CHECK_JOBS:-$(python3 "$L/workers.py" check)}"; local -a SUBS=()
   export RV_CHECK_SHARDS="${RV_CHECK_SHARDS:-$(python3 "$L/workers.py" shards)}"
+  need_count RV_CHECK_JOBS "$JOBS_N"; need_count RV_CHECK_SHARDS "$RV_CHECK_SHARDS"
   echo "RV_CHECK_WORKERS jobs=$JOBS_N shards=$RV_CHECK_SHARDS ($(python3 "$L/workers.py" explain))" >&2
   acquire() { local k; while :; do for ((k = 1; k <= JOBS_N; k++)); do mkdir "$SEC/slot$k" 2>/dev/null && { SLOT=$k; return 0; }; done; sleep 0.2; done; }
   release() { rmdir "$SEC/slot$SLOT"; }
@@ -285,7 +288,7 @@ case "$cmd" in
       --from) FROM="$2"; shift 2;; --to) TO="$2"; shift 2;; --discord) DISCORD=1; shift;;
       --jobs) JOBS="$2"; shift 2;; --no-heavy) HEAVY=0; shift;; --full) FULL=--full; shift;; *) echo "모르는 인자 $1" >&2; exit 2;; esac; done
     prep
-    JOBS="${JOBS:-$(python3 "$L/workers.py" capture)}"; echo "RV_RENDER_WORKERS jobs=$JOBS ($(python3 "$L/workers.py" explain))"
+    JOBS="${JOBS:-$(python3 "$L/workers.py" capture)}"; need_count --jobs "$JOBS"; echo "RV_RENDER_WORKERS jobs=$JOBS ($(python3 "$L/workers.py" explain))"
     TOTAL=$(python3 -c "import json;print(json.load(open('$B/timeline.json'))['total_s'])")
     N=$(python3 -c "print(round($TOTAL*30))")
     if [ -n "$FROM$TO" ]; then   # 구간만 다시: 그 구간 + 바뀐 장면(구간 밖이어도, 길이가 줄어 밀린 장면 포함) + 새 길이 뒤 프레임을 지움
@@ -317,7 +320,7 @@ case "$cmd" in
   preview)
     PFPS=15; JOBS=""
     while [ $# -gt 0 ]; do case "$1" in --fps) PFPS="$2"; shift 2;; --jobs) JOBS="$2"; shift 2;; *) echo "모르는 인자 $1" >&2; exit 2;; esac; done
-    JOBS="${JOBS:-$(python3 "$L/workers.py" capture)}"
+    JOBS="${JOBS:-$(python3 "$L/workers.py" capture)}"; need_count --jobs "$JOBS"
     prep >/dev/null
     RV_LOOK=off VIDEO_HTML="$B/preview.html" python3 "$L/build.py" "$P" >/dev/null
     TOTAL=$(python3 -c "import json;print(json.load(open('$B/timeline.json'))['total_s'])")

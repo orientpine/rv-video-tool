@@ -9,7 +9,7 @@ RV_SRC="${1:-$(cd "$(dirname "$0")/.." && pwd)/rv}"
 REAL_PY="$(command -v python3)"
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 mkdir -p "$T/tool/lib" "$T/bin" "$T/proj/build" "$T/proj/out"
-cp "$RV_SRC" "$T/tool/rv"; chmod +x "$T/tool/rv"
+cp "$RV_SRC" "$T/tool/rv"; chmod +x "$T/tool/rv"; cp "$(dirname "$RV_SRC")/lib/workers.py" "$T/tool/lib/"
 mkfifo "$T/started" "$T/go"
 for f in check_cuts check_flicker sync_check check_clearance check_captions sheet check_layout check_audio check_motion check_numbers check_quality; do printf 'print("STUB PASS")\n' > "$T/tool/lib/$f.py"; done
 cat > "$T/bin/python3" <<EOF
