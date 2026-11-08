@@ -99,6 +99,8 @@ my-project/
 | 공정 단계 동작(밸브·계기 바늘·뚜껑·부품 옮기기·배기) | `KIT.process.valve/gauge/hatch/move/exhaust` + `KIT.process.steps(NAME, [...])` (4-1) |
 | 주인공(초점) 지정 | `KIT.fx.focus(물체)` 또는 `scene.userData.subject = 물체` |
 | 요소를 서서히 등장(기본 전환) | 3D: `KIT.fx.reveal(물체, KIT.win(t, a, b, 0.4))` (0 이면 숨김, 0→1 동안 원점에서 자람). 이름표·카드: `L.place(cam, p, dx, dy, KIT.win(t, a, b, 0.3))`, `el.style.opacity = KIT.win(t, a, b, 0.3)`. `obj.visible = t >= a`, `t >= a && t < b ? 1 : 0` 처럼 한 프레임에 켜면 `POP_IN` FAIL(5절). 페이드 중인 글자는 대비·격침 검사에서 빠지므로(`LAYOUT_FADE`) 페이드를 끄지 않는다 |
+| 글자가 떠 있는 동안 빈 자리에서 대상이 움직이게(4-2) | 구도 `KIT.shot.free(NAME, {from, at: 대상, avoid: [카드]})` · 강조 `KIT.fx.pulse(대상, t, {on})` · 작동 `KIT.process.spin(부품, {turns})` · 흐름 `KIT.process.exhaust(부모, {path})` |
+| 움직임으로 보이기 힘든 뜻(4-2) | 풍부한 정지 그림 `KIT.info.picture(ov, {src: "자산 이름", left, top, width, height})` → `show(KIT.win(t, a, b, 0.5))` |
 | 앞을 스치는 기둥(깊이감) | `post = KIT.fx.prop(scene)` |
 | 숫자 카드(값은 출처표에서만) | `KIT.info.numCard(ov, {id: "synthetic-size", i: 1, caption: "…"})` |
 
@@ -142,6 +144,32 @@ const steps = KIT.process.steps(NAME, [
 
 단계 칩(rv 화면 위 단계 줄)은 들어오는 전환이 끝난 뒤에 열린다. 첫 장면은 들어오는 전환이 없으니 첫 단계 0.4 s 전에 연다.
 
+### 4-2. While text is on screen: keep the free part of the picture working
+글자 카드·이름표·자막이 떠 있고 카메라가 서 있는 동안(4-0), 글자가 가리지 않은 화면에서 설명 대상이 뜻에 맞게 계속 움직여야 한다. 우선은 움직임이고, 움직임으로 보여 주기 힘든 뜻만 그 뜻을 풍부하게 그린 정지 그림으로 채운다. `check_motion` 의 `TEXT_MOTION`·`PICTURE` 가 잰다(5절).
+```js
+// init: 카드를 만든 뒤 — 카드에 안 가리고(되면 화면 가운데 30%) 대상을 두는 서 있는 구도 하나
+const shot = KIT.shot.free(NAME, {from: {p: [-.6, 1.5, 2.1], l: [-.75, -.05, 0], fov: 40}, at: device, avoid: [cardA, cardB]});
+const disc = KIT.process.spin(discMesh, {axis: "y", turns: 3, name: "디스크"});                    // 작동: 고르게 도는 부품
+const flow = KIT.process.exhaust(discMesh, {path: [[.07, .03, 0], [.27, .03, 0]], name: "시료"});   // 흐름: 길을 따라 흐르는 화살표
+const pic = KIT.info.picture(overlay, {src: "clinic", left: 1080, top: 170, width: 720, height: 480});  // deps.json "assets": {"clinic": "clinic.svg"}
+// render(t):
+KIT.camSet(cam, shot.at(t));                                   // 글자 구간 내내 같은 구도(카메라 고정)
+disc.set(KIT.clamp((t - a) / (b - a), 0, 1));
+flow.set(t >= a ? KIT.clamp((t - a) / (b - a), 0, 1) : 0);
+KIT.fx.pulse(device, t, {on: KIT.win(t, a, b, 0.4)});          // 강조: KIT.fx.reveal 뒤에 부른다
+pic.show(KIT.win(t, c, d, 0.5));                               // 정지 그림: 3 s 이상 다 보이게
+```
+- `KIT.shot.free(NAME, {from, at, avoid, keep})` → `{at(t), fits, centred}`: from 구도를 그대로 두거나 옆·위아래로만 옮겨(거리·화각 그대로) `at` 이 avoid(카드 요소, `{box}`, 또는 `[x0, y0, x1, y1]` px)에 안 가리고 안전 영역 안에 다 들어오는 자리를 고른다. 먼저 대상이 가운데 30% 상자 안(`SUBJECT_FRAME` 과 같은 상자)인 자리, 없으면 안 가리는 자리만. 둘 다 없으면 from 그대로 `fits = false`(콘솔 경고). 카드 크기는 처음 보이는 render 에서 재고 기억한다. `keep` 에는 움직이지 않는 대상만(옮겨 오는 부품은 처음 잰 순간 자리로 잠). `KIT.shot.action` 의 avoid 도 카드 요소를 받는다.
+- `KIT.fx.pulse(obj, t, {on, period: 1.6, amount: .55, color})`: 부품 재질을 강조색으로 숨 쉬듯 밝힌다(모양·자세 그대로라 접촉 검사에 영향 없음). `on`(0~1, `KIT.win`)으로 서서히 켜고 끈다. render 마다, `KIT.fx.reveal` 뒤에 부른다.
+- `KIT.process.spin(obj, {axis, turns, name})`: `set(u)` 가 만든 자세에서 자기 축으로 `u × turns` 바퀴를 고르게 돈다. 이름으로 `ACTION_MATCH` 가 잇는다(돌리기 = 10°).
+- `KIT.process.exhaust(parent, {path})`: path(부모 좌표 꺾인 선)를 따라 흐르고 그 방향을 가리키는 화살표(시료가 우물로, 관 속 액체). path 가 없으면 예전처럼 위로 솟는 공기. path 가 있으면 기본 이름에 '흐름'.
+- `KIT.info.picture(ov, {src, left, top, width, height, fit, caption})` → `{box, img, show(a)}`: 그림은 장면 `deps.json` 의 `"assets": {"이름": "파일.svg|png|jpg"}` 로 넣는다(영상 파일에 묶임). 글자(카드·자막)와 안 겹치는 자리에. rv 는 그림을 만들지 않는다: 장면 작성자가 그 뜻에 맞게 그리거나 출처·저작권이 분명한 그림을 넣는다.
+- 판정(결과 보기 전에 정한 값): 글자 구간 = 한 장면에서 카드·이름표·자막이 떠 있고 카메라가 첫 프레임에서 2 cm 안에 서 있는 동안(장면 전환 구간 빼고, 글자 사이 0.5 s 이하 틈은 잇고, 2 s 이상만). 단계 칩·표지는 가리기만 하고 구간을 만들지 않는다. 구간마다 0.25 s 간격으로 3D 그림만(글자·카드 없이, 카메라 고정) 160×90 으로 찍고 그 구간에 뜬 모든 글자 상자(카드 바탕, 없으면 글자)를 가린다. 가려지지 않은 화소의 0.5% 이상이 마지막으로 움직인 표본보다 12/255 넘게 바뀌면 움직임. 움직임 없는 가장 긴 통이 2 s 이상이면 `TEXT_MOTION … FAIL`. 화면이 80% 넘게 가려지면 `EXEMPT covered`. 선언한 `ui-only` 구간(글자에 일부러 멈춤)과 풍부한 정지 그림이 떠 있는 표본은 멈춤으로 안 센다(구간 전체면 `EXEMPT declared_hold`·`EXEMPT picture`).
+- 정지 그림 판정 `PICTURE`: 다 보이는(불투명도 ≥ .95) 시간 3 s 이상(너무 짧으면 어색함), 화면 8% 이상, 풍부함 = 그림의 30% 이상이 가장 많은 색과 다르고 색 칸(채널당 4 bit) 24개 이상이 각각 0.2% 이상(빈 판·글자만 있는 그림은 한 색이 거의 다고 칸이 적다). 하나라도 어기면 `FAIL short|small|poor`, 그런 그림은 글자 구간에서도 움직임 대신으로 안 센다.
+- **글자와 물체가 같이 있을 때 가려진 느낌 없게**: 카드·패널이 설명 대상이나 움직이는 물체의 보이는 화소 10~90% 를 덮으면(가장자리에서 잘려 보임) `check_layout` 이 `cut` 으로 잡는다(5절). 카드는 `KIT.info.clear(카드, {from: 그 구간 카메라 {p, l, fov}, objects: [물체…]})` 를 init 에서(물체를 그 구간 자세로 놓고) 불러 물체들의 화면 상자(각 변 10% 넓힘)와 안 겹치는 자리(지금 자리 → 안전 영역 네 구석 → 위 가운데)로 옮기거나, 대상을 `KIT.shot.free` 로 카드 밖에 둔다. 돌거나 떠다니는 무리는 모두 objects 에 넣는다. 일부러 카드 뒤에 깔은 배경 장식은 `KIT.fx.decor(물체)` 로 선언하면 빠진다. 정지 그림 위에 카드가 2% 넘게 겹쳐도 `cut`.
+- 보기: `examples/text-motion`(장면 하나. `scenes/device/mode.json` 이 `{"mode": "still"}` 이면 같은 장면을 부품 없이 — FAIL, `"kit"` 이면 위 부품으로 — PASS).
+- 못 잡는 것: 움직임이 뜻과 맞는지(아무거나 돌려도 통과), 그림이 글의 뜻을 그렸는지. 화면 0.5% 넘게 바뀌면 작은 깜빡임도 움직임으로 센다 — 뜻은 사람이 본다.
+
 ## 5. Reading CHECKS.md
 하나라도 FAIL 이면 `rv make`·`rv check` 종료 코드 1. 마지막 줄이 `RV_CHECKS PASS` 또는 `RV_CHECKS FAIL`.
 
@@ -150,7 +178,7 @@ const steps = KIT.process.steps(NAME, [
 - 검사기가 죽으면(Traceback·페이지 오류) 그 검사는 통과가 아니다: `CHECK_ERROR` 로 적고 strict 여부와 상관없이 판정 FAIL.
 
 ### Mutation lines
-검사마다 일부러 결함을 넣은 판(변이)을 한 번 더 돌린다. 낱말 시각 +1.2 s, 가운데 프레임 검게, 작은 자리 깜빡임, 목표 간극 −5 mm, 이름표 겹치기, 글자색 = 바탕색, 설명 대상 위 불투명 카드, 흰 블록 네 번, 밝은 화면 피로, 테마 하드 컷, +12 dB, 배경음 −20 dB / +15 dB / 120 Hz 아래만, 효과음 −25 dB, 부품 20 mm 이탈, 사람 100 mm 침하, 자작 사람, 복식 현장 바꾸기, 접촉점 삭제, 잘못된 인체 부위, 1 m 순간이동, 글 변경 때 카메라 이동, 전환 구간 카메라 0.3 m 미끄러짐, 동작 구간 3D 정지, 출처 없는 숫자, 초점 빗나감(거리 3배), 0.3 Mb/s.
+검사마다 일부러 결함을 넣은 판(변이)을 한 번 더 돌린다. 낱말 시각 +1.2 s, 가운데 프레임 검게, 작은 자리 깜빡임, 목표 간극 −5 mm, 이름표 겹치기, 글자색 = 바탕색, 설명 대상 위 불투명 카드, 흰 블록 네 번, 밝은 화면 피로, 테마 하드 컷, +12 dB, 배경음 −20 dB / +15 dB / 120 Hz 아래만, 효과음 −25 dB, 부품 20 mm 이탈, 사람 100 mm 침하, 자작 사람, 복식 현장 바꾸기, 접촉점 삭제, 잘못된 인체 부위, 1 m 순간이동, 글 변경 때 카메라 이동, 전환 구간 카메라 0.3 m 미끄러짐, 동작 구간 3D 정지, 글자 구간 화면 멈춤, 출처 없는 숫자, 초점 빗나감(거리 3배), 0.3 Mb/s.
 변이는 한 번이라도 잡히면 통과이므로, 프레임을 차례로 도는 변이(부품 이탈·사람 침하·이름표 겹치기·글자색·불투명 카드)는 처음 잡힌 프레임에서 멈춘다. 본 검사는 늘 모든 프레임을 잰다. 변이 줄 `MUTATION_CAUGHT` 은 검사기가 제대로 일한다는 뜻이다. 검사기 출력이 스스로 `MUTATION_CAUGHT` 를 말해야 하고, 종료 코드 1 만으로는 안 친다. `MUTATION_NOT_CAUGHT` 가 나오면 도구 버그이니 이슈로 알린다. 대상이 없는 변이는 `MUTATION_SKIP` 으로 넘어가고 실패로 세지 않는다(예: 효과음 큐 0개면 `SFX_MUTATION SKIP no cues`, 동작 부품을 `KIT.process.part`·`steps` 의 run 콜백으로만 움직여 거꾸로 돌릴 `KIT.process` 손잡이가 없거나 손잡이가 말에 이어진 부품에 없으면(배기는 거꾸로 돌려도 똑같아 세지 않는다) `ACTION_MUTATION SKIP`). 손잡이가 말에 이어져 있는데 못 잡으면 여전히 `MUTATION_NOT_CAUGHT` 다.
 
 ### strict mode
@@ -191,7 +219,9 @@ const steps = KIT.process.steps(NAME, [
 - `check_motion` 말과 애니메이션 맞춤(`ACTION_MATCH`) → 동작 말 구간마다 그 말의 대상(낱말 또는 같은 절 앞 25자 안의 부품 이름)을 찾는다. 없으면 `action_unlinked` FAIL(부품에 이름을 붙인다). 찾으면 그 대상이 말대로 움직였는지 본다: 열기·풀기·켜기·옮기기·빼기·끼우기·꽂기·넣기 = 상태 0.05 이하에서 0.95 이상까지, 닫기·덮기·잠그기·끄기 = 0.2 넘게 내려 0.05 이하에서 멈춤, 올리기·내리기 = 높이 ±2 cm, 돌리기 = 10°, 공기 빼기 = 구간 안에 보임. 시작·끝은 말 구간 안에서 같은 방향으로 가장 크게 움직인 구간으로 잰다(한 문장 안에서 열었다 다시 닫아도 됨). 대상이 안 움직이면(다른 물체만 움직여도) `action_mismatch` FAIL. 변이 `actreverse`.
 - `check_motion` 갑자기 등장(`POP_IN`) → 화면 요소(장면 overlay 의 카드·이름표·그림, 보이는 3D 메시)가 서서히 나타나기·밀려 들어오기·카메라가 비춰 드러내기 없이 두 프레임 안에(30 fps) 자기 최대 무게(화면 넓이 비 × 불투명도, 다음 0.5 s 최대)의 5% 이하에서 50% 이상으로 뛰면 FAIL. 같은 프레임에 튀는 요소는 한 줄(`element=` 가장 큰 것 `+n more`)이고 합이 화면의 0.2%(64×64 px) 이상일 때만 셈다. 장면 첫 프레임·장면 전환 구간·선언한 컷(`SHOTCUTS`)·카메라 컷(한 프레임에 0.25 m 또는 8° 넘게 뛴)은 `EXEMPT` 로 따로 찍힌다. 고침: 4절 표 '요소를 서서히 등장'. 배경 없는 맨 글자(숫자 읽음값·글 한 줄)는 자막처럼 세지 않는다(상자·그림·3D 만). clip-path inset·overflow 가림은 보이는 부분만 잰다. 변이 `popin`(떠 있던 상자 하나를 0.6 s 감췄다 한 프레임에 켬). 못 잡는 것: 가려진 곳(닫힌 함 안)에서 켜지는 부품도 잡힘(가림은 안 봄), SVG 선을 `stroke-dashoffset` 으로 그리기·3D 선 `setDrawRange` 는 상자 크기가 그대로라 한 프레임 등장으로 보일 수 있음. 가는 선·곡선은 상자(bbox) 넓이로 무게를 재서 실제보다 크게 잡힌다(선이 이미 보이는데 상자가 바뀌면 등장으로 셀 수 있음). 나타나는 순간 화면 가장자리에 걸린 상자는 작거나(화면 3% 미만) 절반 넘게 가려졌으면 밀려 들어오기로 보고 세지 않는다 — 크고 거의 다 보이는 카드를 가장자리에 걸쳐 한 프레임에 켜면 그대로 FAIL.
 - `check_motion` 설명 대상 화면 가운데(`SUBJECT_FRAME`) → 4-0 '설명하는 부품은 화면 가운데에'. 줄에 대상·가운데 비율·평균 화면 위치(`mean_x`, `mean_y`, 0~1)가 나온다. 대상을 못 찾으면 `SKIP`(그때는 `ACTION_MATCH` 가 `action_unlinked` 로 잡음). 변이 `offcenter`(설명 구간에 카메라 25° 돌림). 동사 목록은 '바꿔 끼웁니다'·'교체합니다'·'갈아 끼우고' 도 읽는다(끼우기 = 상태 0→1).
+- `check_layout` 카드에 잘림(`cut`) → 설명 대상(이름표 대상·`KIT.fx.focus`·강조색·초점 주인공)과 **움직이는 물체**(같은 페이지 앞 표본보다 2.5 s 안에 자기 행렬이 바뀐 가장 바깥 물체, 장면 메시 절반 넘게 담은 세계 통째·`KIT.fx.decor` 는 빼고, 1/4 해상도 50 화소 이상)를 한 카드가 보이는 화소의 10~90% 덮으면 FAIL. 줄에 `card_coverage`·`card=`·`source=moving|focus|…`. 움직이는 물체끼리 3D 로 가리는 것은 괜찮다(움직이는 물체에는 옛 50%·40% 규칙을 안 줌). 고침: 4-2 '가려진 느낌 없게'.
 - `check_layout` 페이드 중 글자(`LAYOUT_FADE`) → 재는 순간 불투명도가 1 보다 작고 0.2 s 앞이나 뒤와 0.05 넘게 다른 글자는 대비·격침을 그 순간에 재지 않고 쉬는 프레임에서 잰다(잘림·안전 영역은 그대로). 계속 반투명한 글자는 그대로 재고 잡는다.
+- `check_motion` 글자 옆 움직임(`TEXT_MOTION`)·정지 그림(`PICTURE`) → 4-2. 줄의 `still=…s@a..b` 가 멈춘 때, `[x…,y…:'글자']` 가 가린 자리(화면 비 0~1), `moved_at` 이 움직인 자리, `subjects=[이름@x,y(covered)]` 가 대상의 화면 위치다(`(covered)` 면 글자에 가려짐). 고침: 그 구간에 대상을 빈 자리에 두고(`KIT.shot.free`) 강조·작동·흐름을 붙이거나, 움직임으로 보이기 힘든 뜻이면 풍부한 정지 그림(`KIT.info.picture`), 글자에 일부러 멈추는 구간이면 `ui-only` 선언. 변이 `textstill`(통과한 글자 구간 하나를 첫 순간으로 멈춤).
 - `check_motion` 닫힘 자세 덮음(`HATCH_COVER`) → 만든 자세(닫힘)에서 문이 `frame` 구멍 약 200 점의 80% 이상을 덮는지(법선 ±0.5 m) 본다. 덜 덮거나 frame 이 없으면 FAIL. 장면 좌표 부호를 틀려 닫혀도 출입구 옆에 있는 문을 잡는다.
 - 여러 장면에 늘 같은 표지(예: "개념도")를 달 때는 장면마다 따로 붙이지 말고 script.json `"badge": {"text": "…", "scenes": ["need", "hold"]}` 로 한 번만 적는다(`scenes` 를 빼면 모든 장면). rv 가 장면 위 공용 자리(오른쪽 위)에 하나만 그려서 적힌 장면끼리의 전환에서는 그대로 서 있고(`TEXT_TRANSITION` 에 안 잡힘), 안전 영역 대신 공용 표시로 잰다. 장면마다 붙인 같은 글자는 장면과 함께 사라졌다 다시 나타나므로 전환마다 잡힌다.
 - `check_motion` 글자 중 전환(`TEXT_TRANSITION`) → 전환이 시작될 때 글자가 보이거나, 전환 안에서 새 글자가 뜨거나, 전환 직전 읽을 시간(1.5 s 이상, 글자 수 × 0.15 s + 0.25) 안에 글자가 뜨면 FAIL. 단계 칩도 센다. 장면 끝 글자는 전환 전에 내리고, 장면 첫 글자는 전환이 끝난 뒤에. `rv timeline` 이 장면 첫 문장을 들어오는 전환 끝 + lead 뒤로 자동으로 늦추고, 더 늦추려면 `scenes[].lead_s`. `intro_s` 가 없어도 첫 문장은 0 s 앞에 놓이지 않는다. 변이 `textcut`.

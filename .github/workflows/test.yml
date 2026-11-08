@@ -41,7 +41,7 @@ jobs:
           - group: new_checks
             tests: new_checks
           - group: match
-            tests: action_match actreverse_skip text_transition rv_parallel pop_framing
+            tests: action_match actreverse_skip text_transition rv_parallel pop_framing text_motion
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
