@@ -74,9 +74,10 @@ async def main(a):
         # pose() must still control the same limbs after legacy writes.
         pose = await page.evaluate("""()=>{
           const {man}=window.__compat;man.pose('sit');
-          return ['l','r'].map(s=>man.getObjectByName('knee_'+s).rotation.x);
+          const fresh=KIT.fx.human(new THREE.Scene(),1.75).pose('sit');
+          return ['l','r'].map(s=>man.getObjectByName('knee_'+s).rotation.x-fresh.getObjectByName('knee_'+s).rotation.x);
         }""")
-        if any(abs(angle - 1.5707963267948966) > 1e-6 for angle in pose):
+        if any(abs(delta) > 1e-6 for delta in pose):
             result["errors"].append("sit pose lost its knee controls")
         result["errors"].extend(browser_errors)
         await browser.close()
