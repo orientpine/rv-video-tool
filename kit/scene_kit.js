@@ -175,21 +175,23 @@
   const SAFE = {x0: 40, x1: 1880, y0: 130, y1: 870};   // KIT.label 안전 영역(위 단계 띠·아래 자막)
   // avoid 항목: [x0, y0, x1, y1] px · 카드 DOM 요소 · {box: 요소}(numCard·label 이 돌려주는 것). 요소는 숨김(display:none)이어도 잠깐 켜서 잰다.
   // 장면 overlay 가 아직 안 보여 크기 0 으로 재지면 null(다음 render 에서 다시)
-  function measure(el) {   // 화면 상자: 자신이나 조상(장면 overlay)이 display:none 이어도 잠깐 켜서 잰다
-    const shown = [];
-    for (let a = el; a && a !== document.body; a = a.parentElement)
-      if (getComputedStyle(a).display === "none") { shown.push([a, a.style.display]); a.style.display = "block"; }
+  function measure(el) {   // 화면 상자: 자신이나 조상(장면 overlay)이 display:none 이어도 잠깐 켜고, 들어오는 중 transform 은 빼고 잰다(어느 시각에 재도 같게)
+    const kept = [];
+    for (let a = el; a && a !== document.body; a = a.parentElement) {
+      const s = getComputedStyle(a);
+      if (s.display === "none" || s.transform !== "none") { kept.push([a, a.style.display, a.style.transform]); if (s.display === "none") a.style.display = "block"; a.style.transform = "none"; }
+    }
     const r = el.getBoundingClientRect();
-    for (const [a, d] of shown) a.style.display = d;
+    for (const [a, d, tr] of kept) { a.style.display = d; a.style.transform = tr; }
     return r;
   }
-  function avoidRects(avoid) {
+  function avoidRects(avoid, strict = true) {   // strict: an element measuring 0x0 makes the whole list null (retry later); else it is skipped with a warning
     const out = [];
     for (const a of [].concat(avoid || [])) {
       const el = a && a.nodeType === 1 ? a : a && a.box && a.box.nodeType === 1 ? a.box : null;
       if (!el) { if (Array.isArray(a) && a.length === 4) out.push(a); continue; }
       const r = measure(el);
-      if (!(r.width > 0 && r.height > 0)) return null;
+      if (!(r.width > 0 && r.height > 0)) { if (strict) return null; console.warn("KIT: avoid 요소 크기 0 — 빼고 잼"); continue; }
       out.push([r.left, r.top, r.right, r.bottom]);
     }
     return out;
@@ -246,7 +248,7 @@
     const t0 = Math.max(o.t, e.lead), t1 = Math.min(t0 + dur, e.duration - e.tail);
     const st = s => Array.isArray(s) ? {p: s[0], l: s[1], fov: s[2]} : s;
     const from = st(o.from || (o.base && o.base(t0)));
-    const keep = keepItems(o.keep ?? o.at), avoid = avoidRects(o.avoid) || [];
+    const keep = keepItems(o.keep ?? o.at), avoid = avoidRects(o.avoid, false);
     const c = keep.pts.length ? new THREE.Box3().setFromPoints(keep.pts).getCenter(new THREE.Vector3()) : vec(o.at);
     const p0 = new THREE.Vector3(...from.p), d0 = p0.distanceTo(c), u = p0.clone().sub(c).normalize(), fov = o.fov ?? from.fov;
     const rects = freeRects(avoid), sc = vec(o.at);
@@ -342,10 +344,11 @@
   //   KIT.info.picture(ov, {src: "clinic", left, top, width, height, caption}) → {box, show(a)}. render 에서 show(KIT.win(t, a, b, 0.5))
   //   (서서히 나타나고 사라짐). check_motion PICTURE: 다 보이는 시간 3 s 이상 · 화면 8% 이상 · 그림이 채워져 있고 색이 다양(빈 판·글자만 아님).
   //   그림이 떠 있는 동안은 TEXT_MOTION 이 의도된 내용으로 본다. 글자(카드·자막)를 가리지 않는 자리에 둔다(check_layout).
+  let pictureCount = 0;
   function picture(ov, o) {
     const box = document.createElement("div"), img = document.createElement("img");
     const w = o.width ?? 720, h = o.height ?? 480;
-    box.dataset.rvPicture = o.src;
+    box.dataset.rvPicture = o.src; box.dataset.rvPictureId = `${o.src}#${++pictureCount}`;   // one id per picture box
     box.style.cssText = `position:absolute;left:${o.left ?? 80}px;top:${o.top ?? 170}px;width:${w}px;background:${PANEL};padding:14px;opacity:0;` +
       `border-left:8px solid ${ACC};transform-origin:50% 60%`;
     img.src = (window.ASSETS || {})[o.src] || o.src;

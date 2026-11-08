@@ -166,7 +166,7 @@ Times are wall-clock seconds from `out/CHECKS.timing.tsv` of the run above (93 s
 | Pop-in (`POP_IN`): a card, label or 3D part that appears in one or two frames with no fade, slide or camera reveal | `check_motion` | in the `check_motion` time |
 | Explained part near the centre (`SUBJECT_FRAME`): during each spoken action the part it names stays in the middle 30% of the frame | `check_motion` | in the `check_motion` time (no action words in the example) |
 | Motion beside the text (`TEXT_MOTION`): while a card, label or caption is up and the camera holds, the part of the 3D picture the text leaves free does not stand still for 2 s or more; a declared `ui-only` hold or a rich still picture counts as intended | `check_motion` | in the `check_motion` time |
-| Still pictures (`PICTURE`): a `KIT.info.picture` is fully shown for at least 3 s, covers at least 8% of the frame and is rich (not an empty panel or text only) | `check_motion` | in the `check_motion` time (no pictures in the example) |
+| Still pictures (`PICTURE`): a `KIT.info.picture` is fully shown for at least 3 s, covers at least 8% of the frame and is rich (not an empty panel or text only) | `check_motion` | in the `check_motion` time (no pictures in `examples/hello`) |
 | Parts buried in or detached from their mounts, labelled parts floating, machine collisions, seated contact | `check_clearance` | 34.5 s |
 | People: only `KIT.fx.human` figures, body parts, contacts, outfit matches the site | `check_human` | 16.1 s (skipped, mutations ran) |
 | Numbers on screen or in narration without a source in `sources.json` | `check_numbers` | 14.3 s (skipped, no `sources.json`) |
