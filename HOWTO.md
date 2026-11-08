@@ -49,7 +49,7 @@ my-project/
 1. `lib/timeline.py`: edge-tts 문장 음성 + 낱말 시각 → `build/timeline.json`·`word_times.json`·`narration.json` (대본 그대로면 캐시라 오프라인)
 2. `lib/build.py`: 장면 모듈 + `kit/scene_kit.js` + three r147 → `build/video.html` 한 파일
 3. `lib/narration.py` → `lib/master.py` (loudnorm 2패스 −16 LUFS / −1.5 dBTP), `sound` 가 있으면 `lib/mix.py`
-4. `lib/render.sh`: 헤드리스 Chromium 으로 `renderAt(t)` 프레임마다 찍기(기본 4 병렬, `--jobs N`) → H.264 → `check_flicker` → 걸린 프레임만 다시 찍기(최대 2번) → 다시 인코딩. GPU 가 드물게 덜 그린 프레임을 내는 경우가 있어 이 단계가 있다.
+4. `lib/render.sh`: 헤드리스 Chromium 으로 `renderAt(t)` 프레임마다 찍기(기본 = 이 머신 코어·남은 메모리로 정한 수, `lib/workers.py`; `--jobs N` 이 우선) → H.264 → `check_flicker` → 걸린 프레임만 다시 찍기(최대 2번) → 다시 인코딩. GPU 가 드물게 덜 그린 프레임을 내는 경우가 있어 이 단계가 있다.
 5. `lib/srt.py`, 썸네일(`thumb_t`, 기본 1.5 s), `--discord` 면 `lib/discord.sh`
 6. 검사 → `out/CHECKS.md` (5절)
 

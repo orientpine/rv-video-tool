@@ -3,12 +3,21 @@
 import argparse
 import asyncio
 import base64
+from concurrent.futures import ProcessPoolExecutor
 import glob
 import io
+import multiprocessing
 import os
 from pathlib import Path
 import sys
 import time
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import workers  # noqa: E402
+
+# One Python process decodes and writes every frame of its browsers; past about four browsers that one process
+# becomes the queue, so larger --jobs runs several processes of up to this many browsers each.
+BROWSERS_PER_PROCESS = 4
 
 from PIL import Image
 from playwright.async_api import async_playwright
@@ -75,12 +84,11 @@ async def warm_canvas(
     raise RuntimeError(f"Worker {wid}: canvas composition did not settle after 300 attempts")
 
 
-async def capture(args, html, out, frames, jobs):
+async def capture(args, html, out, batches):
     errors = []
     totals = [0.0, 0.0, 0.0]
     count = 0
     renderer = None
-    began = time.perf_counter()
 
     async with async_playwright() as playwright:
         async def worker(wid, batch):
@@ -137,18 +145,35 @@ async def capture(args, html, out, frames, jobs):
             finally:
                 await browser.close()
 
-        quotient, remainder = divmod(len(frames), jobs)
-        offset = 0
-        tasks = []
-        for wid in range(jobs):
-            size = quotient + (wid < remainder)
-            tasks.append(worker(wid, frames[offset:offset + size]))
-            offset += size
-        await asyncio.gather(*tasks)
+        await asyncio.gather(*(worker(wid, batch) for wid, batch in batches))
+    return count, totals, renderer
 
+
+def capture_part(args, html, out, batches):
+    return asyncio.run(capture(args, html, out, batches))
+
+
+def capture_all(args, html, out, frames, jobs):
+    quotient, remainder = divmod(len(frames), jobs)
+    batches, offset = [], 0
+    for wid in range(jobs):
+        size = quotient + (wid < remainder)
+        batches.append((wid, frames[offset:offset + size]))
+        offset += size
+    processes = -(-jobs // BROWSERS_PER_PROCESS)
+    groups = [batches[k::processes] for k in range(processes)]
+    began = time.perf_counter()
+    if processes == 1:
+        results = [capture_part(args, html, out, groups[0])]
+    else:
+        with ProcessPoolExecutor(processes, mp_context=multiprocessing.get_context("spawn")) as pool:
+            results = list(pool.map(capture_part, [args] * processes, [html] * processes, [out] * processes, groups))
     wall = time.perf_counter() - began
+    count = sum(result[0] for result in results)
+    totals = [sum(result[1][k] for result in results) for k in range(3)]
+    renderer = results[0][2]
     print(f"Browser renderer: {renderer}")
-    print(f"Captured {count} frames; bounds {frames[0]}..{frames[-1]}; {args.fps} fps; {jobs} workers; elapsed {wall:.1f} s")
+    print(f"Captured {count} frames; bounds {frames[0]}..{frames[-1]}; {args.fps} fps; {jobs} workers in {processes} processes; elapsed {wall:.1f} s")
     if count:
         render_ms, shot_ms, write_ms = (value * 1000 / count for value in totals)
         print(f"Mean worker milliseconds: render {render_ms:.1f}, screenshot {shot_ms:.1f}, write {write_ms:.1f}; throughput {count / wall:.1f} frames/s; elapsed {wall * 1000 / count:.1f} ms/frame")
@@ -166,7 +191,8 @@ def main():
     parser.add_argument("--start", type=float, default=0.0)
     parser.add_argument("--end", type=float, default=60.0)
     parser.add_argument("--out", default=str(Path(__file__).parent / "frames"))
-    parser.add_argument("--jobs", type=int, default=4)
+    parser.add_argument("--jobs", type=int, default=None,
+                        help="browsers at once (default: from this machine's cores and free memory, lib/workers.py)")
     parser.add_argument("--width", type=int, default=1920)
     parser.add_argument("--height", type=int, default=1080)
     parser.add_argument("--skip-existing", action="store_true")
@@ -183,8 +209,8 @@ def main():
         frames = list(range(round(args.start * args.fps), round(args.end * args.fps)))
         if not frames:
             sys.exit("No frames in the requested interval; choose an earlier start or later end")
-    jobs = min(len(frames), max(1, args.jobs))
-    asyncio.run(capture(args, html, out, frames, jobs))
+    jobs = min(len(frames), max(1, args.jobs if args.jobs is not None else workers.capture_jobs()))
+    capture_all(args, html, out, frames, jobs)
 
 
 if __name__ == "__main__":
