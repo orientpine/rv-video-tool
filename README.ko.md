@@ -67,6 +67,7 @@ projects/demo 검사가 느려. 검사 기준은 하나도 낮추지 말고 빠�
 rv make    <project> [--discord] [--from A --to B] [--jobs N] [--full] [--no-heavy]
 rv preview <project> [--fps 15] [--jobs N]
 rv board   <project> [scene,scene]
+rv tts     <project>
 rv still   <project> 3.8 16.2
 rv scrub   <project> 18.0 19.5
 rv check   <project>
@@ -191,7 +192,7 @@ SCENES.probe = (() => {
 - PATH 에 **ffmpeg 와 ffprobe**.
 - **브라우저**: 헤드리스 렌더링용 Chromium. `uv run --with playwright playwright install chromium` 으로 받거나, `RV_CHROME` 에 있는 Chromium 을 지정한다.
 - **GPU**: 있으면 쓴다. 위 기계에서 Chromium 은 `ANGLE (NVIDIA ... OpenGL ES 3.2)` 로 그렸다. GPU 없이 Chromium 이 소프트웨어 렌더링으로 내려가는 경우는 아직 확인하지 않았다.
-- **네트워크**: 나레이션은 edge-tts 를 쓰고, 문장을 처음 읽을 때 네트워크가 필요하다. 결과는 캐시되므로 같은 대본의 다음 빌드는 오프라인으로 돈다.
+- **네트워크**: 나레이션은 edge-tts 를 쓰고, 문장을 처음 읽을 때 네트워크가 필요하다. 결과는 캐시되므로 같은 대본의 다음 빌드는 오프라인으로 돈다. `rv tts <project>` 는 음성과 시간표만 만들므로, 네트워크 되는 PC 에서 먼저 돌리고 렌더는 다른 PC 에서 해도 된다.
 
 ## 설치 확인
 

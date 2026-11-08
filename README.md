@@ -67,6 +67,7 @@ The agent finishes with `RV_CHECKS PASS` (strict mode) and points you to `out/<n
 rv make    <project> [--discord] [--from A --to B] [--jobs N] [--full] [--no-heavy]
 rv preview <project> [--fps 15] [--jobs N]
 rv board   <project> [scene,scene]
+rv tts     <project>
 rv still   <project> 3.8 16.2
 rv scrub   <project> 18.0 19.5
 rv check   <project>
@@ -192,7 +193,7 @@ Things the example had to get right to pass, which you'll meet too:
 - **ffmpeg and ffprobe** on PATH.
 - **Browser**: a Chromium for headless rendering. Either `uv run --with playwright playwright install chromium`, or point `RV_CHROME` at an existing Chromium.
 - **GPU**: used when present. On the machine above Chromium rendered through `ANGLE (NVIDIA ... OpenGL ES 3.2)`. Running without a GPU, where Chromium would fall back to software rendering, is not yet verified.
-- **Network**: narration uses edge-tts, which needs network the first time a line is spoken. Results are cached, so later builds of the same script run offline.
+- **Network**: narration uses edge-tts, which needs network the first time a line is spoken. Results are cached, so later builds of the same script run offline. `rv tts <project>` fetches only the voices and the timeline, so you can do that on a machine with network and render elsewhere.
 
 ## Verify an install
 
