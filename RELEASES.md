@@ -6,17 +6,109 @@ Every release is a git tag `vX.Y.Z` (Z for fixes, Y for features). Each tag gets
 
 릴리스는 git 태그 `vX.Y.Z` 하나다(고침 = Z, 기능 = Y). 태그마다 이 파일과 GitHub 릴리스 페이지에 한국어·영어 노트를 쓴다. 설치는 `scripts/install.sh`, 확인은 `scripts/verify.sh`.
 
-## Unreleased
+## v0.3.0
 
 ### English
 
-- Aspect: `"aspect": "2.35:1"` (or `"4:3"`, `"1:2"`) in `script.json` draws letterbox or pillarbox bars once above the scenes (under captions and step chips) and sets `window.PICTURE`. `check_layout` no longer reads a bar as an opaque card over the subject, and the flicker mutation lands inside the picture instead of in a bar, where it could not be caught. Without `aspect` nothing changes.
-- Letterbox drawn by the scenes themselves (no `aspect`): `check_layout` treats an opaque black strip on one frame edge (full width and at most a quarter of the height, or full height and at most a quarter of the width), with a strip of the same thickness on the opposite edge, that is at the same place in every sample as a frame bar (`LAYOUT_PICTURE bars=`). What lies under it counts as outside the picture, not as covered; with `aspect`, everything outside `window.PICTURE` does. A strip missing from some sample is still a card. The flicker mutation box goes to the same relative spot inside the picture left by the frame's black bars (lines at least 90% black from both edges, as thick on each side, leaving at least a quarter of the frame as picture; a caption or logo inside a bar does not break it), and is white instead of black when that spot is dark (CHECKS.md names it on a `FLICKER_MUTATION_BOX` line) (a black box on black changed nothing: `MUTATION_NOT_CAUGHT` on a 2.35:1 video). `check_clearance --mutate detach` prints `MUTATION_SKIP` whenever nothing could be detached, also when the scene already fails the real run for another reason.
+rv 0.3.0: while text is on screen the picture beside it keeps meaningful motion, rich still pictures stand in where motion cannot show the meaning, and a card must not cut a subject; script.json can ask for a letterbox or pillarbox frame; people get a smooth body that walks and presses naturally; contact shadows no longer blacken see-through things.
+
+**Motion beside text, still pictures, no card cutting a subject (#19)**
+
+While text is on screen, rv now asks for meaningful motion in the part of the picture the text leaves free, accepts a rich still picture where motion cannot show the meaning, and catches a card that makes a subject look covered.
+
+- New check `TEXT_MOTION` (`check_motion`): a text window is a stretch of one scene with a card, label or caption up and the camera held (within 2 cm), outside transitions, at least 2 s long. Every 0.25 s the 3D picture is drawn without the DOM and with the text boxes masked; if the uncovered picture stands still (under 0.5% of its pixels changing) for 2 s or more, the line names the scene, the seconds, the text boxes and where the subjects are on screen. A declared `ui-only` hold or a rich still picture counts as intended; text covering more than 80% of the frame is exempt. Mutation `textstill` (rv `motion8`) freezes one passing window.
+- New check `PICTURE` (`check_motion`): a `KIT.info.picture` must be fully shown for 3 s or more, cover 8% of the frame or more, and be rich (30% or more of it differs from its dominant colour, 24 or more colour bins); an empty panel, a text-only image or a flash of a picture fails.
+- `check_layout` OCCLUSION `cut`: one card covering 10-90% of an explained or a moving object (an object whose own transform changed since the previous sample) fails, and so does a card over a still picture. `KIT.fx.decor(obj)` declares background decoration that may sit behind a card.
+- New kit parts: `KIT.shot.free` (a still framing that keeps the subject clear of given cards, in the centre when it can), `KIT.fx.pulse` (accent glow that breathes), `KIT.process.spin` (steady turning, linked to the script like other process parts), `KIT.process.exhaust({path})` (flow along a path), `KIT.info.picture`, `KIT.info.clear` (moves a card to a spot clear of given objects), `KIT.fx.decor`. `KIT.shot.action` `avoid` now takes card elements. HOWTO 4-2.
+- New example `examples/text-motion`: one scene in two modes, `still` (fails `TEXT_MOTION`) and `kit` (passes).
+- All thresholds were set before measuring.
+- Regression (v0.2.1 vs this change alone): project A `rv check` 186 s -> 220 s, mutations caught 33 -> 35; project B 539 s -> 484 s (load), 25 -> 27; none missed, verdicts unchanged. The new lines there are real stills and cuts, checked frame by frame. (Combined with the other v0.3.0 changes: see Fixes.)
+
+**People: CC0 body and act() (#23)**
+
+- `KIT.fx.human` has a new body: the Quaternius Universal Animation Library mannequin (CC0 1.0), re-posed and re-weighted to the kit's joints by `scripts/human_body.py` into `kit/human_body.js`. The kit deforms it on the CPU at every pose, so the figure is still ordinary meshes in the 15 body parts and `check_human` / `check_clearance` measure the posed surface. Outfits: hard hat, gloves and boots (lab), hard hat and a hi-vis vest that moves with the chest (construction), no hat (office), white suit and hood (cleanroom).
+- New `man.act(t, {walk, look, press})`: footsteps planned from the path so planted feet do not slide, speed eases in and out, the head looks at the target first, and a fingertip reaches the target, presses and returns. On a 2.6 m walk + button press: planted-foot slide 39 mm (old `pose("walk")` with the group moved by the scene: 3013 mm), largest joint change 18.3 deg/frame (old pose switch: 72.5), fingertip to button 0.5 mm (old `point`: 88 mm).
+- Unchanged for existing scenes: the call, pose names, `children[0..5]`, contacts and site rules. A seated figure's contact points moved to the new body's surface.
+- Check time before/after: per scene, old -> new, same load, seconds: check_human 15.9 -> 16.3 / 3.3 -> 3.3 / 7.1 -> 7.3; check_motion 54.5 -> 57.0 / 19.2 -> 19.1 / 54.1 -> 57.4; check_clearance 814 -> 648 / 41.1 -> 41.2 / 123.7 -> 172.6 (seated operator, standing worker, office tablet scenes; verdicts unchanged).
+
+**Letterbox and pillarbox frames (#31, #33)**
+
+- New `"aspect"` in script.json: `"2.35:1"` draws letterbox bars, `"4:3"` or `"1:2"` pillarbox bars, once above the scenes and below captions and step chips; scenes still render the whole 16:9 frame and `window.PICTURE` holds the picture area.
+- Checks and mutations look at the picture only: `check_layout` does not read the bars as a card over a subject, and the flicker mutation is placed inside the picture. Without `aspect` nothing changes. HOWTO 3.
+- Letterbox drawn by the scenes themselves (no `aspect`): `check_layout` treats an opaque black strip on one frame edge (full width and at most a quarter of the height, or full height and at most a quarter of the width), with a strip of the same thickness on the opposite edge, that is at the same place in every sample as a frame bar (`LAYOUT_PICTURE bars=`). What lies under it counts as outside the picture, not as covered; with `aspect`, everything outside `window.PICTURE` does. A strip missing from some sample is still a card. The flicker mutation box goes to the same relative spot inside the picture left by the frame's black bars (lines at least 90% black from both edges, as thick on each side, leaving at least a quarter of the frame as picture; a caption or logo inside a bar does not break it), and is white instead of black when that spot is dark (CHECKS.md names it on a `FLICKER_MUTATION_BOX` line) (a black box on black changed nothing: `MUTATION_NOT_CAUGHT` on a 2.35:1 video). `check_clearance --mutate detach` prints `MUTATION_SKIP` whenever nothing could be detached, also when the scene already fails the real run for another reason. (#33)
+
+**Contact shadows behind see-through things (#34)**
+
+Fix: the `cinema` look's contact shadows (SAO) drew black boxes and dots behind see-through things.
+
+- The SAO depth and normal passes drew every object as an opaque surface. A turned glass pane went black (81 % of its box in the synthetic test scene), sprites became dark squares, `Points` particles dark dots, and additive light beams dark streaks. These passes now leave out see-through objects: materials under 0.5 opacity, with `transmission`, with `depthWrite: false` or additive blending, and all `Points` and sprites. The 0.5 limit is the same one `look.js` and KIT fades already use, so a part that fades in gets its contact shadow halfway through the fade and not as a jump on the last frame.
+- Lens-flare ghosts at strength 0 (additive sprites with `depthTest: false`) no longer print a row of black squares. Relief and clean scenes keep the fix: their clay copies stay off too.
+- Opaque objects keep their contact and corner shadows unchanged (same numbers before and after in the test scene). On a project with see-through ground overlays, contact shadows under a bucket and tracks now reach the ground.
+- `tests/test_sao_numbers.sh` checks a glass pane, an almost invisible pane, particles and a beam in front of a wall, and a copy with the fix undone must fail it.
+
+**Fixes**
+
+- `check_motion`: an `actreverse` mutation with nothing to reverse is `MUTATION_SKIP`, not `MUTATION_NOT_CAUGHT`; a caught one is always caught; an exhaust is not a reversible target; a teleport row under another mutation no longer raises (#22).
+- `check_motion`: a caught `textstill` mutation also exits 1, so `rv` counts it as caught (it printed `MUTATION_CAUGHT` but exited 0 and showed as `MUTATION_NOT_CAUGHT` on a real project) (#27).
+- `scripts/pre-push`: scans a branch from its merge-base with the remote main, so a rebased branch no longer trips on commits already on main (#24); it also leaves out history already published on any remote branch and refuses to pass when a tree or history read fails (#29).
+- `check_clearance`: sleeve detach mutations now open a real gap (#26); enclosing attachments are detached before they are tested, and skipped detach trials say why (#28).
+- `examples/hello`: the Plate and Probe labels fade in and out (#28). MAINTAINING: install the tag into a `dori heavy` helper's rv bundle too (#28).
+- Combined regression on the release main (503f02e) against v0.2.1, `rv check` on the two regression projects: mutations caught 33 -> 35 (project A) and 25 -> 27 (project B), none missed, both PASS, and the same new `TEXT_MOTION` and `cut` lines as the #19 run. Check time A 227 -> 288 s, B 905 -> 508 s; other jobs shared the machine during these runs, so the times are rough.
+
+**Known issue**
+
+- A seated figure on the new body can sit deeper in a seat than the old one (worst human penetration 663 mm vs 477 mm in a seated-operator scene, `check_clearance --rules mesh`). To be fixed in v0.3.1 (#36).
 
 ### 한국어
 
-- 화면비: `script.json` 의 `"aspect": "2.35:1"`(또는 `"4:3"`, `"1:2"`)이면 위아래(좌우) 검은 막대를 장면 위(자막·단계 칩 아래)에 한 번 그리고 `window.PICTURE` 를 정한다. `check_layout` 이 막대를 대상 위 불투명 카드로 보지 않고, 깜빡임 변이는 막대가 아니라 그림 안에 넣어 잡힌다. `aspect` 가 없으면 바뀌는 것 없음.
-- 장면이 직접 그린 레터박스(`aspect` 없음): `check_layout` 은 화면 한 가장자리에 붙은 불투명 검은 띠(전폭이면 높이 1/4 이하, 전고면 폭 1/4 이하)가 맞은편에 같은 두께의 짝과 함께 모든 샘플에서 같은 자리에 있으면 막대로 본다(`LAYOUT_PICTURE bars=`). 그 밑은 가린 것이 아니라 그림 밖으로 센다. `aspect` 가 있으면 `window.PICTURE` 밖 전부가 그렇다. 어느 샘플에서 없는 띠는 그대로 카드. 깜빡임 변이 상자는 그 프레임의 검은 막대(가장자리부터 90% 넘게 검은 행·열, 양쪽 같은 두께, 사이 그림 1/4 이상)를 뺀 그림 안 같은 비율 자리에 넣고, 그 자리가 어두우면 검정 대신 흰색(CHECKS.md 변이 칸에 `FLICKER_MUTATION_BOX` 줄)(검은 자리에 검정은 바뀌는 게 없어 2.35:1 영상에서 `MUTATION_NOT_CAUGHT`). `check_clearance --mutate detach` 는 떼어 볼 부품이 하나도 없으면, 장면이 다른 이유로 실제 검사에서 FAIL 이어도 `MUTATION_SKIP`.
+rv 0.3.0: 글자가 떠 있는 동안 그 옆 화면에 의미 있는 움직임이 이어지고, 움직임으로 보이기 힘든 뜻은 풍부한 정지 그림이 채우며, 카드가 대상을 자르지 않게 한다. script.json 으로 레터박스·필러박스 화면을 고를 수 있다. 사람은 매끈한 몸으로 자연스럽게 걷고 누르며, 접촉 그림자가 비치는 것 뒤를 검게 칠하지 않는다.
+
+**글자 옆 움직임·정지 그림·카드에 잘림 없음 (#19)**
+
+글자가 떠 있는 동안 rv 는 글자가 가리지 않은 화면에서 의미 있는 움직임을 요구하고, 움직임으로 보이기 힘든 뜻은 풍부한 정지 그림으로 채우는 것을 인정하며, 카드가 대상을 가린 것처럼 보이면 잡는다.
+
+- 새 검사 `TEXT_MOTION`(`check_motion`): 글자 구간 = 한 장면에서 카드·이름표·자막이 떠 있고 카메라가 2 cm 안에 서 있는 동안(전환 구간 빼고, 2 s 이상). 0.25 s 마다 글자 없이 3D 그림만 찍고 글자 상자를 가린 뒤, 가려지지 않은 그림이 2 s 이상 멈춰 있으면(화소 0.5% 미만 변화) 장면·초·글자 상자·대상 화면 위치를 줄에 적어 FAIL. 선언한 `ui-only` 멈춤과 풍부한 정지 그림은 의도로 보고, 화면 80% 넘게 가린 구간은 뺀다. 변이 `textstill`(rv `motion8`)은 통과한 구간 하나를 멈춘다.
+- 새 검사 `PICTURE`(`check_motion`): `KIT.info.picture` 는 3 s 이상 다 보이고, 화면 8% 이상이고, 풍부해야 한다(30% 이상이 가장 많은 색과 다르고 색 칸 24개 이상). 빈 판·글자만 있는 그림·잠깐 스치는 그림은 FAIL.
+- `check_layout` 가림 `cut`: 카드 하나가 설명 대상이나 움직이는 물체(앞 표본보다 자기 자세가 바뀐 물체)의 10~90% 를 덮으면 FAIL, 정지 그림 위 카드도 FAIL. 카드 뒤 배경 장식은 `KIT.fx.decor(물체)` 로 선언.
+- 새 부품: `KIT.shot.free`(카드에 안 가리고 되면 가운데인 서 있는 구도), `KIT.fx.pulse`(숨 쉬는 강조), `KIT.process.spin`(고르게 도는 작동, 대본과 이어짐), `KIT.process.exhaust({path})`(길 따라 흐름), `KIT.info.picture`, `KIT.info.clear`(카드를 물체와 안 겹치는 자리로), `KIT.fx.decor`. `KIT.shot.action` 의 `avoid` 가 카드 요소도 받는다. HOWTO 4-2.
+- 새 예시 `examples/text-motion`: 장면 하나를 `still`(TEXT_MOTION FAIL)·`kit`(PASS) 두 가지로.
+- 문턱값은 모두 재기 전에 정했다.
+- 회귀(v0.2.1 대 이 변경만): 프로젝트 A `rv check` 186 s -> 220 s, 잡힌 변이 33 -> 35; 프로젝트 B 539 s -> 484 s(부하 차이), 25 -> 27; 놓친 변이 0, 판정 그대로. 거기서 나온 새 줄은 프레임으로 본 실제 정지·잘림. (v0.3.0 다른 변경과 합친 수치는 고침 절.)
+
+**사람: CC0 몸과 act() (#23)**
+
+- `KIT.fx.human` 의 몸이 바뀌었다: Quaternius Universal Animation Library 마네킹(CC0 1.0)을 `scripts/human_body.py` 가 킷 관절에 맞게 다시 세우고 가중치를 옮겨 `kit/human_body.js` 로 만든다. 킷이 자세마다 CPU 에서 휘게 하므로 사람은 그대로 15 부위의 보통 메시이고 `check_human`·`check_clearance` 가 자세 그대로의 표면을 잰다. 복식: lab 안전모·장갑·작업화, construction 안전모·가슴과 같이 움직이는 형광 조끼, office 모자 없음, cleanroom 흰 방진복·후드.
+- 새 `man.act(t, {walk, look, press})`: 경로에서 발자국을 정해 디딘 발이 미끄러지지 않고, 속도는 서서히 출발·정지, 고개가 먼저 목표를 보고, 손끝이 목표에 닿아 누르고 돌아온다. 2.6 m 걷기 + 버튼 누르기에서 디딘 발 미끄러짐 39 mm(예전 `pose("walk")` + 장면이 위치 이동: 3013 mm), 관절 변화 최대 18.3 도/프레임(예전 자세 바꿈: 72.5), 손끝-버튼 0.5 mm(예전 `point`: 88 mm).
+- 예전 장면은 그대로: 부르는 법, 자세 이름, `children[0..5]`, 접촉점, 현장 규칙. 앉은 사람의 접촉점은 새 몸 표면으로 옮겨졌다.
+- 검사 시간 전·후: 장면별 옛 -> 새, 같은 부하, 초: check_human 15.9 -> 16.3 / 3.3 -> 3.3 / 7.1 -> 7.3, check_motion 54.5 -> 57.0 / 19.2 -> 19.1 / 54.1 -> 57.4, check_clearance 814 -> 648 / 41.1 -> 41.2 / 123.7 -> 172.6 (앉은 운전자·선 작업자·사무실 태블릿 장면, 판정은 같음).
+
+**레터박스·필러박스 화면 (#31, #33)**
+
+- script.json 에 `"aspect"`: `"2.35:1"` 은 위아래 띠(레터박스), `"4:3"`·`"1:2"` 는 양옆 띠(필러박스)를 장면 위·자막과 단계 표시 아래에 한 번 그린다. 장면은 그대로 16:9 전체를 그리고, `window.PICTURE` 에 그림 영역이 담긴다.
+- 검사·변이는 그림 영역만 본다: `check_layout` 은 띠를 대상을 가린 카드로 보지 않고, 깜빡임 변이는 그림 안에 둔다. `aspect` 가 없으면 동작은 그대로. HOWTO 3.
+- 장면이 직접 그린 레터박스(`aspect` 없음): `check_layout` 은 화면 한 가장자리에 붙은 불투명 검은 띠(전폭이면 높이 1/4 이하, 전고면 폭 1/4 이하)가 맞은편에 같은 두께의 짝과 함께 모든 샘플에서 같은 자리에 있으면 막대로 본다(`LAYOUT_PICTURE bars=`). 그 밑은 가린 것이 아니라 그림 밖으로 센다. `aspect` 가 있으면 `window.PICTURE` 밖 전부가 그렇다. 어느 샘플에서 없는 띠는 그대로 카드. 깜빡임 변이 상자는 그 프레임의 검은 막대(가장자리부터 90% 넘게 검은 행·열, 양쪽 같은 두께, 사이 그림 1/4 이상)를 뺀 그림 안 같은 비율 자리에 넣고, 그 자리가 어두우면 검정 대신 흰색(CHECKS.md 변이 칸에 `FLICKER_MUTATION_BOX` 줄)(검은 자리에 검정은 바뀌는 게 없어 2.35:1 영상에서 `MUTATION_NOT_CAUGHT`). `check_clearance --mutate detach` 는 떼어 볼 부품이 하나도 없으면, 장면이 다른 이유로 실제 검사에서 FAIL 이어도 `MUTATION_SKIP`. (#33)
+
+**비치는 것 뒤 접촉 그림자 (#34)**
+
+고침: `cinema` look 의 접촉 그림자(SAO)가 비치는 것 뒤에 검은 네모·점을 그리던 것.
+
+- SAO 깊이·법선 패스가 모든 물체를 불투명 면으로 그렸다. 돌려 놓은 유리판이 검게(합성 시험 장면에서 판 상자의 81 %), 스프라이트는 검은 네모, `Points` 입자는 검은 점, additive 빛줄기는 검은 줄이 돼다. 이제 이 패스는 비치는 것을 뺀다: 불투명도 0.5 미만, `transmission`, `depthWrite: false`, additive 재질과 모든 `Points`·스프라이트. 0.5 는 `look.js` 와 KIT 페이드가 이미 쓰는 경계라, 나타나는 부품의 접촉 그림자가 페이드 마지막 프레임에 톡 생기지 않고 반쯤 보일 때 들어온다.
+- 세기 0 렌즈 플레어 고스트(가산 스프라이트, `depthTest: false`)가 검은 네모 줄을 찍지 않는다. relief·clean 장면도 클레이 사본까지 꺼져 같다.
+- 불투명 물체의 접촉·모서리 그늘은 그대로다(시험 장면에서 전후 수치 같음). 비치는 바닥 덮개가 있는 프로젝트에선 버킷·트랙 밑 접촉 그림자가 이제 바닥에 닿는다.
+- `tests/test_sao_numbers.sh` 가 벽 앞 유리판·거의 투명한 판·입자·빛줄기를 재고, 고침을 되돌린 사본은 걸려야 한다.
+
+**고침**
+
+- `check_motion`: 거꾸로 돌릴 핸들이 없는 `actreverse` 변이는 `MUTATION_NOT_CAUGHT` 대신 `MUTATION_SKIP`, 잡힌 것은 늘 잡힘, 배기는 거꾸로 돌릴 대상이 아님, 다른 변이 아래 순간이동 줄이 오류를 내지 않음(#22).
+- `check_motion`: 잡힌 `textstill` 변이도 종료 1 을 내 `rv` 가 잡힘으로 센다(실제 프로젝트에서 `MUTATION_CAUGHT` 를 찍고도 종료 0 이라 `MUTATION_NOT_CAUGHT` 로 보였음)(#27).
+- `scripts/pre-push`: 원격 main 과의 merge-base 부터 스캔해, rebase 한 브랜치가 이미 main 에 있는 커밋에 걸리지 않음(#24). 어느 원격 브랜치에든 이미 올라간 기록은 빼고, 트리·기록 읽기가 실패하면 통과시키지 않음(#29).
+- `check_clearance`: 소매 떼기 변이가 실제 틈을 만든다(#26). 감싼 부착물은 떼어 본 뒤 시험하고, 건너뛴 떼기 시험은 이유를 적는다(#28).
+- `examples/hello`: Plate·Probe 이름표가 부드럽게 들어오고 나간다(#28). MAINTAINING: 태그를 `dori heavy` 도우미의 rv 묶음에도 설치(#28).
+- 출시 main(503f02e) 대 v0.2.1 합친 회귀(두 회귀 프로젝트 `rv check`): 잡힌 변이 33 -> 35(프로젝트 A), 25 -> 27(프로젝트 B), 놓침 0, 둘 다 PASS, 새 `TEXT_MOTION`·`cut` 줄은 #19 때와 같다. 검사 시간 A 227 -> 288 s, B 905 -> 508 s. 돌릴 때 다른 일이 기계를 같이 써서 시간은 대략이다.
+
+**알려진 문제**
+
+- 새 몸으로 앉힌 사람이 옛 몸보다 좌석에 더 깊이 박힐 수 있다(앉은 운전자 장면에서 사람 관통 최대 663 mm, 옛 477 mm, `check_clearance --rules mesh`). v0.3.1 에서 고침(#36).
 
 ## v0.2.1
 
