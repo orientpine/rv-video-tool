@@ -13,7 +13,7 @@ SCENES.bench = (() => {
       KIT.camSet(cam, {p: [3, 2.2, 4], l: [0, 0.4, 0], fov: 45});   // a still camera while text comes and goes
       const said = KIT.wordT(NAME, "plate");
       window.HL = t >= said && t < said + 1.5 ? "plate" : "";
-      tag.place(cam, set.plate.position, 420, -250, t >= said && t < this.duration - 1.5 ? 1 : 0);
+      tag.place(cam, set.plate.position, 420, -250, KIT.win(t, said, this.duration - 1.5, 0.3));   // fade in and out (POP_IN)
       renderer.render(set.scene, cam);
     }
   };

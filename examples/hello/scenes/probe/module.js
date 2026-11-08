@@ -18,7 +18,7 @@ SCENES.probe = (() => {
       window.HL = t >= hit && t < hit + 1.5 ? "touches" : "";
       set.probe.position.y = 0.9 - 0.55 * KIT.smooth(hit - 1, hit, t);
       KIT.camSet(cam, zoom.at(t));
-      tag.place(cam, set.probe.position, -40, -120, t >= hit && t < hit + 2 ? 1 : 0);
+      tag.place(cam, set.probe.position, -40, -120, KIT.win(t, hit, hit + 2, 0.3));   // fade in and out (POP_IN)
       renderer.render(set.scene, cam);
     }
   };

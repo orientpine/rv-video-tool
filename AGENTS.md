@@ -46,7 +46,7 @@ Length: narration speed sets the length. About 2.5 English words or 6 to 7 Korea
 
 Numbers: once a project has `sources.json`, a digit or spoken number with no source in it stops the build (narration) or fails `check_numbers` (screen). Without `sources.json` (like `examples/hello`) the number check is off. For a video that states facts or numbers, add `sources.json` with the user's sources (HOWTO section 3, "Numbers and sources"), or leave the numbers out.
 
-Scenes: `scenes/<scene>/module.js` registers `SCENES.<scene> = {duration, init(renderer, THREE, overlay), render(t)}`. `deps.json` lists the shared files it loads. Share the 3D set in `shared/`. Copy `examples/hello/scenes/*/module.js`, except how it shows labels: they switch on in one frame. `POP_IN` only counts elements that together cover at least 0.2% of the screen (about 64x64 px), and those labels stay under that. Fade yours in. The rules that keep checks green:
+Scenes: `scenes/<scene>/module.js` registers `SCENES.<scene> = {duration, init(renderer, THREE, overlay), render(t)}`. `deps.json` lists the shared files it loads. Share the 3D set in `shared/`. Copy `examples/hello/scenes/*/module.js`. Its labels fade in and out with `KIT.win(t, a, b, 0.3)`: a label that switches on in one frame fails `POP_IN` once its elements cover at least 0.2% of the screen (about 64x64 px). The rules that keep checks green:
 
 - Every pose is a pure function of `t`. Never keep state from the previous frame.
 - Time motion to words: `KIT.wordT(NAME, "keyword")`, not hand-typed seconds. Set `window.HL` to the keyword while it's highlighted.
