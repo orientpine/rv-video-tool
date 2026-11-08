@@ -56,10 +56,10 @@ printf -v SILENT '%s/%s_무음.mp4' "$OUTDIR" "$NAME"
 echo "영상 저장: $SILENT"
 if [[ -f "$AUDIO" ]]; then
   OUTPUT="$OUTDIR/$NAME.mp4"
-  "$FFMPEG" -nostdin -y -v error -stats -framerate "$FPS" -start_number 0 \
-    -i "$FRAMES/f_%05d.png" -i "$AUDIO" \
-    -filter_complex "[0:v]$VIDEO[v];[1:a]$SOUND[a]" -map '[v]' -map '[a]' \
-    "${SETTINGS[@]}" -c:a aac -b:a 192k -ar 48000 -t "$DURATION" "$OUTPUT"
+  # The picture is the one just encoded above; only the sound is added (encoding the frames a second time gave the same picture)
+  "$FFMPEG" -nostdin -y -v error -stats -i "$SILENT" -i "$AUDIO" \
+    -filter_complex "[1:a]$SOUND[a]" -map 0:v -map '[a]' \
+    -c:v copy -movflags +faststart -c:a aac -b:a 192k -ar 48000 -t "$DURATION" "$OUTPUT"
   echo "영상 저장: $OUTPUT"
 else
   echo "오디오 입력 없음, 무음 영상만 저장했습니다: $AUDIO"
