@@ -91,6 +91,15 @@ ffmpeg -nostdin -v error -y -i "$IN" -c:v libx264 -b:v ${V}k -pass 2 -passlogfil
 EOF
 rm -f "$W"/long_discord*; out=$(bash "$W/tool/lib/discord.sh" "$W/long.mp4" "$W/long_discord.mp4" 1 --min-kbps 150 2>&1 | tail -1); echo "  되돌림 $out"
 k=$(echo "$out" | sed -n 's/.*DISCORD \([0-9-]*\)k.*/\1/p'); [ ! -f "$W/long_discord_parts.json" ] && [ "${k:-0}" -lt 150 ] && ok "되돌림(한 파일) → ${k}k < 바닥 150k (잡힘)" || bad "되돌림인데 $out"
+# ⑤-2 원본이 조각 한도에 들어가면 다시 인코딩하지 않고 키프레임에서 복사로 나눔: 이어 붙인 그림 = 원본(framemd5). 되돌림: 복사 안 함 → 다시 인코딩 → 다름
+ffmpeg -nostdin -v error -y -f lavfi -i testsrc2=size=1920x1080:rate=30:duration=40 -f lavfi -i sine=frequency=440:duration=40 -c:v libx264 -b:v 600k -g 60 -c:a aac -shortest "$W/fit.mp4"
+frames_of() { for f in "$@"; do echo "file '$f'"; done > "$W/fit.list"; ffmpeg -nostdin -v error -f concat -safe 0 -i "$W/fit.list" -map 0:v -f framemd5 - | grep -v '^#' | awk -F, '{print $NF}'; }
+copy_case() { rm -f "$W"/fit_discord*; bash "$1/lib/discord.sh" "$W/fit.mp4" "$W/fit_discord.mp4" 1 --min-kbps 150 > "$W/fit.log" 2>&1 || cat "$W/fit.log"
+  [ -f "$W/fit_discord_parts.json" ] && python3 -c "import json,os,sys;P=json.load(open(sys.argv[1]));sys.exit(0 if len(P)>=2 and all(os.path.getsize(os.path.join(sys.argv[2],p['file']))<=1048576 and p['kbps']>=150 for p in P) else 1)" "$W/fit_discord_parts.json" "$W" \
+    && [ "$(frames_of $(ls "$W"/fit_discord_part*.mp4 | sort -V) | md5sum)" = "$(frames_of "$W/fit.mp4" | md5sum)" ]; }
+if copy_case "$TOOL"; then ok "복사 나눔: $(grep -c '^DISCORD part' "$W/fit.log") 조각 ≤ 1 MiB · ≥ 바닥, 이어 붙인 그림 = 원본"; else bad "복사 나눔 실패 ($W/fit.log)"; fi
+mutant; rm -f "$W/tool/lib/discord_copy.py"
+if copy_case "$W/tool"; then bad "되돌림(복사 없음)인데 같음 — 시험이 복사를 안 봄"; else ok "되돌림(복사 없음) → 다시 인코딩, 그림 다름 (잡힘)"; fi
 
 # ⑥ 주인공 마스크는 화면에 보이는 것만: KIT.fx.focus 묶음에 아직 안 보이는(불투명도 0) 판이
 # 들어 있어도 주인공 메시에 안 들어가야 한다(LOOK.subjectParts — subjectMask 가 흰색으로 칠하는 집합, GPU 읽기 없이 결정적).
