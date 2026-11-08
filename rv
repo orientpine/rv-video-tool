@@ -113,7 +113,7 @@ checks() {   # mp4 하나에 모든 검사. 하나라도 FAIL 이면 종료 코�
     fi; }
   g_flickmut() { local FL="$B/mut_flicker.mp4"   # 변이: 한 프레임만 왼쪽 아래 작은 자리(화면 1/8)를 검게 → check_flicker 가 잡아야 정상(check_cuts 는 못 잡을 크기)
     # 막대("aspect" 또는 장면이 직접 그린 가장자리 검은 띠) 안이나 검은 그림 위에 검정을 칠하면 바뀌는 게 없어 못 잡음
-    # → 그림 영역(aspect, 없으면 프레임 MID 에서 가장자리부터 90% 넘게 검은 행·열이 양쪽 같은 두께(±2 px)·각각 절반 미만일 때 그 막대를 뺀 나머지) 안 같은 비율 자리(왼쪽 1/8,
+    # → 그림 영역(aspect, 없으면 프레임 MID 에서 가장자리부터 90% 넘게 검은 행·열이 양쪽 같은 두께(±2 px)이고 사이 그림이 1/4 이상 남을 때 그 막대를 뺀 나머지) 안 같은 비율 자리(왼쪽 1/8,
     # 위에서 5/8, 크기 1/8), 그 자리 평균 밝기가 128 아래면 흰색. 막대 없고 밝으면 옛 자리(x = iw/8, y = ih*5/8)·검정 그대로.
     # 상자 자리는 변이 칸에 FLICKER_MUTATION_BOX 줄로 남긴다.
     local A WH FB PY; A=$(python3 -c "import json;a=json.load(open('$P/script.json')).get('aspect');print(a if isinstance(a,str) else '')")
@@ -135,7 +135,8 @@ def bars(n, size, line):   # bar thickness on both sides of one axis: lines from
     a_, b_ = run(range(n)), run(range(n - 1, -1, -1))
     # A frame bar is matched by one as thick on the other side and leaves a picture between them: a caption, a logo
     # or a dark picture at one edge is not a bar.
-    return (a_, b_) if a_ * 2 < n and b_ * 2 < n and abs(a_ - b_) <= 2 else (0, 0)
+    # The picture between them keeps at least a quarter of the frame, so a black frame with one thin line is not a sliver.
+    return (a_, b_) if (a_ + b_) * 4 <= n * 3 and abs(a_ - b_) <= 2 else (0, 0)
 if len(f) < w * h:   # no frame MID: the box is drawn on no frame either (old spot; check_flicker then reports NOT_CAUGHT)
     print("x=0.0000*iw+1.0000*iw/8:y=0.0000*ih+1.0000*ih*5/8:w=1.0000*iw/8:h=1.0000*ih/8:color=black")
     sys.exit()
