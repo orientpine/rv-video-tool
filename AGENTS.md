@@ -44,9 +44,9 @@ Then edit `projects/<name>/script.json`:
 
 Length: narration speed sets the length. About 2.5 English words or 6 to 7 Korean syllables per second, plus `extra_s` and transitions. For a 3-minute video, plan about 25 to 35 lines over 5 to 8 scenes. Run `./rv board` early and read the real length from `build/timeline.json` (`total_s`).
 
-Numbers: a digit or spoken number with no source in `sources.json` stops the build (narration) or fails `check_numbers` (screen). Put numbers from the user's material into `sources.json` (HOWTO section 3, "Numbers and sources"), or leave them out.
+Numbers: once a project has `sources.json`, a digit or spoken number with no source in it stops the build (narration) or fails `check_numbers` (screen). Without `sources.json` (like `examples/hello`) the number check is off. For a video that states facts or numbers, add `sources.json` with the user's sources (HOWTO section 3, "Numbers and sources"), or leave the numbers out.
 
-Scenes: `scenes/<scene>/module.js` registers `SCENES.<scene> = {duration, init(renderer, THREE, overlay), render(t)}`. `deps.json` lists the shared files it loads. Share the 3D set in `shared/`. Copy `examples/hello/scenes/*/module.js`. The rules that keep checks green:
+Scenes: `scenes/<scene>/module.js` registers `SCENES.<scene> = {duration, init(renderer, THREE, overlay), render(t)}`. `deps.json` lists the shared files it loads. Share the 3D set in `shared/`. Copy `examples/hello/scenes/*/module.js`, except how it shows labels: they switch on in one frame. `POP_IN` only counts elements that together cover at least 0.2% of the screen (about 64x64 px), and those labels stay under that. Fade yours in. The rules that keep checks green:
 
 - Every pose is a pure function of `t`. Never keep state from the previous frame.
 - Time motion to words: `KIT.wordT(NAME, "keyword")`, not hand-typed seconds. Set `window.HL` to the keyword while it's highlighted.
@@ -54,7 +54,7 @@ Scenes: `scenes/<scene>/module.js` registers `SCENES.<scene> = {duration, init(r
 - Fade or grow things in. Never switch them on in one frame: `KIT.fx.reveal(obj, KIT.win(t, a, b, 0.4))`, `label.place(..., KIT.win(t, a, b, 0.3))`. Otherwise `POP_IN` fails.
 - If a line says something moves ("opens the lid", "turns the valve"), that part must really move then and be named, so `ACTION_MATCH` can find it: `KIT.process.*` (HOWTO 4-1). The part should sit near the frame centre (`SUBJECT_FRAME`).
 - Draw people only with `KIT.fx.human`. Use `KIT.label(overlay, text, {target})` for name tags.
-- A labelled part must touch something solid (within 5 mm), or it counts as floating (`CLEARANCE_AUTO_FAIL`). Don't label a part while it hangs in the air (like the probe in `examples/hello` before it lands): label what it rests on, show the label only once it touches, or mount it with `KIT.fx.attach(part, mount)`.
+- A labelled part must touch something solid (within 5 mm), or it counts as floating (`CLEARANCE_AUTO_FAIL`). Don't label a part while it hangs in the air (like the probe in `examples/hello` before it lands). Label what it rests on, or show the label only once the part touches something. `KIT.fx.attach` doesn't move anything and doesn't fix this.
 - No caption on screen when a transition starts. The last caption before a transition must be on screen for max(1.5 s, 0.25 s + 0.15 s per character without spaces) before the transition starts (`TEXT_TRANSITION`). A 40-character caption needs 6.25 s, so keep the last line of a scene short. End each scene with a short line and a few seconds of `extra_s`.
 
 ## 2. The work loop (fast to slow)
@@ -64,7 +64,7 @@ Scenes: `scenes/<scene>/module.js` registers `SCENES.<scene> = {duration, init(r
 | Look at a few moments | `./rv still projects/<name> 12.5 40` (PNGs in `build/stills/`) | seconds |
 | Storyboard per scene | `./rv board projects/<name>` (`out/board/`) | seconds per scene |
 | Whole-flow draft | `./rv preview projects/<name>` (`out/<name>_preview.mp4`, no checks) | a few minutes |
-| Final build + checks | `./rv make projects/<name>` | first run roughly 5 to 15 min, later only changed scenes are redrawn |
+| Final build + checks | `./rv make projects/<name>` | first run about 10 to 15 min (a 1-minute video without a look: a few minutes), later only changed scenes are redrawn |
 | Checks only, on the existing mp4 | `./rv check projects/<name>` | a few minutes |
 
 Look at your stills and board images (open the PNG/JPG files) before a full build. Most failures are visible there. `rv make` and `rv check` exit 1 when the verdict is FAIL. That is a result to read, not a crash.
@@ -79,7 +79,7 @@ Look at your stills and board images (open the PNG/JPG files) before a full buil
 awk '/^## /{h=$0} /MUTATION_NOT_CAUGHT|CHECK_ERROR|PAGE_ERROR/ || (/FAIL/ && h !~ /^## 변이/) {print h " :: " $0}' projects/<name>/out/CHECKS.md
 ```
 
-- Each failing line gives the time (`t=`), the scene, the element and the rule. HOWTO section 5 "Common failures and fixes" explains every rule name (`POP_IN`, `TEXT_TRANSITION`, `CAMERA_UI`, `ACTION_MATCH`, `SUBJECT_FRAME`, `LAYOUT`, `THEME_FATIGUE`, ...).
+- Failing lines give the time (`t=`, or `start_s`/`end_s`), the scene, the element and the rule. HOWTO section 5 "Common failures and fixes" explains every rule name (`POP_IN`, `TEXT_TRANSITION`, `CAMERA_UI`, `ACTION_MATCH`, `SUBJECT_FRAME`, `LAYOUT`, `THEME_FATIGUE`, ...).
 - `CHECKS.timing.tsv` shows which check took the time.
 
 ## 4. Fixing failures
@@ -101,10 +101,10 @@ If a failure isn't caused by your project (a checker traceback on a valid scene,
 ## 5. Making it faster without lowering quality
 
 - Edit with `rv still`, `rv board` and `rv preview`. Run the full `rv make` when a draft looks right.
-- `rv make` only redraws changed scenes. Don't pass `--full` unless shared code (`shared/`, transitions, look) changed and the old frames are wrong. `--from A --to B` also re-captures that time range.
-- After changing only checks or the mp4, run `./rv check` instead of `make`.
+- `rv make` only redraws what changed. It notices changed scenes, shared files and the look and transitions in `script.json` by itself, so you rarely need `--full`. `--from A --to B` also re-captures that time range.
+- To rerun the checks on an mp4 you already built, run `./rv check` instead of `make`.
 - `RV_CHECK_JOBS` (default 6) is how many checkers run at once. `RV_CHECK_SHARDS` (default 4) is how many browsers share the long `check_clearance` and `check_layout` runs. `rv make --jobs N` (default 4) sets the capture workers. Raise them on a machine with more cores and memory. Lower them (for example `RV_CHECK_JOBS=2 RV_CHECK_SHARDS=1 ./rv make ... --jobs 2`) if Chromium crashes or the machine runs out of memory. The checks are the same either way.
-- `RV_LOOK=off` turns off the cinematic look (depth of field, motion blur, bloom) for one build. That's fine for drafts, but the final build must run with the look the script asks for.
+- `rv preview` already turns off the cinematic look (depth of field, motion blur, bloom). Don't use `RV_LOOK=off` with `rv make`: the frame cache doesn't notice it, so a later plain `rv make` keeps the frames without the look and still passes. If you did, rebuild with `./rv make projects/<name> --full`.
 
 ## 6. Done
 
