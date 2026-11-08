@@ -62,6 +62,9 @@ printf 'Summary\0\nfixes the SyntheticForbiddenMarker scene\n' > "$T/nul.md"
 run nul-byte-body 1 'is not plain UTF-8 text' pr-comment "$T/nul.md" 41
 printf '# only a comment\n' > "$T/comments-only"
 RV_SCAN_PATTERNS="$T/comments-only" run pattern-file-without-patterns 1 'no private pattern was checked' pr-comment "$T/clean.md" 41
+printf '%s\n' '합.금지' > "$T/korean-pattern"
+printf '%s\n' 'Summary' '합성금지 문구' > "$T/korean.md"
+LC_ALL=C RV_SCAN_PATTERNS="$T/korean-pattern" run korean-dot-pattern-c-caller 1 'private-patterns(1): text line 2' pr-comment "$T/korean.md" 41
 printf 'Unclosed(\n' > "$T/bad-pattern"
 RV_SCAN_PATTERNS="$T/bad-pattern" run invalid-pattern-is-an-error 1 'scan-errors count' pr-comment "$T/clean.md" 41
 mkdir "$T/fault-bin"
