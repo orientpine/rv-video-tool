@@ -296,16 +296,21 @@ OCCLUSION = r"""([mutate, now, fixedBars]) => {
         const own=belongs(o,target);
         if(!own && !o.isMesh) {o.visible=false;hidden.add(o);continue;}
         const mask=m=>{
-          const common={color:own?0xffffff:0, visible:m.visible, depthTest:m.depthTest, depthWrite:m.depthWrite,
-            transparent:m.transparent, opacity:m.opacity, alphaTest:m.alphaTest};
+          // Only the target's own points, lines and sprites get here (others are hidden): they write depth, so a
+          // wall behind them drawn later in the opaque list cannot paint over them.
+          const common={color:own?0xffffff:0, visible:m.visible, depthTest:m.depthTest,
+            depthWrite:o.isMesh?m.depthWrite:true, transparent:m.transparent, opacity:m.opacity, alphaTest:m.alphaTest};
+          // A soft-particle shader keeps its own size and shape: its main() runs, then the colour becomes the ID and a
+          // fragment counts where it is at least half opaque. Uniforms are shared, not cloned (no texture copies).
+          const shader=!o.isMesh && m.isShaderMaterial && !m.isRawShaderMaterial && /gl_FragColor/.test(m.fragmentShader)
+            ? m.fragmentShader.replace(/\bvoid\s+main\s*\(\s*(void)?\s*\)/,'void rvLayoutMain()') : null;
           let mat;
-          if(m.isShaderMaterial && /gl_FragColor/.test(m.fragmentShader)) {
-            // A custom shader (soft particles) keeps its own size and shape; only its colour becomes the ID, and a
-            // fragment counts where it is at least half opaque.
-            mat=m.clone();
-            mat.fragmentShader=m.fragmentShader.replace(/}\s*$/,
-              `if(gl_FragColor.a<.5) discard; gl_FragColor=vec4(vec3(${own?'1.0':'0.0'}),1.0);\n}`);
-            mat.blending=THREE.NormalBlending; mat.transparent=false; mat.toneMapped=false; mat.fog=false;
+          if(shader && shader!==m.fragmentShader) {
+            mat=new THREE.ShaderMaterial({vertexShader:m.vertexShader, uniforms:m.uniforms, defines:{...m.defines},
+              fragmentShader:shader+`\nvoid main(){rvLayoutMain(); if(gl_FragColor.a<.5) discard;\n`+
+                `gl_FragColor=vec4(vec3(${own?'1.0':'0.0'}),1.0);}`,
+              side:m.side, depthTest:m.depthTest, depthWrite:true, toneMapped:false, fog:false});
+            mat.extensions={...m.extensions};
           } else if(o.isPoints) mat=new THREE.PointsMaterial({...common, size:m.size??1,
             sizeAttenuation:m.sizeAttenuation??true, alphaMap:m.alphaMap??null});
           else if(o.isLine) mat=new THREE.LineBasicMaterial(common);

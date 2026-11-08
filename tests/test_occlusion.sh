@@ -15,7 +15,7 @@ for case in ("normal", "depth75", "depth25", "dom75", "dom25", "own", "fallback"
              "lookoff", "arc86", "effective516", "effective430", "card39", "late",
              "accenthidden", "capcover", "fadecover", "focustiny", "looktiny",
              "letterbox", "letterboxcard", "letterboxlate", "pillarbox", "letterboxpanel",
-             "glow", "glowshader", "rain", "glowdepth75", "ownparts"):
+             "glow", "glowshader", "rain", "glowdepth75", "ownparts", "shaderwall", "ownsparks"):
     html = """<!doctype html><meta charset="utf-8"><style>
 html,body{margin:0;width:1920px;height:1080px;--ui:sans-serif}
 #stage,.overlay{position:absolute;inset:0}
@@ -66,6 +66,24 @@ if(mode==='ownparts'){
   explained.add(new THREE.Points(geo(top),new THREE.ShaderMaterial({
     vertexShader:'void main(){gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);gl_PointSize=24.0;}',
     fragmentShader:'void main(){gl_FragColor=vec4(.125,.19,.25,1.);}'})));
+}
+// Soft-particle sparks of the target itself (additive, no depth write, a helper after main()), with a wall behind
+// them added later: they count as target and the wall does not paint over them.
+if(mode==='ownsparks'){
+  const pos=[]; for(let i=0;i<6;i++) for(let j=0;j<6;j++) pos.push(1.2+.2*i,-.5+.2*j,.05);
+  const geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  explained.add(new THREE.Points(geo,new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+    vertexShader:'void main(){gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);gl_PointSize=20.0;}',
+    fragmentShader:'float fall(float r);\\nvoid main(){float r=length(gl_PointCoord-.5)*2.;if(r>1.)discard;gl_FragColor=vec4(.2,.3,.4,fall(r));}\\nfloat fall(float r){return 1.-r*r;}\\n// end'})));
+  const wall=new THREE.Mesh(new THREE.PlaneGeometry(14,8),new THREE.MeshBasicMaterial({color:0x2a3a40}));
+  wall.position.z=-1; scene.add(wall);
+}
+// A real opaque block drawn by a custom shader (white, alpha 0, a helper after main(), a trailing comment) is cover.
+if(mode==='shaderwall'){
+  const block=new THREE.Mesh(new THREE.PlaneGeometry(1.5,2.5),new THREE.ShaderMaterial({
+    vertexShader:'void main(){gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
+    fragmentShader:'vec3 col();\\nvoid main(){gl_FragColor=vec4(col(),0.0);}\\nvec3 col(){return vec3(1.);}\\n// end'}));
+  block.position.set(-.25,0,.01); scene.add(block);
 }
 if(mode.startsWith('depth')||mode==='glowdepth75'){
   const width=mode==='depth75'||mode==='glowdepth75'?1.5:.5;
@@ -218,6 +236,11 @@ run ownparts 0
 plate=$(grep -o 'pixels=[0-9]*/[0-9]*' "$W/normal.log" | head -1 | cut -d/ -f2)
 owned=$(grep -o 'pixels=[0-9]*/[0-9]*' "$W/ownparts.log" | head -1 | cut -d/ -f2)
 (( owned > plate + 1500 )) || { echo "ownparts: target pixels $owned, plate alone $plate"; exit 1; }
+run ownsparks 0
+sparks=$(grep -o 'visible_fraction=[0-9.]* required>=0.500 pixels=[0-9]*/[0-9]*' "$W/ownsparks.log" | head -1)
+[[ "$sparks" == visible_fraction=1.000000* ]] && (( ${sparks##*/} > plate + 1000 )) || { echo "ownsparks: $sparks, plate alone $plate"; exit 1; }
+run shaderwall 1
+grep -q "pixels=$(grep -o 'pixels=[0-9]*/[0-9]*' "$W/depth75.log" | head -1 | cut -d= -f2) " "$W/shaderwall.log"
 run accenthidden 0
 grep -q 'accent part hidden by the scene itself' "$W/accenthidden.log"
 run capcover 0
