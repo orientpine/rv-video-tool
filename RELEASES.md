@@ -6,6 +6,24 @@ Every release is a git tag `vX.Y.Z` (Z for fixes, Y for features). Each tag gets
 
 릴리스는 git 태그 `vX.Y.Z` 하나다(고침 = Z, 기능 = Y). 태그마다 이 파일과 GitHub 릴리스 페이지에 한국어·영어 노트를 쓴다. 설치는 `scripts/install.sh`, 확인은 `scripts/verify.sh`.
 
+## v0.1.2
+
+### English
+
+- `check_motion` catches pop-in (`POP_IN`): an overlay card, label or 3D part whose on-screen weight (area share x opacity) jumps from at most 5% to at least 50% of its peak within two frames, with no fade, slide or camera reveal. Simultaneous pops are one line naming the elements; scene starts, transitions, declared cuts and camera cuts are listed as `EXEMPT`. Mutation `popin` hides a steady element for 0.6 s and shows it again in one frame.
+- `check_motion` checks that the explained part comes to the centre (`SUBJECT_FRAME`): during each spoken action, the part `ACTION_MATCH` linked (else the declared action/follow subject) must have its screen centre inside the middle 30% of the frame (`|x-.5|, |y-.5| <= .15`) in at least half of the samples after a 0.5 s lead-in. Mutation `offcenter` turns the camera 25 degrees inside those spans.
+- Swap verbs are read as actions: "바꿔 끼웁니다", "교체합니다", "갈아 끼우고" (a tool change used to get no action check at all).
+- Defaults that avoid both: `KIT.fx.reveal(obj, KIT.win(t, a, b, 0.4))` grows a 3D element in; `KIT.process.exhaust` fades its flow in and out instead of showing every arrow in one frame; `KIT.shot.action` ends with the subject inside the same middle box.
+- `check_layout` no longer judges contrast or overlap of text in the middle of a fade (`LAYOUT_FADE` line); it judges it on resting frames. A fading label failed contrast before, which pushed scenes to switch labels on in one frame. Clipping and the safe area are still checked on every sample.
+
+### 한국어
+
+- `check_motion` 이 갑자기 등장(`POP_IN`)을 잡는다: 카드·이름표·부품의 화면 무게(넓이 비 × 불투명도)가 서서히 나타나기·밀려 들어오기·카메라가 비춰 드러내기 없이 두 프레임 안에 최대의 5% 이하에서 50% 이상으로 뛰면 FAIL. 같은 프레임에 튀는 것은 한 줄에 요소 이름과 함께, 장면 시작·전환·선언한 컷·카메라 컷은 `EXEMPT` 로 찍는다. 변이 `popin` 은 떠 있던 요소를 0.6 s 감췄다가 한 프레임에 켠다.
+- `check_motion` 이 설명 대상이 화면 가운데에 오는지 본다(`SUBJECT_FRAME`): 동작 말 구간마다 `ACTION_MATCH` 가 이은 부품(없으면 선언한 action/follow 샷 대상)의 화면 중심이 앞 0.5 s 를 뺀 표본 절반 이상에서 가운데 30%(`|x-.5|, |y-.5| <= .15`) 안에 있어야 한다. 변이 `offcenter` 는 그 구간에 카메라를 25° 돌린다.
+- 교체 동사를 동작으로 읽는다: "바꿔 끼웁니다", "교체합니다", "갈아 끼우고"(툴 교체 말은 동작 검사가 아예 없었다).
+- 처음부터 안 생기게 하는 기본값: `KIT.fx.reveal(obj, KIT.win(t, a, b, 0.4))` 로 3D 요소가 자라며 나타나고, `KIT.process.exhaust` 는 화살표를 한 프레임에 다 띄우지 않고 흐름을 서서히 켜고 끈다. `KIT.shot.action` 은 샷 끝에 대상이 같은 가운데 상자 안에 오게 구도를 고른다.
+- `check_layout` 은 페이드 중인 글자의 대비·격침을 그 순간에 재지 않고(`LAYOUT_FADE` 줄) 쉬는 프레임에서 잰다. 전에는 페이드 중 이름표가 대비 FAIL 이 나 장면들이 이름표를 한 프레임에 켜는 쪽으로 바뀌었다. 잘림·안전 영역은 표본마다 그대로 본다.
+
 ## v0.1.1
 
 ### English

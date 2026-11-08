@@ -99,10 +99,12 @@
     parent.add(root);
     return register("exhaust", root, names(name, ["공기", "가스", "배기"]), () => +root.visible, {root, set(u) {
       root.visible = u > 0 && u < 1;
+      // Flow grows in over the first 15% and out over the last 15% of u, never all arrows in one frame (POP_IN).
+      const flow = ease(u / .15) * ease((1 - u) / .15);
       for (const {a, phase, x, z} of arrows) {
         const v = (unit(u) * 2 + phase) % 1;
         a.position.set(x * (1 + v), v * length, z * (1 + v));
-        a.scale.setScalar(.5 + .5 * Math.sin(v * Math.PI));
+        a.scale.setScalar(Math.max(1e-3, flow * (.5 + .5 * Math.sin(v * Math.PI))));
       }
     }});
   }
