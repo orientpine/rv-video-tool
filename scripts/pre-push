@@ -34,8 +34,18 @@ while read -r _ local_sha _; do
     fi
   done <<< "$remote_heads"
   work="$(mktemp -d)"
-  git -C "$ROOT" archive "$local_sha" | tar -x -C "$work"
-  git -C "$ROOT" log -p --format='%an <%ae>%n%cn <%ce>%n%B' "$local_sha" --not "${exclude[@]}" > "$work/.pushed-commits.txt"
+  if ! git -C "$ROOT" archive "$local_sha" | tar -x -C "$work"; then
+    echo "pre-push: cannot export pushed tree; push refused" >&2
+    status=1
+    rm -rf "$work"
+    continue
+  fi
+  if ! git -C "$ROOT" log -p --format='%an <%ae>%n%cn <%ce>%n%B' "$local_sha" --not "${exclude[@]}" > "$work/.pushed-commits.txt"; then
+    echo "pre-push: cannot read pushed commit history; push refused" >&2
+    status=1
+    rm -rf "$work"
+    continue
+  fi
   if ! bash "$ROOT/scripts/scan-public.sh" "$work" > "$work.scan" 2>&1; then
     cat "$work.scan" >&2
     echo "pre-push: leak scan is not 0 for ${local_sha:0:7}; push refused" >&2
