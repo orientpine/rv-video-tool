@@ -40,7 +40,7 @@ run() {
 }
 
 run leak-in-text 1 'private-patterns(1): text line 2' pr-create "$T/leak.md" --title "Fix the dark scene"
-run leak-in-title 1 'private-patterns(1): argument line 2' pr-create "$T/clean.md" --title "Fix SyntheticForbiddenMarker"
+run leak-in-title 1 'private-patterns(1): argument 2' pr-create "$T/clean.md" --title "Fix SyntheticForbiddenMarker"
 run leak-in-comment 1 'nothing posted' pr-comment "$T/leak.md" 41
 run leak-in-release-notes 1 'nothing posted' release-notes "$T/leak.md" v9.9.9 --title v9.9.9
 RV_SCAN_PATTERNS="$T/missing" run missing-pattern-file 1 'pattern file missing' pr-edit "$T/clean.md" 41
@@ -49,9 +49,21 @@ run body-file-bypass 1 'is not allowed' pr-edit "$T/clean.md" 41 --body-file=/de
 run editor-bypass 1 'is not allowed' pr-create "$T/clean.md" --web
 run empty-file 1 'is empty' pr-comment "$T/empty.md" 41
 run unknown-command 2 'usage' pr-merge "$T/clean.md" 41
-run pr-edit-without-number 1 'needs a pull request number' pr-edit "$T/clean.md" --title x
-run pr-edit-other-argument 1 'takes only --title and --repo' pr-edit "$T/clean.md" 41 --add-label x
-run leak-in-pr-edit-title 1 'argument line 3' pr-edit "$T/clean.md" 41 --title "SyntheticForbiddenMarker"
+run pr-edit-without-number 1 'positional arguments' pr-edit "$T/clean.md" --title x
+run pr-edit-not-a-number 1 'needs a pull request number' pr-edit "$T/clean.md" main
+run pr-edit-other-argument 1 'is not allowed' pr-edit "$T/clean.md" 41 --add-label x
+run combined-short-body-flag 1 'argument 3 (-dF) is not allowed' pr-create "$T/clean.md" -t ok -dF "$T/leak.md"
+run combined-short-web-flag 1 'is not allowed' release-notes "$T/clean.md" v9.9.9 -dw
+run recover-file 1 'is not allowed' pr-create "$T/clean.md" -t ok --recover "$T/leak.md"
+run release-asset 1 'positional arguments' release-notes "$T/clean.md" v9.9.9 "$T/leak.md"
+run refused-value-not-printed 1 'argument 2 (--body) is not allowed' pr-comment "$T/clean.md" 41 --body=SyntheticForbiddenMarker
+run pr-create-without-title 1 'needs --title' pr-create "$T/clean.md" --base main
+printf 'Summary\0\nfixes the SyntheticForbiddenMarker scene\n' > "$T/nul.md"
+run nul-byte-body 1 'is not plain text' pr-comment "$T/nul.md" 41
+printf '# only a comment\n' > "$T/comments-only"
+RV_SCAN_PATTERNS="$T/comments-only" run pattern-file-without-patterns 1 'no private pattern was checked' pr-comment "$T/clean.md" 41
+run repo-path-escape 1 'owner/name' pr-edit "$T/clean.md" 41 -R o/r/../../x
+run leak-in-pr-edit-title 1 'argument 3' pr-edit "$T/clean.md" 41 --title "SyntheticForbiddenMarker"
 GH_SAFE_TEST_EXIT=3 run gh-failure-passes-through 3 - pr-comment "$T/clean.md" 41
 
 run clean-pr-create 0 - pr-create "$T/clean.md" --title "Fix the dark scene" --base main
@@ -67,6 +79,12 @@ if grep -qx -- "api -X PATCH repos/o/r/pulls/41 -F body=@.*text.txt -f title=Fix
   echo "PASS clean-pr-edit-posts-scanned-text"
 else
   echo "FAIL clean-pr-edit-posts-scanned-text"; cat "$T/gh.log" 2>/dev/null; fail=1
+fi
+run clean-pr-edit-default-repo 0 - pr-edit "$T/clean.md" 41
+if grep -qx -- "api -X PATCH repos/{owner}/{repo}/pulls/41 -F body=@.*text.txt" "$T/gh.log"; then
+  echo "PASS clean-pr-edit-default-repo-path"
+else
+  echo "FAIL clean-pr-edit-default-repo-path"; cat "$T/gh.log" 2>/dev/null; fail=1
 fi
 run clean-release-notes 0 - release-notes "$T/clean.md" v9.9.9 --verify-tag
 if grep -qx -- "release create --notes-file .*text.txt v9.9.9 --verify-tag" "$T/gh.log" &&
