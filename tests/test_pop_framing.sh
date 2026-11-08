@@ -34,7 +34,7 @@ save("scenes/proc/deps.json", {"data": {"proc.fixture": "fixture.json"}})
 PY
 cat <<'JS' > "$W/project/scenes/proc/module.js"
 (function(){
-  let r,scene,cam,mode,valve,vent,box,tag;
+  let r,scene,cam,mode,valve,vent,box,tag,card;
   const u=(t,a,b)=>KIT.clamp((t-a)/(b-a),0,1);
   SCENES.proc={duration:9,init(renderer,THREE_,overlay){
     r=renderer;mode=DATA["proc.fixture"].mode;
@@ -49,6 +49,8 @@ cat <<'JS' > "$W/project/scenes/proc/module.js"
     tag=document.createElement("div");tag.textContent="밸브 이름표";
     tag.style.cssText="position:absolute;left:220px;top:300px;padding:14px 24px;font:700 34px/1.2 sans-serif;color:#F7F9F9;background:#16323C;opacity:0";
     overlay.append(tag);
+    if(mode.startsWith("edge")){card=document.createElement("div");card.textContent="가장자리 카드";
+      card.style.cssText="position:absolute;left:-12px;top:400px;width:900px;height:300px;font:700 40px/1 sans-serif;color:#F7F9F9;background:#16323C";overlay.append(card);}
     cam=new THREE.PerspectiveCamera(45,16/9,.1,100);cam.position.set(0,1.8,6);
     cam.lookAt(mode==="offcenter"?new THREE.Vector3(-2.3,1.2,0):new THREE.Vector3(0,1.5,0));
   },render(t){
@@ -56,6 +58,7 @@ cat <<'JS' > "$W/project/scenes/proc/module.js"
     tag.style.opacity=String(mode==="pop"?(t>=3&&t<6?1:0):KIT.win(t,3,6,.4));
     if(mode==="pop3d")box.visible=t>=4;else KIT.fx.reveal(box,KIT.win(t,4,8.5,.4));
     vent.set(t>=6.5&&t<8.3?u(t,6.5,8.3):0);
+    if(card){card.style.display=t>=5?"block":"none";if(mode==="edgeslide")card.style.left=(-912+900*u(t,5,5.6))+"px";}
     r.render(scene,cam);
   }};
 })();
@@ -74,6 +77,8 @@ run_case good
 need good "^POP_IN_CHECK PASS "; need good "^SUBJECT_FRAME proc '밸브를 돌리고' PASS subject=valve:'밸브'"
 run_case pop;    need pop "^POP_IN proc t=3\.000s kind=ui element='밸브 이름표' .* FAIL$"
 run_case pop3d;  need pop3d "^POP_IN proc t=4\.000s kind=3d .* FAIL$"; none pop3d "^POP_IN proc t=3\.000s"
+run_case edgepop;   need edgepop "^POP_IN proc t=5\.000s kind=ui element='가장자리 카드' .* FAIL$"
+run_case edgeslide; none edgeslide "^POP_IN proc t=5\.[0-9]+s kind=ui element='가장자리 카드' .* FAIL$"
 run_case offcenter; need offcenter "^SUBJECT_FRAME proc '밸브를 돌리고' FAIL subject=valve:'밸브' centred=0\.00"
 MODE=good run_case popin --mutate popin;         need popin "^MUTATION_CAUGHT$"
 MODE=good run_case turned --mutate offcenter;    need turned "^MUTATION_CAUGHT$"
@@ -82,5 +87,5 @@ MODE=good; printf '{"mode":"good"}\n' > "$W/project/scenes/proc/fixture.json"
 "${PW[@]}" "$ROOT/lib/check_layout.py" "$W/good.html" --at 3.1 4.5 > "$W/layout.log" 2>&1 || true
 need layout "^LAYOUT_FADE t=3\.100 text='밸브 이름표'"; none layout "^\| 3\.100 \| 밸브 이름표 \| contrast"
 need layout "^LAYOUT_CHECK PASS"
-grep -h -E "^(POP_IN|SUBJECT_FRAME|MUTATION_CAUGHT|LAYOUT_)" "$W"/{good,pop,pop3d,offcenter,popin,turned,layout}.log
+grep -h -E "^(POP_IN|SUBJECT_FRAME|MUTATION_CAUGHT|LAYOUT_)" "$W"/{good,pop,pop3d,edgepop,edgeslide,offcenter,popin,turned,layout}.log
 [ "$ok" = 1 ] && echo "POP_FRAMING_TESTS PASS" || { echo "POP_FRAMING_TESTS FAIL"; exit 1; }

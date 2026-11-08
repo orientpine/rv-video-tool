@@ -238,8 +238,11 @@ POP_STEP = r"""(frame, scene, cam) => {
         // Keyed by place in the overlay, not by node: a box rebuilt with innerHTML every frame is the same box.
         let path = '';
         for (let e = el; e && e !== ov; e = e.parentElement) path = e.tagName + ':' + [...e.parentElement.children].indexOf(e) + '/' + path;
-        // Cut by the screen edge: it slides in or the camera reveals it, it does not pop.
-        if (b.left < 0 || b.right > W || b.top < 0 || b.bottom > H) straddle.add('u' + ov.dataset.scene + '/' + path);
+        // Cut by the screen edge: it slides in or the camera reveals it, it does not pop - unless it is big and mostly
+        // on screen already (a card placed a few px past the edge that switches on in one frame still pops).
+        const full = Math.max(1e-9, b.width * b.height / (W * H));
+        if ((b.left < 0 || b.right > W || b.top < 0 || b.bottom > H) && (w < .03 || w < .5 * full))
+          straddle.add('u' + ov.dataset.scene + '/' + path);
         put('u' + ov.dataset.scene + '/' + path, w * a, name, group);
       }
     });
@@ -263,8 +266,9 @@ POP_STEP = r"""(frame, scene, cam) => {
       }
       if (!front) return;
       // Cut by the screen edge: a part sliding in or revealed by the camera, not a pop (small parts cross the edge in 1-2 frames).
-      if (x0 < -1 || x1 > 1 || y0 < -1 || y1 > 1) straddle.add('m' + id(o));
       const area = Math.max(0, Math.min(1, x1) - Math.max(-1, x0)) * Math.max(0, Math.min(1, y1) - Math.max(-1, y0)) / 4;
+      if ((x0 < -1 || x1 > 1 || y0 < -1 || y1 > 1) && (area < .03 || area < .5 * (x1 - x0) * (y1 - y0) / 4))
+        straddle.add('m' + id(o));
       // A box reaching behind the camera (a room or a big body the camera is close to) has no reliable screen
       // area: corners swap sides as the camera moves. No onset is counted for it in this frame or the next.
       if (front < 8) straddle.add('m' + id(o));
@@ -311,7 +315,7 @@ POP_PICK = r"""async (times) => {
           if (!bg || bg === 'transparent' || /^rgba\(.*,\s*0\)$/.test(bg)) continue;   // a box, as POP_STEP counts
           let a = 1; for (let e = el; e; e = e.parentElement) { const s = getComputedStyle(e); if (s.display === 'none' || s.visibility === 'hidden') { a = 0; break; } a *= +s.opacity; }
           const r = el.getBoundingClientRect();
-          if (a >= .99 && r.width * r.height >= .004 * innerWidth * innerHeight && r.left >= 0 && r.right <= innerWidth) {
+          if (a >= .99 && r.width * r.height >= .004 * innerWidth * innerHeight && r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight) {
             if (!el.dataset.rvPopPick) el.dataset.rvPopPick = 'p' + Math.random().toString(36).slice(2);
             list.set(el.dataset.rvPopPick, Math.round(r.left) + ',' + Math.round(r.top));
           }
