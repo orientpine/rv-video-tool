@@ -70,15 +70,13 @@ SELF = r"""() => {
  const bounds=new THREE.Box3().setFromObject(h);
  if(bounds.getSize(new THREE.Vector3()).y<1.72||bounds.getSize(new THREE.Vector3()).y>1.85)errors.push('8-head height');
  if(h.userData.contacts.feet.some(o=>Math.abs(position(o).y)>.002))errors.push('soles not on floor');
- const pelvis=h.getObjectByName('pelvis'), surface=pelvis.children.find(o=>o.isMesh&&o.userData.rvPart==='pelvis');
- surface.geometry.computeBoundingBox();
- const bottom=surface.position.y+surface.geometry.boundingBox.min.y*surface.scale.y;
- if(Math.abs(h.userData.contacts.seat.position.y-bottom)>1e-6)errors.push('seat marker not on pelvis bottom');
- for(const palm of h.userData.contacts.hands){
-   if(palm.position.distanceTo(new THREE.Vector3(0,-.041,.03))>1e-6)errors.push('palm marker not on surface');
- }
- const fingerCount=[];h.traverse(o=>{if(o.isMesh&&o.userData.rvPart==='hand_l')fingerCount.push(o);});
- if(fingerCount.length<6)errors.push('palm/fingers/thumb missing');
+ const surface=part=>{const out=[];h.traverse(o=>{if(o.isMesh&&o.userData.rvPart===part){const p=o.geometry.attributes.position;for(let i=0;i<p.count;i++)out.push(new THREE.Vector3().fromBufferAttribute(p,i).applyMatrix4(o.matrixWorld));}});return out;};
+ const nearest=(v,pts)=>Math.min(...pts.map(p=>p.distanceTo(v)));
+ const pelvisSkin=surface('pelvis'), bottom=Math.min(...pelvisSkin.map(p=>p.y));
+ if(Math.abs(position(h.userData.contacts.seat).y-bottom)>.004)errors.push('seat marker not on pelvis bottom');
+ h.userData.contacts.hands.forEach((palm,i)=>{if(nearest(position(palm),surface(i?'hand_r':'hand_l'))>.004)errors.push('palm marker not on surface');});
+ const wristL=position(h.getObjectByName('wrist_l')), handL=surface('hand_l');
+ if(!handL.length||Math.max(...handL.map(p=>p.distanceTo(wristL)))<.15)errors.push('palm/fingers/thumb missing');
  const old=KIT.fx.human(scene,1.75,0x123456);
  const cloth=[];old.traverse(o=>{if(o.isMesh&&o.userData.rvPart==='pelvis')cloth.push(o.material.color.getHex());});
  if(!cloth.includes(0x123456))errors.push('legacy base colour');
@@ -128,7 +126,7 @@ async def main(a):
             page = await browser.new_page()
             if a.self_test:
                 source = "<script>" + (TOOL / "vendor/three-0.147.0.min.js").read_text() + "</script><script>window.DATA={};"
-                source += (TOOL / "kit/scene_kit.js").read_text() + "</script>"
+                source += (TOOL / "kit/human_body.js").read_text() + (TOOL / "kit/scene_kit.js").read_text() + "</script>"
                 await page.set_content(source)
                 errors.extend((await page.evaluate(SELF))["errors"])
                 result = await page.evaluate(f"mutation=>({CHECK})([window.__testHumans,mutation])", a.mutate)

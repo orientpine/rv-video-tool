@@ -407,174 +407,350 @@
       c.position.copy(base[i]).addScaledVector(ax, Math.sign(along) * dist * (0.4 + Math.abs(along) * 6)); }); }, reset() { api.set(0); }};
     live.push(api); return api;
   }
-  // +Y 위, +Z 정면. h 는 맨머리 키(8등신), 안전모는 그 위에 쓴다. 모든 자세는 이전 프레임과 무관하다.
+  // KIT.fx.human 의 act(t, spec): 걷기·고개·버튼 누르기를 t 만의 함수로. 발자국을 경로에서 미리 정해 디딘 발은
+  // 바닥에 고정(다리 2뼈 IK), 몸 속도는 서서히 출발·정지, 손끝은 최소저크 경로로 목표에 닿았다 뗀다(팔 2뼈 IK).
+  //   spec = {walk: {from:[x,y,z], to:[x,y,z], t0, t1}, look: Vector3, press: {target: Vector3, normal: Vector3,
+  //           t0, touch, press, release, t1, depth = .012, hand = "r"}}
+  const HUMAN_MOTION = (() => {
+    const Vc = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z), Q = () => new THREE.Quaternion();
+    const X = Vc(1, 0, 0), Y = Vc(0, 1, 0);
+    const rot = (axis, a) => Q().setFromAxisAngle(axis, a);
+    const step = (a, b, x) => { const u = clamp((x - a) / (b - a), 0, 1); return u * u * (3 - 2 * u); };
+    const mjerk = (a, b, x) => { const u = clamp((x - a) / (b - a), 0, 1); return u * u * u * (10 - 15 * u + 6 * u * u); };
+    function travel(t, t0, t1, D, acc = .7, dec = .9) {   // eased distance: cosine speed ramps around a constant speed
+      const T = t1 - t0, v = D / (T - acc / 2 - dec / 2), x = clamp(t - t0, 0, T), P = Math.PI;
+      if (x < acc) return v * (x / 2 - acc / (2 * P) * Math.sin(P * x / acc));
+      if (x < T - dec) return v * acc / 2 + v * (x - acc);
+      const y = x - (T - dec);
+      return v * acc / 2 + v * (T - dec - acc) + v * (y / 2 + dec / (2 * P) * Math.sin(P * y / dec));
+    }
+    const plans = new WeakMap();
+    function plan(w) {
+      if (plans.has(w)) return plans.get(w);
+      const from = Vc(...w.from), to = Vc(...w.to), D = from.distanceTo(to);
+      const n = Math.max(2, Math.round(D / .54)), L = D / n;
+      const tAt = s => { let a = w.t0, b = w.t1; for (let i = 0; i < 40; i++) { const m = (a + b) / 2; travel(m, w.t0, w.t1, D) < s ? a = m : b = m; } return (a + b) / 2; };
+      const steps = [], last = {r: 0, l: 0};
+      for (let k = 1; k <= n + 1; k++) {   // footprint k lands .3 stride ahead of the body, lifts 1.25 strides before
+        const side = k % 2 ? "r" : "l", f = Math.min(k * L, D);
+        let tl, td;
+        if (k <= n) { td = tAt(Math.max(.05, f - .3 * L)); tl = k === 1 ? w.t0 : tAt(Math.max(0, f - 1.25 * L)); }
+        else { tl = steps[k - 2].td + .04; td = Math.max(tl + .42, w.t1 + .05); }
+        steps.push({side, a: last[side], b: f, tl, td}); last[side] = f;
+      }
+      const p = {from, to, D, L, steps, dir: to.clone().sub(from).normalize()};
+      plans.set(w, p); return p;
+    }
+    function foot(p, side, t) {   // distance along the path, lift, toe pitch, how much weight it carries
+      let z = 0;
+      for (const st of p.steps) {
+        if (st.side !== side) continue;
+        if (t >= st.td) { z = st.b; continue; }
+        if (t > st.tl) {
+          const u = (t - st.tl) / (st.td - st.tl);
+          return {z: st.a + (st.b - st.a) * step(0, .88, u),
+            lift: .035 * (1 - step(0, .3, u)) + .075 * Math.sin(Math.PI * u) ** 1.3 * clamp((st.b - st.a) / p.L, .4, 1),
+            pitch: .3 * (1 - step(0, .45, u)) - .22 * step(.5, .9, u) * (1 - step(.9, 1, u)), ground: 1 - Math.sin(Math.PI * u)};
+        }
+        const heel = step(st.tl - .16, st.tl, t);
+        return {z: st.a, lift: .035 * heel, pitch: .3 * heel, ground: 1};
+      }
+      return {z, lift: 0, pitch: 0, ground: 1};
+    }
+    function twoBone(S, T, a, b, pole) {
+      const d = clamp(S.distanceTo(T), 1e-4, (a + b) * .9995), dir = T.clone().sub(S).normalize();
+      const x = (a * a - b * b + d * d) / (2 * d), r = Math.sqrt(Math.max(0, a * a - x * x));
+      const pd = pole.clone().sub(dir.clone().multiplyScalar(pole.dot(dir))).normalize();
+      return {E: S.clone().add(dir.multiplyScalar(x)).add(pd.multiplyScalar(r)), d};
+    }
+    function frame(y, ref) {   // basis with +Y along y and +Z toward ref (perpendicular part)
+      const z = ref.clone().sub(y.clone().multiplyScalar(ref.dot(y))).normalize(), x = Vc().crossVectors(y, z).normalize();
+      return new THREE.Matrix4().makeBasis(x, y, Vc().crossVectors(x, y));
+    }
+    // rotation turning a limb whose rest bone runs along restDir (bend opening to +Z) onto root S -> joint E -> end T;
+    // sign -1 for a knee (end folds back), +1 for an elbow (end folds forward); a small forward bias keeps a straight limb stable
+    function limbQ(S, E, T, sign, restDir) {
+      const now = frame(S.clone().sub(E).normalize(), T.clone().sub(E).multiplyScalar(sign).add(Vc(0, 0, .03)));
+      const rest = frame(restDir.clone().negate().normalize(), Vc(0, 0, 1));
+      return Q().setFromRotationMatrix(now.multiply(rest.transpose()));
+    }
+    const interior = (a, b, d) => Math.acos(clamp((a * a + b * b - d * d) / (2 * a * b), -1, 1));
+    function act(g, t, {walk, look, press} = {}, {R, M, joints, tips, deform}) {
+      g.pose("stand");
+      const J = n => joints[n], V = (a, b) => Vc(R[a][0] - (b ? R[b][0] : 0), R[a][1] - (b ? R[b][1] : 0), R[a][2] - (b ? R[b][2] : 0));
+      const TH = V("knee_r", "hip_r").length(), SH = V("ankle_r", "knee_r").length(), ANK = R.ankle_r[1];
+      const UA = V("elbow_r", "shoulder_r").length(), FA = V("wrist_r", "elbow_r").length() + Vc(...M.tip_r).sub(V("wrist_r")).length();
+      const sideSign = {r: 1, l: -1};
+      let s = 0, p = null, fr = {z: 0, lift: 0, pitch: 0, ground: 1}, fl = fr, vnorm = 0;
+      if (walk) {
+        p = plan(walk); s = travel(t, walk.t0, walk.t1, p.D);
+        vnorm = (travel(t + .01, walk.t0, walk.t1, p.D) - travel(t - .01, walk.t0, walk.t1, p.D)) / .02 / (p.D / (walk.t1 - walk.t0));
+        g.position.copy(p.from).addScaledVector(p.dir, s);
+        g.rotation.set(0, Math.atan2(p.dir.x, p.dir.z), 0);
+        fr = foot(p, "r", t); fl = foot(p, "l", t);
+      }
+      g.updateWorldMatrix(true, false);
+      const k = g.scale.x, rw = press ? mjerk(press.t0, press.touch, t) * (1 - mjerk(press.release + .08, press.t1, t)) : 0;
+      const feet = {r: fr, l: fl}, footPos = {};
+      for (const f of ["r", "l"]) footPos[f] = Vc(R["ankle_" + f][0], ANK + feet[f].lift, R["ankle_" + f][2] + (feet[f].z - s) / k);
+      const stride = p ? (footPos.r.z - footPos.l.z) * k / p.L : 0, yaw = -.11 * stride;
+      const sway = .02 * (fr.ground - fl.ground) + .006 * Math.sin(2 * Math.PI * t / 5.3) * (1 - vnorm);
+      const spread = p ? clamp(Math.abs(stride), 0, 1.2) : 0;
+      const hipY = R.hip_r[1] - .006 - .006 * vnorm - .026 * spread * spread;
+      const pelvisPos = Vc(sway, hipY + (R.pelvis[1] - R.hip_r[1]), R.pelvis[2] + .02 * rw);
+      J("pelvis").position.copy(pelvisPos); J("pelvis").quaternion.copy(rot(Y, yaw));
+      for (const f of ["r", "l"]) {
+        const hip = J("hip_" + f), knee = J("knee_" + f), ankle = J("ankle_" + f);
+        const H = pelvisPos.clone().add(V("hip_" + f, "pelvis").applyAxisAngle(Y, yaw));
+        hip.position.copy(H);
+        const T = footPos[f].clone(), reach = (TH + SH) * .995, flat = Math.hypot(T.x - H.x, T.z - H.z);
+        let toe = 0;
+        if (T.distanceTo(H) > reach) {   // out of reach: the heel rises and the foot rolls on its toes
+          const y = H.y - Math.sqrt(Math.max(0, reach * reach - flat * flat));
+          toe = Math.asin(clamp((y - T.y) / .14, 0, .9)); T.y = y;
+          if (T.distanceTo(H) > reach) T.sub(H).setLength(reach * .9999).add(H);
+        }
+        const kp = Vc(0, .15, 1), {E, d} = twoBone(H, T, TH, SH, kp);
+        const qh = limbQ(H, E, T, -1, V("knee_" + f, "hip_" + f));
+        hip.quaternion.copy(qh);
+        knee.rotation.set(Math.PI - interior(TH, SH, d), 0, 0);
+        ankle.quaternion.copy(qh.clone().multiply(knee.quaternion).invert().multiply(rot(X, Math.max(feet[f].pitch, toe))));
+      }
+      const lean = .05 * vnorm + .09 * rw + .012 * Math.sin(2 * Math.PI * t / 3.9) * (1 - vnorm);
+      const qT = rot(Y, -.55 * yaw).multiply(rot(X, lean)), torsoPos = pelvisPos.clone().add(V("spine", "pelvis"));
+      J("spine").position.copy(torsoPos); J("spine").quaternion.copy(qT);
+      const carry = (o, off) => o.position.copy(torsoPos).add(off.clone().applyQuaternion(qT));
+      let qN = Q();
+      if (look) {
+        const lw = (walk ? .55 * step(walk.t0, walk.t0 + .8, t) : .55) + .45 * (press ? step(press.t0 - .45, press.t0 + .1, t) * (1 - step(press.t1, press.t1 + .6, t)) : 0);
+        const eye = g.localToWorld(torsoPos.clone().add(V("neck", "spine").add(Vc(0, .14, .08)).applyQuaternion(qT)));
+        const dirL = look.clone().sub(eye).normalize().transformDirection(new THREE.Matrix4().copy(g.matrixWorld).invert()).applyQuaternion(qT.clone().invert());
+        qN = rot(Y, .75 * clamp(Math.atan2(dirL.x, dirL.z), -1, 1) * lw).multiply(rot(X, .4 * clamp(-Math.asin(clamp(dirL.y, -1, 1)), -.5, .6) * lw));
+      }
+      J("neck").quaternion.copy(qN);
+      carry(J("head"), V("neck", "spine").add(V("head", "neck").applyQuaternion(qN)));
+      J("head").quaternion.copy(qT.clone().multiply(qN));
+      for (const f of ["r", "l"]) {
+        const sh = J("shoulder_" + f), el = J("elbow_" + f), wr = J("wrist_" + f), sg = sideSign[f];
+        const S = carry(sh, V("shoulder_" + f, "spine")).clone();
+        const swing = -.36 * (f === "r" ? -stride : stride);
+        const restQ = qT.clone().multiply(Q().setFromEuler(new THREE.Euler(swing, 0, sg * .02)));
+        const restEl = -.12 - .3 * Math.max(0, -swing);
+        if (press && f === (press.hand || "r") && rw > 0) {
+          const inv = new THREE.Matrix4().copy(g.matrixWorld).invert(), goal = press.target.clone().applyMatrix4(inv);
+          const n = press.normal.clone().transformDirection(inv);
+          const approach = .035 * (1 - mjerk(press.touch - .25, press.press, t)) + .035 * mjerk(press.release, press.release + .14, t);
+          const push = (press.depth ?? .012) * step(press.press, press.press + .08, t) * (1 - step(press.release, press.release + .1, t));
+          goal.addScaledVector(n, (approach - push) / k);
+          const tipRest = V("wrist_" + f, "elbow_" + f).add(Vc(...M["tip_" + f]).sub(V("wrist_" + f)));
+          const restTip = S.clone().add(V("elbow_" + f, "shoulder_" + f).applyQuaternion(restQ)).add(tipRest.applyQuaternion(restQ.clone().multiply(rot(X, restEl))));
+          const want = restTip.lerp(goal, rw), T = want.clone(), ep = Vc(sg * .55, -1, -.35), b = step(0, .2, rw);
+          for (let pass = 0; pass < 3; pass++) {   // the fingertip is not on the forearm line: aim, measure the real tip, re-aim
+            const {E, d} = twoBone(S, T, UA, FA, ep);
+            sh.quaternion.copy(restQ.clone().slerp(limbQ(S, E, T, 1, V("elbow_" + f, "shoulder_" + f)), b));
+            el.rotation.set(restEl + (-(Math.PI - interior(UA, FA, d)) - restEl) * b, 0, 0);
+            wr.rotation.set(.05 * b, 0, 0);
+            g.updateWorldMatrix(true, true);
+            T.add(want.clone().sub(g.worldToLocal(tips[f].getWorldPosition(Vc()))).multiplyScalar(b));
+          }
+        } else { sh.quaternion.copy(restQ); el.rotation.set(restEl, 0, 0); }
+      }
+      g.userData.pose = rw > .02 ? "point" : walk && t > walk.t0 && t < p.steps[p.steps.length - 1].td ? "walk" : "stand";
+      deform(); return g;
+    }
+    return {act, plan, travel};
+  })();
+  // +Y 위, +Z 정면. h 는 맨머리 키, 안전모는 그 위에 쓴다. 모든 자세는 이전 프레임과 무관하다.
   // human(scene,h,color,{site,suit}) 또는 human(scene,h,{site,color,suit}); 예전 세 인수 호출도 그대로.
+  // 몸 겉모양은 kit/human_body.js(Quaternius UAL 마네킹, CC0)를 관절 피벗으로 CPU 에서 변형한 보통 메시라
+  // 검사기가 자세 그대로의 표면을 읽는다. 동작은 pose(이름) 또는 act(t, {walk, look, press}).
   function human(scene, h = 1.75, color = 0x2a3238, opts = {}) {
     if (color && typeof color === "object" && !color.isColor) { opts = color; color = opts.color ?? 0x2a3238; }
     const site = opts.site || window.SITE || "construction", clean = site === "lab" && opts.suit === "cleanroom";
+    const BODY = window.HUMAN_BODY, R = BODY.rest, M = BODY.markers;
     const g = new THREE.Group(), body = new THREE.Group(), joints = {};
     g.scale.setScalar(h / 1.75); g.add(body);
     g.userData.rvHuman = true; g.userData.site = site;
-    const mat = c => new THREE.MeshStandardMaterial({color: c, roughness: 0.82, metalness: 0});
+    const mat = (c, extra = {}) => new THREE.MeshStandardMaterial({color: c, roughness: 0.78, metalness: 0, ...extra});
+    const shade = (c, k) => new THREE.Color(c).multiplyScalar(k);
     const cloth = mat(clean ? 0xe2e9eb : color), skin = mat(0xb68a70), boot = mat(0x242b30);
     const glove = mat(site === "office" ? 0xb68a70 : clean ? 0xd4dfe3 : 0x69777a);
-    const trim = mat(0xbfcbd1), hi = mat(0xe9ad25), helmet = mat(site === "lab" ? 0xf0f2ec : 0xefbd35);
+    const helmet = mat(site === "lab" ? 0xf0f2ec : 0xefbd35), hi = mat(0xe9ad25), trim = mat(0xbfcbd1), face = mat(0xb68a70);
+    const seam = m => mat(shade(m.color, .72), {roughness: .6});
+    const V = (a, b) => new THREE.Vector3(R[a][0] - (b ? R[b][0] : 0), R[a][1] - (b ? R[b][1] : 0), R[a][2] - (b ? R[b][2] : 0));
     function mesh(parent, part, geo, material, x = 0, y = 0, z = 0) {
       const o = new THREE.Mesh(geo, material); o.position.set(x, y, z);
       o.userData.rvPart = part; o.castShadow = true; o.receiveShadow = true; parent.add(o); return o;
     }
-    function oval(parent, part, material, x, y, z, rx, ry, rz) {
-      const o = mesh(parent, part, new THREE.SphereGeometry(1, 20, 14), material, x, y, z);
-      o.scale.set(rx, ry, rz); return o;
+    function pivot(parent, name, v) {
+      const o = new THREE.Group(); o.name = name; o.position.copy(v); parent.add(o); joints[name] = o; return o;
     }
-    function pivot(parent, name, x, y, z) {
-      const o = new THREE.Group(); o.name = name; o.position.set(x, y, z); parent.add(o); joints[name] = o; return o;
+    const pelvis = pivot(body, "pelvis", V("pelvis"));
+    const torso = pivot(pelvis, "spine", V("spine", "pelvis"));
+    const neck = pivot(torso, "neck", V("neck", "spine"));
+    const head = pivot(neck, "head", V("head", "neck"));
+    for (const s of ["l", "r"]) {
+      const sh = pivot(torso, "shoulder_" + s, V("shoulder_" + s, "spine"));
+      const el = pivot(sh, "elbow_" + s, V("elbow_" + s, "shoulder_" + s));
+      pivot(el, "wrist_" + s, V("wrist_" + s, "elbow_" + s));
+      const hp = pivot(pelvis, "hip_" + s, V("hip_" + s, "pelvis"));
+      const kn = pivot(hp, "knee_" + s, V("knee_" + s, "hip_" + s));
+      pivot(kn, "ankle_" + s, V("ankle_" + s, "knee_" + s));
     }
-    function limb(parent, part, length, radius, material) {
-      return mesh(parent, part, new THREE.CapsuleGeometry(radius, length - 2 * radius, 6, 16), material, 0, -length / 2);
+    // Skin: one ordinary Mesh per body part and surface (main / joint seams), deformed from the pivots.
+    const bytes = s => Uint8Array.from(atob(s), c => c.charCodeAt(0)).buffer;
+    const pivots = BODY.pivots.map(n => joints[n]);
+    const restInv = BODY.pivots.map(n => new THREE.Matrix4().makeTranslation(-R[n][0], -R[n][1], -R[n][2]));
+    const surfaceOf = p => /^hand/.test(p.part) ? glove : /^foot/.test(p.part) ? boot : p.pivot === "head" ? skin : cloth;
+    const seams = new Map(), skins = [];
+    for (const p of BODY.parts) {
+      const rest = new Float32Array(bytes(p.pos)), n8 = new Int8Array(bytes(p.nrm));
+      const nrm = Float32Array.from(n8, x => x / 127), geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(rest.slice(), 3));
+      geo.setAttribute("normal", new THREE.BufferAttribute(nrm.slice(), 3));
+      geo.setIndex(new THREE.BufferAttribute(new Uint16Array(bytes(p.idx)), 1));
+      const base = surfaceOf(p);
+      let material = base;
+      if (p.kind !== "main") { if (!seams.has(base)) seams.set(base, seam(base)); material = seams.get(base); }
+      const o = mesh(g, p.part, geo, material);
+      o.userData.rvSkin = true;
+      skins.push({o, rest, nrm, piv: new Uint8Array(bytes(p.piv)), wgt: new Uint8Array(bytes(p.wgt))});
     }
-    const pelvis = pivot(body, "pelvis", 0, .94, 0);
-    oval(pelvis, "pelvis", cloth, 0, 0, 0, .168, .13, .105);
-    const torso = pivot(pelvis, "spine", 0, .08, 0);
-    const profile = [[.128,0],[.139,.05],[.15,.16],[.187,.31],[.19,.38],[.165,.425],[.072,.45]];
-    const chest = mesh(torso, "torso", new THREE.LatheGeometry(profile.map(([r,y]) => new THREE.Vector2(r,y)), 24), cloth);
-    chest.scale.z = .63;
-    // Front seam, collar and pockets follow the jacket, not the world.
-    mesh(torso, "torso", new THREE.BoxGeometry(.009,.34,.008), trim, 0,.21,.105);
-    for (const s of [-1,1]) {
-      const collar = mesh(torso, "torso", new THREE.BoxGeometry(.068,.045,.018), cloth, s*.046,.414,.055);
-      collar.rotation.z=s*.35;
-      mesh(torso, "torso", new THREE.BoxGeometry(.072,.069,.015), cloth, s*.092,.29,.115);
+    const D = pivots.map(() => new THREE.Matrix4()), inv = new THREE.Matrix4();
+    let signature = NaN;
+    function deform() {
+      g.updateWorldMatrix(true, true);
+      inv.copy(g.matrixWorld).invert();
+      let sig = 0;
+      pivots.forEach((pv, i) => { D[i].multiplyMatrices(inv, pv.matrixWorld).multiply(restInv[i]);
+        const e = D[i].elements; for (let k = 0; k < 15; k++) sig += e[k] * (k + 1 + i * 16); });
+      if (sig === signature) return; signature = sig;
+      for (const s of skins) {
+        const pos = s.o.geometry.attributes.position.array, nor = s.o.geometry.attributes.normal.array;
+        for (let v = 0, n = s.rest.length / 3; v < n; v++) {
+          const x = s.rest[3 * v], y = s.rest[3 * v + 1], z = s.rest[3 * v + 2];
+          const a = s.nrm[3 * v], b = s.nrm[3 * v + 1], c = s.nrm[3 * v + 2];
+          let px = 0, py = 0, pz = 0, nx = 0, ny = 0, nz = 0;
+          for (let k = 0; k < 4; k++) {
+            const w = s.wgt[4 * v + k]; if (!w) continue;
+            const e = D[s.piv[4 * v + k]].elements, f = w / 255;
+            px += f * (e[0] * x + e[4] * y + e[8] * z + e[12]); py += f * (e[1] * x + e[5] * y + e[9] * z + e[13]); pz += f * (e[2] * x + e[6] * y + e[10] * z + e[14]);
+            nx += f * (e[0] * a + e[4] * b + e[8] * c); ny += f * (e[1] * a + e[5] * b + e[9] * c); nz += f * (e[2] * a + e[6] * b + e[10] * c);
+          }
+          const l = Math.hypot(nx, ny, nz) || 1;
+          pos[3 * v] = px; pos[3 * v + 1] = py; pos[3 * v + 2] = pz; nor[3 * v] = nx / l; nor[3 * v + 1] = ny / l; nor[3 * v + 2] = nz / l;
+        }
+        s.o.geometry.attributes.position.needsUpdate = true; s.o.geometry.attributes.normal.needsUpdate = true;
+        s.o.geometry.computeBoundingBox(); s.o.geometry.computeBoundingSphere();
+      }
     }
-    const neck = pivot(torso, "neck", 0, .46, 0);
-    limb(neck, "head", .09, .045, clean ? cloth : skin).position.y = .025;
-    const head = pivot(neck, "head", 0, .155, 0);
-    // Narrow chin, jaw, cheek and cranium: a contour rather than a ball, without facial features.
-    const skull = [[.042,-.105],[.062,-.092],[.081,-.057],[.093,-.012],[.095,.043],[.078,.091],[.035,.11],[0,.114]];
-    const face = mesh(head, "head", new THREE.LatheGeometry(skull.map(([r,y])=>new THREE.Vector2(r,y)),24), skin,0,0,.008);
-    face.scale.z = .87;
-    for (const s of [-1,1]) oval(head,"head",skin,s*.094,-.015,0,.014,.026,.016);
+    for (const s of skins) s.o.onBeforeRender = deform;   // joints moved directly after pose() still reach the surface
+    // Outfit pieces ride on the head and torso pivots, sized from the body's measured head and chest.
+    const hc = new THREE.Vector3().addVectors(new THREE.Vector3(...M.head_min), new THREE.Vector3(...M.head_max)).multiplyScalar(.5).sub(V("head"));
+    const hr = (M.head_max[0] - M.head_min[0]) / 2, top = M.head_max[1] - R.head[1];
     if (clean) {
-      // Hood leaves the face opening visible; the rear shell covers hair/ears and joins the collar.
-      const hood = mesh(head,"head",new THREE.SphereGeometry(.106,24,16,0,Math.PI),cloth,0,.002,-.009);
-      hood.rotation.y=Math.PI; hood.scale.set(1,1.12,1);
+      const hood = mesh(head, "head", new THREE.SphereGeometry(hr * 1.14, 24, 16, 0, Math.PI), cloth, 0, hc.y, hc.z - .012);
+      hood.rotation.y = Math.PI; hood.scale.set(1, 1.3, 1.25);
     }
     if (site !== "office") {
-      const cap = mesh(head,"head",new THREE.SphereGeometry(.116,24,12,0,Math.PI*2,0,Math.PI/2),helmet,0,.051,0);
-      cap.scale.y=.72;
-      mesh(head,"head",new THREE.CylinderGeometry(.126,.126,.014,32),helmet,0,.052,.008);
-      mesh(head,"head",new THREE.BoxGeometry(.028,.025,.15),helmet,0,.129,0);
+      const hat = new THREE.Group(); hat.position.set(0, top - .095, hc.z); head.add(hat);
+      const cap = mesh(hat, "head", new THREE.SphereGeometry(hr * 1.2, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), helmet);
+      cap.scale.set(1, 1.02, 1.32);
+      mesh(hat, "head", new THREE.CylinderGeometry(hr * 1.3, hr * 1.3, .012, 32), helmet, 0, .004, .012).scale.z = 1.4;
+      mesh(hat, "head", new THREE.BoxGeometry(.026, .022, hr * 2.4), helmet, 0, hr * 1.2, 0);
     } else {
-      const hair=mesh(head,"head",new THREE.SphereGeometry(.097,20,12,0,Math.PI*2,0,1.25),boot,0,.025,0);
-      hair.scale.z=.9;
+      const hair = mesh(head, "head", new THREE.SphereGeometry(hr * 1.07, 20, 12, 0, Math.PI * 2, 0, 1.25), boot, 0, hc.y + .012, hc.z - .006);
+      hair.scale.set(1, 1.08, 1.25);
     }
-    if (site === "construction") {
-      const vest = mesh(torso,"torso",new THREE.LatheGeometry([[.145,.04],[.16,.18],[.199,.32],[.198,.38]].map(([r,y])=>new THREE.Vector2(r,y)),24),hi);
-      vest.scale.z=.65;
-      for (const y of [.13,.2]) {
-        const band=mesh(torso,"torso",new THREE.CylinderGeometry(y===.13?.159:.175,y===.13?.159:.175,.026,24,1,true),trim,0,y,0);
-        band.scale.z=.66;
-      }
-      for (const s of [-1,1]) mesh(torso,"torso",new THREE.BoxGeometry(.027,.17,.012),trim,s*.108,.31,.125);
+    const tw = (M.torso_max[0] - M.torso_min[0]) / 2, td = (M.torso_max[2] - M.torso_min[2]) / 2;
+    const tz = (M.torso_max[2] + M.torso_min[2]) / 2 - R.spine[2], ty0 = M.torso_min[1] - R.spine[1];
+    if (site === "construction") {   // hi-vis vest: the chest surface pushed out 12 mm, deformed with the body
+      const src = BODY.parts.find(p => p.pivot === "spine" && p.kind === "main"), base = skins.find(s => s.o.userData.rvPart === "torso" && s.o.material === cloth);
+      const y0 = M.torso_min[1] + .03, y1 = M.torso_max[1] - .1, rest = base.rest.slice(), keep = [];
+      for (let v = 0; v < rest.length / 3; v++) for (let c = 0; c < 3; c++) rest[3 * v + c] += base.nrm[3 * v + c] * .012;
+      const idx = new Uint16Array(bytes(src.idx)), inside = v => rest[3 * v + 1] > y0 && rest[3 * v + 1] < y1;
+      for (let i = 0; i < idx.length; i += 3) if (inside(idx[i]) && inside(idx[i + 1]) && inside(idx[i + 2])) keep.push(idx[i], idx[i + 1], idx[i + 2]);
+            const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(rest.slice(), 3)); geo.setAttribute("normal", new THREE.BufferAttribute(base.nrm.slice(), 3));
+      geo.setIndex(keep);
+      const vest = mesh(g, "torso", geo, hi);
+      vest.userData.rvSkin = true; vest.onBeforeRender = deform;
+      skins.push({o: vest, rest, nrm: base.nrm, piv: base.piv, wgt: base.wgt});
     }
-    const feet=[], hands=[];
-    function marker(parent,x,y,z) { const o=new THREE.Object3D();o.position.set(x,y,z);parent.add(o);return o; }
-    for (const [side,s] of [["l",-1],["r",1]]) {
-      const shoulder=pivot(torso,"shoulder_"+side,s*.205,.405,0);
-      limb(shoulder,"upperarm_"+side,.29,.057,cloth);
-      oval(shoulder,"upperarm_"+side,cloth,0,-.018,0,.065,.069,.067);
-      const elbow=pivot(shoulder,"elbow_"+side,0,-.29,0);
-      oval(elbow,"forearm_"+side,cloth,0,0,0,.046,.053,.047);
-      limb(elbow,"forearm_"+side,.265,.045,cloth);
-      const wrist=pivot(elbow,"wrist_"+side,0,-.265,0);
-      oval(wrist,"hand_"+side,glove,0,0,0,.028,.032,.025);
-      oval(wrist,"hand_"+side,glove,0,-.041,.007,.038,.052,.023);
-      // Four joined fingers with rounded tips, and a separate opposed thumb.
-      for (let i=0;i<4;i++) {
-        const finger=mesh(wrist,"hand_"+side,new THREE.CapsuleGeometry(.008,.032,4,8),glove,(i-1.5)*.017,-.087,.008);
-        finger.rotation.x=-.15;
-      }
-      const thumb=mesh(wrist,"hand_"+side,new THREE.CapsuleGeometry(.011,.031,4,8),glove,-s*.039,-.04,.022);
-      thumb.rotation.z=-s*.65;
-      hands.push(marker(wrist,0,-.041,.03));
-      const hip=pivot(pelvis,"hip_"+side,s*.095,-.04,0);
-      limb(hip,"thigh_"+side,.42,.076,cloth);
-      const knee=pivot(hip,"knee_"+side,0,-.42,0);
-      oval(knee,"shin_"+side,cloth,0,0,0,.062,.069,.066);
-      limb(knee,"shin_"+side,.39,.056,cloth);
-      const ankle=pivot(knee,"ankle_"+side,0,-.39,0);
-      oval(ankle,"foot_"+side,boot,0,-.04,.046,.061,.05,.125);
-      limb(ankle,"foot_"+side,.12,.055,boot).position.y=.008;
-      feet.push(marker(ankle,0,-.09,.046));
-      if (site !== "office") {
-        mesh(elbow,"forearm_"+side,new THREE.CylinderGeometry(.046,.046,.025,16),trim,0,-.225,0);
-        mesh(knee,"shin_"+side,new THREE.CylinderGeometry(.058,.058,.026,16),trim,0,-.31,0);
-      }
+    const tablet = mesh(torso, "torso", new THREE.BoxGeometry(.24, .16, .014), boot, 0, .2, tz + td + .24);
+    mesh(tablet, "torso", new THREE.BoxGeometry(.213, .131, .003), mat(0x588695), 0, 0, .009);
+    const feet = [], hands = [];
+    function marker(parent, at, from) { const o = new THREE.Object3D(); o.position.set(at[0] - R[from][0], at[1] - R[from][1], at[2] - R[from][2]); parent.add(o); return o; }
+    for (const s of ["l", "r"]) {
+      hands.push(marker(joints["wrist_" + s], M["palm_" + s], "wrist_" + s));
+      feet.push(marker(joints["ankle_" + s], M["sole_" + s], "ankle_" + s));
     }
-    const tablet=mesh(torso,"torso",new THREE.BoxGeometry(.24,.16,.014),boot,0,.21,.37);
-    mesh(tablet,"torso",new THREE.BoxGeometry(.213,.131,.003),mat(0x588695),0,0,.009);
-    g.userData.contacts={seat:marker(pelvis,0,-.13,0),feet,hands};
+    g.userData.contacts = {seat: marker(pelvis, M.seat, "pelvis"), feet, hands};
+    const tips = {l: marker(joints.wrist_l, M.tip_l, "wrist_l"), r: marker(joints.wrist_r, M.tip_r, "wrist_r")};
     // Old scenes address children[0..5]: head, torso, left leg/arm, right leg/arm.
     // Keep the actual part/joint roots there, with hip/shoulder rotation centres.
-    const controls=[head,torso,joints.hip_l,joints.shoulder_l,joints.hip_r,joints.shoulder_r];
+    const controls = [head, torso, joints.hip_l, joints.shoulder_l, joints.hip_r, joints.shoulder_r];
     for (const o of controls) g.attach(o);
-    g.remove(body);g.add(body);
-    const rest=controls.map(o=>o.position.clone());
+    g.remove(body); g.add(body);
+    for (const s of skins) { g.remove(s.o); g.add(s.o); }
+    const rest = controls.map(o => o.position.clone()), restPelvis = R.pelvis[1];
+    const headFromNeck = V("head", "neck"), sitPelvis = (R.knee_l[1] - R.ankle_l[1]) + R.ankle_l[1] + (R.pelvis[1] - R.hip_l[1]);
     // The target of point is a world-space Vector3 (or [x,y,z]).
     g.pose = function(name, {t = 0, target} = {}) {
-      for (const o of Object.values(joints)) o.rotation.set(0,0,0);
-      controls.forEach((o,i)=>o.position.copy(rest[i]));
-      pelvis.position.y=.94; tablet.visible=false;
-      for (const [side,s] of [["l",-1],["r",1]]) {
-        joints["shoulder_"+side].rotation.z=s*.075;
-        joints["elbow_"+side].rotation.x=-.08;
+      for (const o of Object.values(joints)) o.rotation.set(0, 0, 0);
+      controls.forEach((o, i) => o.position.copy(rest[i]));
+      pelvis.position.set(...R.pelvis); tablet.visible = false;
+      for (const [side, s] of [["l", -1], ["r", 1]]) {
+        joints["shoulder_" + side].rotation.z = s * .02;
+        joints["elbow_" + side].rotation.x = -.08;
       }
       if (name === "walk") {
-        const phase=t*Math.PI*2, swing=Math.sin(phase)*.48;
-        pelvis.position.y+=.018*(1-Math.cos(phase*2));
-        for (const [side,s] of [["l",-1],["r",1]]) {
-          joints["hip_"+side].rotation.x=s*swing;
-          joints["knee_"+side].rotation.x=Math.max(0,-s*Math.sin(phase))*.7;
-          joints["shoulder_"+side].rotation.x=-s*swing*.75;
+        const phase = t * Math.PI * 2, swing = Math.sin(phase) * .48;
+        pelvis.position.y += .018 * (1 - Math.cos(phase * 2));
+        for (const [side, s] of [["l", -1], ["r", 1]]) {
+          joints["hip_" + side].rotation.x = s * swing;
+          joints["knee_" + side].rotation.x = Math.max(0, -s * Math.sin(phase)) * .7;
+          joints["shoulder_" + side].rotation.x = -s * swing * .75;
         }
       } else if (name === "sit" || name === "tablet") {
-        for (const side of ["l","r"]) {
-          joints["shoulder_"+side].rotation.x=-.35;
-          joints["elbow_"+side].rotation.x=-1.22;
+        for (const side of ["l", "r"]) {
+          joints["shoulder_" + side].rotation.x = -.35;
+          joints["elbow_" + side].rotation.x = -1.22;
         }
         if (name === "sit") {
-          pelvis.position.y=.55;
-          for (const [side,s] of [["l",-1],["r",1]]) {
-            joints["hip_"+side].rotation.x=-Math.PI/2;
-            joints["knee_"+side].rotation.x=Math.PI/2;
-            joints["shoulder_"+side].rotation.set(.12,0,s*.2);
-            joints["elbow_"+side].rotation.x=-1.35;
-            joints["wrist_"+side].rotation.y=Math.PI;
+          pelvis.position.y = sitPelvis;
+          for (const [side, s] of [["l", -1], ["r", 1]]) {
+            joints["hip_" + side].rotation.x = -Math.PI / 2;
+            joints["knee_" + side].rotation.x = Math.PI / 2;
+            joints["shoulder_" + side].rotation.set(.12, 0, s * .2);
+            joints["elbow_" + side].rotation.x = -1.35;
+            joints["wrist_" + side].rotation.y = -s * Math.PI / 2;   // palms (inward at rest) turn down onto the controls
           }
         } else {
-          tablet.visible=true;tablet.rotation.x=-.6;
-          neck.rotation.x=.38;
-          for (const [side,s] of [["l",-1],["r",1]]) {
-            joints["shoulder_"+side].rotation.z=-s*.14;
-            joints["elbow_"+side].rotation.x=-1.55;
+          tablet.visible = true; tablet.rotation.x = -.6;
+          neck.rotation.x = .38;
+          for (const [side, s] of [["l", -1], ["r", 1]]) {
+            joints["shoulder_" + side].rotation.z = -s * .14;
+            joints["elbow_" + side].rotation.x = -1.55;
           }
         }
       } else if (name === "point") {
-        g.updateWorldMatrix(true,true);
-        const aim=target ? (target.isVector3 ? target.clone() : new THREE.Vector3(...target)) : g.localToWorld(new THREE.Vector3(-.7,1.4,1));
-        const shoulder=joints.shoulder_l;
-        shoulder.parent.worldToLocal(aim);aim.sub(shoulder.position).normalize();
-        shoulder.quaternion.setFromUnitVectors(new THREE.Vector3(0,-1,0),aim);
-        joints.elbow_l.rotation.set(0,0,0);
-      } else if (name !== "stand") throw new Error("Unknown human pose: "+name);
+        g.updateWorldMatrix(true, true);
+        const aim = target ? (target.isVector3 ? target.clone() : new THREE.Vector3(...target)) : g.localToWorld(new THREE.Vector3(-.7, 1.4, 1));
+        const shoulder = joints.shoulder_l;
+        shoulder.parent.worldToLocal(aim); aim.sub(shoulder.position).normalize();
+        shoulder.quaternion.setFromUnitVectors(V("elbow_l", "shoulder_l").normalize(), aim);
+        joints.elbow_l.rotation.set(0, 0, 0);
+      } else if (name !== "stand") throw new Error("Unknown human pose: " + name);
       // Direct legacy roots still follow the pelvis height and neck in pose().
-      for (const o of controls) o.position.y+=pelvis.position.y-.94;
-      head.position.set(0,.155,0).applyQuaternion(neck.quaternion).add(neck.position).add(torso.position);
-      head.quaternion.copy(neck.quaternion);
-      g.userData.pose=name;g.updateWorldMatrix(true,true);return g;
+      for (const o of controls) o.position.y += pelvis.position.y - restPelvis;
+      head.position.copy(headFromNeck).applyQuaternion(neck.quaternion).add(neck.position).applyQuaternion(torso.quaternion).add(torso.position);
+      head.quaternion.copy(torso.quaternion).multiply(neck.quaternion);
+      g.userData.pose = name; deform(); return g;
     };
-    g.pose("stand"); g.visible=false; scene.add(g);
-    live.push({reset() { g.visible=false; }}); return g;
+    g.act = (t, spec) => HUMAN_MOTION.act(g, t, spec, {R, M, joints, tips, deform});
+    g.pose("stand"); g.visible = false; scene.add(g);
+    live.push({reset() { g.visible = false; }}); return g;
   }
   // 앞 물체: 카메라 가까이 스치는 세운 기둥(피사계 심도로 흐려져 깊이감). 보일 때만 visible
   function prop(scene, {r = 0.07, h = 4, color = 0x9aa3a9} = {}) {
