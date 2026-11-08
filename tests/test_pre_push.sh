@@ -20,6 +20,7 @@ g add scripts
 g commit -qm "Initial tree"
 g remote add origin "$T/remote.git"
 g push -q origin main
+initial_main="$(g rev-parse HEAD)"
 g switch -qc topic
 echo clean > topic.txt
 g add topic.txt
@@ -57,6 +58,31 @@ check() {
 check rebased-force-push 0 "$old_remote"
 check new-branch-clean 0 "$ZERO"
 
+# Maintenance history diverges before main's newer commits.
+g switch -qc release-x "$initial_main"
+echo maintenance > release.txt
+g add release.txt
+GIT_COMMITTER_NAME=SyntheticForbiddenMarker g commit -qm "Maintenance change"
+g push -q origin release-x
+g switch -qc maintenance-topic
+g commit -q --allow-empty -m "Maintenance clean change"
+g commit -q --allow-empty -m "Maintenance clean tip"
+check maintenance-branch-clean 0 "$ZERO"
+g commit -q --allow-empty -m "SyntheticForbiddenMarker"
+g commit -q --allow-empty -m "Clean tip"
+check maintenance-branch-own-message 1 "$ZERO"
+g switch -q topic
+
+# A published tip has no new history, but its tree must still be scanned.
+g switch -qc published-tree
+echo SyntheticForbiddenMarker > published.txt
+g add published.txt
+g commit -qm "Published tree"
+g push -q origin published-tree
+check published-tree-leak 1 "$ZERO"
+g --git-dir="$T/remote.git" update-ref -d refs/heads/published-tree
+g switch -q topic
+
 # A leak earlier in the branch must be caught even when the tip is clean.
 g switch -qc own-message "$clean_tip"
 g commit -q --allow-empty -m "SyntheticForbiddenMarker"
@@ -86,12 +112,14 @@ g update-ref refs/remotes/origin/main "$(g rev-parse HEAD)"
 g commit -q --allow-empty -m "Branch built on stale tracking main"
 check tracking-ahead-update 1 "$old_remote"
 
-# ls-remote's pattern also matches this suffix; the real main must win.
+# A public decoy may be excluded, but its private descendant must be scanned.
 g push -q origin HEAD^:refs/heads/a/refs/heads/main
 first_ref="$(g ls-remote "$T/remote.git" refs/heads/main | awk 'NR == 1 { print $2 }')"
 if [[ "$first_ref" != refs/heads/a/refs/heads/main ]]; then
   echo "FAIL fixture did not advertise the decoy first"; exit 1
 fi
+g commit -q --allow-empty -m "SyntheticForbiddenMarker"
+g commit -q --allow-empty -m "Private descendant tip"
 check decoy-remote-main 1 "$old_remote"
 g --git-dir="$T/remote.git" update-ref -d refs/heads/a/refs/heads/main
 
@@ -107,11 +135,16 @@ if g cat-file -e "$remote_only^{commit}" 2>/dev/null; then
 fi
 check remote-main-not-fetched 1 "$old_remote" 'fetch origin main first'
 g --git-dir="$T/remote.git" update-ref refs/heads/main "$remote_main"
+g --git-dir="$T/remote.git" update-ref refs/heads/unfetched "$remote_only"
+check unfetched-remote-branch 0 "$old_remote"
+g --git-dir="$T/remote.git" update-ref -d refs/heads/unfetched
 
 check remote-main-unreadable 1 "$old_remote" 'fetch origin main first' "$T/missing.git"
+g --git-dir="$T/remote.git" update-ref refs/heads/a/refs/heads/main "$remote_main"
 g --git-dir="$T/remote.git" update-ref -d refs/heads/main
 check remote-main-missing 1 "$old_remote" 'fetch origin main first'
 g --git-dir="$T/remote.git" update-ref refs/heads/main "$remote_main"
+g --git-dir="$T/remote.git" update-ref -d refs/heads/a/refs/heads/main
 
 g checkout -q --orphan unrelated "$clean_tip"
 g commit -qm "Unrelated root"
