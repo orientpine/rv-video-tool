@@ -414,9 +414,11 @@ MESH_CHECK = "() => {\n" + LEGACY_HUMAN + "\nconst PERSON_NAME=" + PERSON_NAME +
     return true;
   }
   function move(o, up, amount) {
+    const position = o.position.clone();
     o.updateWorldMatrix(true,false);
     const p = point(o).addScaledVector(up,amount);
     o.position.copy(o.parent ? o.parent.worldToLocal(p) : p); o.updateWorldMatrix(false,true);
+    return {part:o, position};
   }
   window.__rvClearance = {
     begin() { scenes.clear(); cameras.clear(); frameTargets=null; frameHumans=null; prints = new Map(); },
@@ -424,18 +426,29 @@ MESH_CHECK = "() => {\n" + LEGACY_HUMAN + "\nconst PERSON_NAME=" + PERSON_NAME +
     boxes(ids) { return ids.map(id => { for (const s of scenes) { const o = s.getObjectById(id); if (o) return fingerprint(o); } return null; }); },
     mutate(kind) {
       if (kind === 'detach') {
-        const d = declarations().attachments.find(d => visible(d.part) && visible(d.support));
-        if (d) { move(d.part,new THREE.Vector3(0,1,0),.02); return d.part; }
+        for (const d of declarations().attachments) {
+          if (!visible(d.part) || !visible(d.support) || belongs(d.support,d.part)) continue;
+          const a = bounds(d.part), b = bounds(d.support);
+          if (a.isEmpty() || b.isEmpty()) continue;
+          // A sleeve can slide along +Y without losing contact. Move beyond the
+          // support's world bounds, using the shortest axis escape with a real gap.
+          const margin = .02 + d.tol_mm/1000;
+          const escapes = [0,1,2].flatMap(k => [
+            {k, sign:1, amount:Math.max(.02,b.max.getComponent(k)-a.min.getComponent(k)+margin)},
+            {k, sign:-1, amount:Math.max(.02,a.max.getComponent(k)-b.min.getComponent(k)+margin)}]);
+          const e = escapes.sort((a,b) => a.amount-b.amount)[0];
+          return move(d.part,V().setComponent(e.k,e.sign),e.amount);
+        }
         const targets=autoTargets().sort((a,b)=>bounds(a.target).getSize(V()).lengthSq()-bounds(b.target).getSize(V()).lengthSq());
         for(const entry of targets) {
-          move(entry.target,new THREE.Vector3(0,1,0),.02);
-          if(autoGap(entry)>.005+1e-8)return entry.target;
-          move(entry.target,new THREE.Vector3(0,1,0),-.02);
+          const moved = move(entry.target,new THREE.Vector3(0,1,0),.02);
+          if(autoGap(entry)>.005+1e-8)return moved;
+          entry.target.position.copy(moved.position); entry.target.updateWorldMatrix(false,true);
         }
       }
       if (kind === 'sink') {
         const d = declarations().seats.find(d => visible(d.human));
-        if (d) { move(d.human,new THREE.Vector3(...d.up).normalize(),-.1); return d.human; }
+        if (d) return move(d.human,new THREE.Vector3(...d.up).normalize(),-.1);
       }
       return null;
     },
@@ -631,15 +644,11 @@ async def measure(pw, html, a, batches):
           batch = await p.evaluate("""async ([a, b, mutation, rules]) => { const out = [];
           for (let i = a; i < b; i++) {
             window.CLEAR = null; __rvClearance.begin(); await window.renderAt(i / 30);
-            const moved = __rvClearance.mutate(mutation);
+            const change = __rvClearance.mutate(mutation), moved = change && change.part;
             const ext = rules === 'legacy' ? {count:0,findings:[],targets:{attach:0,human:0,seat:0,auto:0,machine:0}} : __rvClearance.check();
             ext.mutated = !!moved; ext.moved_id = moved && moved.uuid; ext.drawn = __rvClearance.drawn();
             // Restore the injected displacement even when a scene does not rewrite its transform.
-            if (moved) { const d = mutation === 'detach' ? .02 : -.1;
-              const decl = mutation === 'sink' ? KIT.fx.clearance.seats.find(x => x.human === moved) : null;
-              const up = mutation === 'detach' ? new THREE.Vector3(0,1,0) : new THREE.Vector3(...decl.up).normalize();
-              const world = moved.getWorldPosition(new THREE.Vector3()).addScaledVector(up,-d);
-              moved.position.copy(moved.parent ? moved.parent.worldToLocal(world) : world); moved.updateWorldMatrix(false,true); }
+            if (moved) { moved.position.copy(change.position); moved.updateWorldMatrix(false,true); }
             out.push([i, rules === 'mesh' ? null : window.CLEAR, ext]); }
           return out; }""", [f0, f1, a.mutate, a.rules])
           rows += batch
@@ -758,6 +767,10 @@ async def main(a):
             runs.append([i, i, val, w])
     for s_, e_, v_, w in runs[:40]:
         print(f"  {s_ / 30:7.2f} ~ {e_ / 30:7.2f} s (프레임 {s_}~{e_}) {w} · 측정 {v_:.1f} mm")
+    if a.mutate == "detach" and not bad and not errs and not any(ext["mutated"] for _, _, ext in rows):
+        print("CLEARANCE_MUTATION SKIP no detachable target (no attachment or auto target loses contact)")
+        print("MUTATION_SKIP")
+        sys.exit(0)
     if n == 0 and ext_n == 0 and not errs:
         print(f"CLEARANCE_CHECK {name} SKIP (장면이 window.CLEAR 를 적지 않음)")
         sys.exit(0)
