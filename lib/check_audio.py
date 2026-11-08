@@ -119,6 +119,7 @@ def stems_main(a):
         print(f"mutation={a.mutate} {kind} {extra}")
         if expect == "cue" and not cues:
             print("SFX_MUTATION SKIP no cues")
+            print("MUTATION_SKIP")
         else:
             print("MUTATION_CAUGHT" if any(rule == expect for rule, _ in failures) else "MUTATION_NOT_CAUGHT")
     print(f"runtime_s={time.monotonic()-start:.3f}")
