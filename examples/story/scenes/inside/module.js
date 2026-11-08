@@ -21,6 +21,7 @@ SCENES.inside = (() => {
       tag = KIT.label(overlay, "모터", {target: shelf.root.getObjectByName("motor"), color: "#F2C14E", ink: "#16323C"});
       const down = KIT.wordT(NAME, "내려옵니다");
       move.set(1); shelf.follow();
+      scene.updateMatrixWorld(true);
       zoom = KIT.shot.action(NAME, {t: down - 0.2, dur: 1.6, from: base, at: shelf.tray, keep: [shelf.tray], zoom: 1.6});
       move.set(0); shelf.follow();
     },
@@ -31,6 +32,7 @@ SCENES.inside = (() => {
       // Out first (with "끌어냅니다"), then down (with "내려옵니다"): path point 1 is half way.
       move.set(0.5 * KIT.smooth(pull - 0.4, pull + 1.0, t) + 0.5 * KIT.smooth(down - 0.3, down + 1.4, t));
       shelf.follow();
+      KIT.fx.pulse(shelf.root, t, {period: 1.4, amount: 0.7});
       KIT.fx.focus(shelf.tray);
       KIT.camSet(cam, zoom.at(t));
       const m = shelf.root.getObjectByName("motor").getWorldPosition(new THREE.Vector3());
