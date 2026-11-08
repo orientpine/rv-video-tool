@@ -104,6 +104,13 @@ async def main():
                 "cracked arm in a cracked body from the first frame, unchanged": (await run_bed(p, ["crack", [.3, .3, .3, 1.15, .6, 0], "crack", [[0, 0], [0, 0]]]), False),
                 "cracked arm in a cracked body from the first frame, then 0.1 m deeper": (await run_bed(p, ["crack", [.3, .3, .3, 1.15, .6, 0], "crack", [[0, 0], [0, -.1]]]), True)}
         closed_box = await run_bed(p, ["closed", [.3, .3, .3, 0, .5, 0], False])
+        # The real page side of the identity check: the first sighting carries both boxes, and boxes() answers by id
+        # (null for an id that is not in a drawn scene).
+        raw = await p.evaluate(CASE, [[3.0, 0.9], None])
+        sighted = [m for out in raw for m in out.get("machines", []) if m.get("boxes")]
+        answer = await p.evaluate("""() => { const r = new THREE.WebGLRenderer(); const s = new THREE.Scene(), c = new THREE.PerspectiveCamera();
+          const g = new THREE.Group(); g.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial())); g.position.x = 2; s.add(g);
+          window.__rvClearance.begin(); r.render(s, c); const out = window.__rvClearance.boxes([g.id, 987654321]); r.dispose(); return out; }""")
         await b.close()
     same = grid_on == grid_off and bool(grid_on["fails"])
     print(f"{'PASS' if same else 'FAIL'} 864-triangle boxes: grid index and full loop give the same rows: {grid_on['fails']} vs {grid_off['fails']}")
@@ -143,9 +150,19 @@ async def main():
     # Two models both named "Scene" load in a different order on page 2: id 2 is the robot there. Names and child
     # places match, but at frame 0 the robot's box is not the truck's, so the split is refused.
     swapped = (await check_clearance.same_bodies([None, Page({1: fixed, 2: robot})], expected, wanted))
-    differ = same and not swapped
-    print(f"{'PASS' if differ else 'FAIL'} a key that names another body on another page (same names, swapped load order) is caught")
+    # A load race shifts an id instead of swapping it: page 1 calls the robot 2 and never reports key 1|3, page 0 calls it
+    # 3 and never reports 1|2. Every page is asked about every key, so the shift is caught.
+    prop = [9, 9, 9, 9.1, 9.1, 9.1]
+    shift0 = [[0, None, seen("1|3", [fixed, robot], apart=True)]]
+    shift1 = [[30, None, seen("1|2", [fixed, robot], **deep)]]
+    want, ask = check_clearance.identity_checks([(shift0,), (shift1,)])
+    shifted = (await check_clearance.same_bodies([Page({1: fixed, 2: prop, 3: robot}), Page({1: fixed, 2: robot, 3: truck})], want, ask))
+    differ = same and not swapped and not shifted
+    print(f"{'PASS' if differ else 'FAIL'} a key that names another body on another page is caught (swapped or shifted load order)")
     ok = ok and split and differ
+    real = len(sighted) == 1 and len(sighted[0]["boxes"]) == 2 and answer == [[1.5, -0.5, -0.5, 2.5, 0.5, 0.5], None]
+    print(f"{'PASS' if real else 'FAIL'} in the page: one first sighting with two boxes, boxes() by id: {[m['boxes'] for m in sighted]} {answer}")
+    ok = ok and real
     print("MACHINE_COLLISION", "PASS" if ok else "FAIL")
     return 0 if ok else 1
 

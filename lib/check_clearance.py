@@ -568,15 +568,14 @@ def machine_findings(rows):
 def identity_checks(parts):
     """Machine pairs are keyed by Object3D.id, a creation counter: the same body in every page only when the pages built
     their objects in the same order. A pair's first depth comes from the page that saw it first (frame f). Every other
-    page that measured the pair must, at frame f, find the same world boxes for those two ids. Returns
-    (expected {(f, id): box}, wanted {page: {f: [ids]}})."""
-    first, seen = {}, {}
+    page, whether or not it reported that key (a shifted id gives it other keys), must find the same world boxes for
+    those two ids at frame f. Returns (expected {(f, id): box}, wanted {page: {f: [ids]}})."""
+    first = {}
     for page, (rows, *_) in enumerate(parts):
         for i, _, ext in rows:
             for m in ext.get("machines", ()):
                 if m.get("boxes") is None:
                     continue
-                seen.setdefault(m["key"], set()).add(page)
                 if m["key"] not in first or i < first[m["key"]][0]:
                     first[m["key"]] = (i, page, m["boxes"])
     expected, wanted = {}, {}
@@ -584,7 +583,9 @@ def identity_checks(parts):
         ids = [int(x) for x in key.split("|")]
         for id_, box in zip(ids, boxes):
             expected[(f, id_)] = box
-        for other in seen[key] - {page}:
+        for other in range(len(parts)):
+            if other == page:
+                continue
             wanted.setdefault(other, {}).setdefault(f, set()).update(ids)
     return expected, wanted
 
