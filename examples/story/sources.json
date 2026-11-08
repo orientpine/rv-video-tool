@@ -1,0 +1,13 @@
+{
+  "note": "rv example: an invented kitchen and an invented pull-down shelf. The one number is a design target of this example, not a measurement.",
+  "numbers": [
+    {
+      "id": "drop",
+      "kind": "design",
+      "show": [
+        "50 cm"
+      ],
+      "source": "Design target of this example (invented)"
+    }
+  ]
+}

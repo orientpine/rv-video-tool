@@ -1,0 +1,5 @@
+{
+  "scripts": [
+    "../../shared/shelf.js"
+  ]
+}

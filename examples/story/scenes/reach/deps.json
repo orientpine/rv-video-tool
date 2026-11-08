@@ -1,0 +1,6 @@
+{
+  "scripts": [
+    "../../shared/shelf.js",
+    "../../shared/kitchen.js"
+  ]
+}

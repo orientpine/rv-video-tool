@@ -1,0 +1,123 @@
+{
+  "name": "story",
+  "voice": "ko-KR-SunHiNeural",
+  "checks": "strict",
+  "quality": "strict",
+  "look": "cinema",
+  "lead_s": 0.4,
+  "tail_s": 0.8,
+  "intro_s": 0.6,
+  "thumb_t": 30,
+  "scenes": [
+    {
+      "name": "reach",
+      "beat": "problem",
+      "place": "kitchen",
+      "site": "office",
+      "extra_s": 2.5
+    },
+    {
+      "name": "inside",
+      "beat": "inside",
+      "place": "lab",
+      "site": "lab",
+      "extra_s": 2.5,
+      "transition": {
+        "type": "dip",
+        "dur": 1.2,
+        "depth": 0.85
+      }
+    },
+    {
+      "name": "lower",
+      "beat": "result",
+      "place": "kitchen",
+      "site": "office",
+      "extra_s": 2.5,
+      "transition": {
+        "type": "dip",
+        "dur": 1.2,
+        "depth": 0.85
+      }
+    },
+    {
+      "name": "after",
+      "beat": "after",
+      "place": "kitchen",
+      "site": "office",
+      "extra_s": 3,
+      "transition": {
+        "type": "dip",
+        "dur": 1.2,
+        "depth": 0.85
+      }
+    }
+  ],
+  "lines": [
+    {
+      "scene": "reach",
+      "text": "민지 씨는 매일 쓰는 컵을 부엌 맨 위 칸에 둡니다.",
+      "keywords": [
+        "맨 위 칸"
+      ]
+    },
+    {
+      "scene": "reach",
+      "text": "어깨를 다친 뒤로는 팔이 그 높이까지 닿지 않습니다.",
+      "keywords": [
+        "닿지 않습니다"
+      ]
+    },
+    {
+      "scene": "reach",
+      "text": "의자를 밟고 서기는 위험합니다."
+    },
+    {
+      "scene": "inside",
+      "text": "이 수납장은 선반 양옆에 팔과 작은 모터를 넣었습니다.",
+      "keywords": [
+        "모터"
+      ]
+    },
+    {
+      "scene": "inside",
+      "text": "모터가 돌면 팔이 앞으로 나오며 선반을 끌어냅니다.",
+      "keywords": [
+        "끌어냅니다"
+      ]
+    },
+    {
+      "scene": "inside",
+      "text": "선반은 수평 그대로 가슴 높이까지 내려옵니다.",
+      "keywords": [
+        "내려옵니다"
+      ]
+    },
+    {
+      "scene": "lower",
+      "text": "민지 씨가 버튼을 누르자 선반이 내려옵니다.",
+      "keywords": [
+        "내려옵니다"
+      ]
+    },
+    {
+      "scene": "lower",
+      "text": "컵이 손 닿는 곳에 왔습니다."
+    },
+    {
+      "scene": "after",
+      "text": "이제 민지 씨는 혼자서 컵을 집습니다.",
+      "keywords": [
+        "컵"
+      ]
+    },
+    {
+      "scene": "after",
+      "text": "높은 칸이 다시 쓰는 자리가 됐습니다."
+    }
+  ],
+  "sound": {
+    "music": "synth:ambient",
+    "auto_cues": true
+  }
+}
