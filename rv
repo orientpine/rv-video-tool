@@ -64,7 +64,9 @@ checks() {   # mp4 하나에 모든 검사. 하나라도 FAIL 이면 종료 코�
   "${UVPW[@]}" "$L/cutlist.py" "$B/video.html" --out "$B/cuts.json" >/dev/null 2>&1 || echo '{"cuts": []}' > "$B/cuts.json"   # 장면이 선언한 의도 컷
   # 검사를 묶음으로 나눠 동시에: 묶음·변이마다 제 조각 파일에 쓰고
   # 끝에 원래 순서대로 이어 붙여 CHECKS.md 는 하나씩 돌 때와 같은 바이트. 검사기(브라우저) 동시 수는 RV_CHECK_JOBS(기본 6), 1 이면 예전처럼 하나씩
-  local SEC; SEC=$(mktemp -d); local JOBS_N="${RV_CHECK_JOBS:-6}"; local -a SUBS=()
+  local SEC; SEC=$(mktemp -d); local JOBS_N="${RV_CHECK_JOBS:-$(python3 "$L/workers.py" check)}"; local -a SUBS=()
+  export RV_CHECK_SHARDS="${RV_CHECK_SHARDS:-$(python3 "$L/workers.py" shards)}"
+  echo "RV_CHECK_WORKERS jobs=$JOBS_N shards=$RV_CHECK_SHARDS ($(python3 "$L/workers.py" explain))" >&2
   acquire() { local k; while :; do for ((k = 1; k <= JOBS_N; k++)); do mkdir "$SEC/slot$k" 2>/dev/null && { SLOT=$k; return 0; }; done; sleep 0.2; done; }
   release() { rmdir "$SEC/slot$SLOT"; }
   sub() { local id="$1"; shift; SUBS+=("$id")
@@ -216,11 +218,12 @@ checks() {   # mp4 하나에 모든 검사. 하나라도 FAIL 이면 종료 코�
 
 case "$cmd" in
   make)
-    FROM=""; TO=""; DISCORD=0; JOBS=4; HEAVY=1; FULL=""
+    FROM=""; TO=""; DISCORD=0; JOBS=""; HEAVY=1; FULL=""
     while [ $# -gt 0 ]; do case "$1" in
       --from) FROM="$2"; shift 2;; --to) TO="$2"; shift 2;; --discord) DISCORD=1; shift;;
       --jobs) JOBS="$2"; shift 2;; --no-heavy) HEAVY=0; shift;; --full) FULL=--full; shift;; *) echo "모르는 인자 $1" >&2; exit 2;; esac; done
     prep
+    JOBS="${JOBS:-$(python3 "$L/workers.py" capture)}"; echo "RV_RENDER_WORKERS jobs=$JOBS ($(python3 "$L/workers.py" explain))"
     TOTAL=$(python3 -c "import json;print(json.load(open('$B/timeline.json'))['total_s'])")
     N=$(python3 -c "print(round($TOTAL*30))")
     if [ -n "$FROM$TO" ]; then   # 구간만 다시: 그 구간 + 바뀐 장면(구간 밖이어도, 길이가 줄어 밀린 장면 포함) + 새 길이 뒤 프레임을 지움
@@ -231,7 +234,7 @@ case "$cmd" in
     # 찍기는 늘 전체 길이에서 빈 프레임만(capture --skip-existing): 지운 프레임이 구간 밖이어도 빠지지 않게
     RENDER=(bash "$L/render.sh" "$B/video.html" "$B/frames" "$N" "$AUD" "$O" "$NAME" "$JOBS" 0 "$TOTAL")
     if [ $HEAVY = 1 ] && command -v dori >/dev/null; then
-      dori heavy "rv-$NAME" --mem 24G -- "${RENDER[@]}"
+      dori heavy "rv-$NAME" --mem "$(python3 "$L/workers.py" mem "$JOBS")G" -- "${RENDER[@]}"
     else
       "${RENDER[@]}"
     fi
@@ -249,8 +252,9 @@ case "$cmd" in
   still) prep >/dev/null; "${UVPW[@]}" "$L/still.py" "$B/video.html" --t "$@" --out "$B/stills" ;;
   board) prep >/dev/null; "${UVPW[@]}" "$L/board.py" "$B/video.html" --build "$B" --out "$O/board" ${1:+--scene "$1"} ;;
   preview)
-    PFPS=15; JOBS=4
+    PFPS=15; JOBS=""
     while [ $# -gt 0 ]; do case "$1" in --fps) PFPS="$2"; shift 2;; --jobs) JOBS="$2"; shift 2;; *) echo "모르는 인자 $1" >&2; exit 2;; esac; done
+    JOBS="${JOBS:-$(python3 "$L/workers.py" capture)}"
     prep >/dev/null
     RV_LOOK=off VIDEO_HTML="$B/preview.html" python3 "$L/build.py" "$P" >/dev/null
     TOTAL=$(python3 -c "import json;print(json.load(open('$B/timeline.json'))['total_s'])")

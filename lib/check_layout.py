@@ -17,6 +17,7 @@ from pathlib import Path
 from PIL import Image
 from playwright.async_api import async_playwright
 from capture import CHROME, CHROME_ARGS, warm_canvas
+import workers
 
 
 COLLECT = r"""() => {
@@ -483,8 +484,8 @@ if __name__ == "__main__":
                     help="sample until this second (exclusive)")
     ap.add_argument("--at", type=float, nargs="+", help="이 시각들만 잰(초). 없으면 --every 간격으로 전체")
     ap.add_argument("--mutate", choices=["overlap", "clip", "contrast", "safe", "occlude"])
-    ap.add_argument("--shards", type=int, default=int(os.environ.get("RV_CHECK_SHARDS", "4")),
-                    help="browsers that share the real check's samples (env RV_CHECK_SHARDS, default 4); mutations use one")
+    ap.add_argument("--shards", type=int, default=int(os.environ.get("RV_CHECK_SHARDS") or workers.check_shards()),
+                    help="browsers that share the real check's samples (env RV_CHECK_SHARDS, default from cores and memory, lib/workers.py); mutations use one")
     a = ap.parse_args()
     if not math.isfinite(a.every) or a.every <= 0:
         ap.error("--every must be finite and positive")

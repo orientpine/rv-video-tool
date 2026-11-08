@@ -3,7 +3,7 @@ set -u
 TOOL="$(cd "$(dirname "$0")/.." && pwd)"
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 mk_tool() {
-  mkdir -p "$1/lib"; cp "$2" "$1/rv"
+  mkdir -p "$1/lib"; cp "$2" "$1/rv"; cp "$TOOL/lib/workers.py" "$1/lib/"
   for f in check_cuts check_flicker sync_check check_clearance check_captions sheet check_layout check_numbers cutlist check_sharp check_human check_motion check_audio mix; do
     cat > "$1/lib/$f.py" <<EOF
 import random, sys, time
