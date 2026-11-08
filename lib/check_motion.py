@@ -21,14 +21,76 @@ from playwright.async_api import async_playwright
 from capture import CHROME, CHROME_ARGS
 
 # One vocabulary for narration keywords, timeline text, and visible step cards.
-# Match action forms, not nouns such as "기계"/"회전수". Add conjugations here.
+# Verbs are listed by stem (어간) and every form is made by one conjugation rule (verb_forms), so a narration that says
+# "올립니다", "올렸습니다", "엽니다" or "회전합니다" is read like "올리고"/"열어"/"회전해" (before, each ending was a listed
+# syllable: "올[리려]" never matched 립 or 렸, and only 끼우 had its 웁/웠 written in by hand).
+# Match action forms, not nouns such as "기계"/"회전수": a one-syllable stem (열, 풀, 빼, 켜) needs an ending, a formal
+# ending must go on to 니/시 ("엽니다", not "엽서"), "-림" nouns ("올림픽", "내림차순") are no verb form, and a short form
+# of a one-syllable stem starts its word ("지켜야" is not 켜다, "이끕니다" not 끄다).
 # A verb in adnominal form describing a noun ("회전하는 모든 것", "돌리는 장비") is not a command; time nouns
 # ("옮기는 동안", "회전하는 순간") still narrate the action.
+_G, _J, _B, _T = 0xAC00, 21 * 28, 28, "ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ"
+
+
+def _jamo(c):
+    n = ord(c) - _G
+    return n // _J, n % _J // _B, n % _B
+
+
+def _syl(lead, vowel, tail=0):
+    return chr(_G + lead * _J + vowel * _B + tail)
+
+
+def _aeo(stem):
+    """The 아/어 form: 열->열어, 닫->닫아, 올리->올려, 끼우->끼워, 잠그->잠가, 끄->꺼, 하->해, 켜/빼/꺼내 stay."""
+    *head, last = stem
+    lead, vowel, tail = _jamo(last)
+    bright = _T[vowel] in "ㅏㅗ"
+    if tail:
+        return stem + ("아" if bright else "어")
+    if last == "하":
+        return "".join(head) + "해"
+    v = {"ㅣ": "ㅕ", "ㅜ": "ㅝ", "ㅗ": "ㅘ"}.get(_T[vowel])
+    if _T[vowel] == "ㅡ":
+        v = "ㅏ" if head and _T[_jamo(head[-1])[1]] in "ㅏㅗ" else "ㅓ"
+    return "".join(head) + (_syl(lead, _T.index(v)) if v else last)
+
+
+_ENDS_NO_VERB = {"빼"}   # only the rare 내빼다 ends in 빼, so 공기빼야/핀빼서 keep matching written together
+
+
+def verb_forms(stem):
+    """Regex alternatives for one stem: 기/고, the 아/어 form, formal ㅂ니다/습니다 and past ㅆ (all stems), plus the bare
+    stem when it has two or more syllables (old behaviour: 옮기는 동안, 돌리면)."""
+    *head, last = stem
+    lead, vowel, tail = _jamo(last)
+    aeo = _aeo(stem)
+    if tail == 8:                      # ㄹ stem drops ㄹ before ㅂ: 열 -> 엽니다, 풀 -> 풉니다, 밀 -> 밉니다
+        formal = "".join(head) + _syl(lead, vowel, 17) + "[니시]"
+    elif tail:                         # 닫 -> 닫습니다, 꽂 -> 꽂습니다
+        formal = stem + "습니"
+    else:                              # 올리 -> 올립니다, 켜 -> 켭니다, 회전하 -> 회전합니다
+        formal = "".join(head) + _syl(lead, vowel, 17) + "[니시]"
+    a_lead, a_vowel, _ = _jamo(aeo[-1])
+    past = aeo[:-1] + _syl(a_lead, a_vowel, 20)   # 올렸, 열었, 회전했, 잠갔
+    short = [formal, past] + ([] if len(aeo) > 1 else [aeo + "[서야도]"])   # 켜서/꺼야: a bare 켜/꺼 is also 켜켜이/꺼냅니다
+    if len(stem) > 1:
+        return [stem + "[기고]", aeo, stem] + short
+    # One-syllable stems keep their old forms anywhere (공기빼기, 뚜껑열기, 다시열어), but a short form must start
+    # the word: 지켜야/일으켜서 end in 켜, 이끕니다 in 끕니 and are other verbs.
+    guard = "" if stem in _ENDS_NO_VERB else r"(?<![가-힣])"
+    return [stem + "[기고]"] + ([aeo] if len(aeo) > 1 else []) + [guard + f for f in short]
+
+
+def verb_pattern(stems, extra=()):
+    return "|".join([f for stem in stems for f in verb_forms(stem)] + list(extra))
+
+
+ACTION_STEMS = ("풀", "열", "옮기", "빼", "돌리", "닫", "올리", "내리", "밀", "잠그", "분리하", "이동하", "회전하", "개방하",
+                "배기하", "감압하", "끼우", "꽂", "켜", "꺼내", "교체하")
+# 붙여 둔/있는/놓은 is a state, not the act; 갈아 끼우다 may have a space.
 ACTION_VERBS = re.compile(
-    r"(?:풀[기고어]|열[기고어]|옮[기겨]|빼[기고야]|돌[리려]|닫[기고아]|"
-    r"올[리려]|내[리려]|붙(?:이|여(?!\s*(?:둔|있는|놓)))|밀[기고어]|잠[그가]|분리[하해]|"
-    r"이동[하해]|회전[하해]|개방[하해]|배기[하해]|감압[하해]|끼[우워웁웠]|꽂[기고아]|켜[기고서]|꺼내|"
-    r"교체[하해합]|갈아\s*끼)"
+    "(?:" + verb_pattern(ACTION_STEMS, (r"붙(?:이|여(?!\s*(?:둔|있는|놓))|입[니시]|였)", r"갈아\s*끼")) + ")"
     r"(?!는\s+(?!동안|순간|때|중|사이|모습|장면|과정)\S)")
 # At 160x90: >=15 pixels changing by >12/255 and mean RGB delta >=.02/255.
 # Both reject raster rounding noise; a visible mesh transform must also change.
@@ -36,11 +98,12 @@ ACTION_PIXEL_FRACTION = .001
 ACTION_RGB_DELTA = .02
 # Word<->animation match (ACTION_MATCH, owner 2026-11-07 16:24 KST): KIT.process parts expose names and
 # state 0..1 (0 = as built/closed/start/off). Verb classes decide the expected change of the named part.
-MATCH_RISE = re.compile(r"열[기고어리]|개방|풀[기고어]|켜[기고서]|옮[기겨]|이동[하해]|빼[기고야서]|꺼내|분리[하해]|끼[우워웁웠]|꽂[기고아]|넣[기고어]|장착|붙[이여]|교체|갈아\s*끼")
-MATCH_FALL = re.compile(r"닫[기고아]|덮[기고어]|잠[그가]|끄[기고]")
-MATCH_UP = re.compile(r"올[리려]")
-MATCH_DOWN = re.compile(r"내[리려]")
-MATCH_TURN = re.compile(r"돌[리려]|회전[하해]")
+MATCH_RISE = re.compile(verb_pattern(("열", "풀", "켜", "옮기", "이동하", "빼", "꺼내", "분리하", "끼우", "꽂", "넣", "붙이"),
+                                     ("열리", "개방", "장착", "교체", r"갈아\s*끼")))
+MATCH_FALL = re.compile(verb_pattern(("닫", "덮", "잠그", "끄")))
+MATCH_UP = re.compile(verb_pattern(("올리",)))
+MATCH_DOWN = re.compile(verb_pattern(("내리",)))
+MATCH_TURN = re.compile(verb_pattern(("돌리", "회전하")))
 MATCH_REST, MATCH_FULL, MATCH_MOVE = .05, .95, .2
 MATCH_LIFT_M, MATCH_TURN_DEG, MATCH_NOUN_CHARS = .02, 10.0, 25
 MATCH_HEAD_S, MATCH_TAIL_S = 1.0, 3.0

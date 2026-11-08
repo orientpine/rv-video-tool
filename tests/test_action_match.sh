@@ -13,6 +13,23 @@ cases = {"항공 엔진 디스크부터 플라이휠까지, 회전하는 모든 
 bad = [t for t, want in cases.items() if bool(ACTION_VERBS.search(t)) != want]
 print("ACTION_VERBS adnominal " + ("PASS" if not bad else f"FAIL {bad}")); sys.exit(1 if bad else 0)
 PY
+"${PW[@]}" - "$ROOT/lib" <<'PY'
+# Verb endings come from one conjugation rule on the stem: formal (ㅂ니다/습니다) and past (ㅆ) forms are actions too,
+# old spaceless forms still match (공기빼기), and no new false match: -림 nouns, 엽서, 켜켜이/빼곡, a stem inside another
+# verb (지켜야, 이끕니다), stateful 붙여 둔.
+import sys; sys.path.insert(0, sys.argv[1])
+from check_motion import ACTION_VERBS, match_class
+yes = {"추를 들어 올립니다.": "up", "컵을 선반에 올렸습니다": "up", "뚜껑을 엽니다": "rise", "축을 회전합니다": "turn", "축을 회전했고": "turn",
+       "공기를 뺍니다": "rise", "센서를 옮겼다": "rise", "레버를 내립니다": "down", "밸브를 잠급니다": "fall", "밸브를 잠갔다": "fall",
+       "스위치를 켭니다": "rise", "볼트를 풉니다": "rise", "문을 닫습니다": "fall", "핀을 꽂습니다": "rise", "부품을 꺼냅니다": "rise",
+       "헤드를 교체했습니다": "rise", "라벨을 붙입니다": "rise", "판을 밉니다": None,
+       "공기빼기": "rise", "뚜껑열기": "rise", "다시열어": "rise", "전원켜기": "rise", "덮개닫기": "fall", "핀꽂기": "rise", "볼트풀기": "rise", "공기빼야": "rise", "핀빼서": "rise"}
+no = ["올림픽 경기", "엽서를 씁니다", "켜켜이 쌓인", "빼곡히 찬", "내림차순 정렬", "회전율이 높다", "열린 문", "지켜야 할 땅", "일으켜서",
+      "라벨을 붙여 둔 상자", "합니다", "풀밭에서", "밀가루", "팀을 이끕니다", "모터를 작동시켜서"]
+bad = [t for t in yes if not ACTION_VERBS.search(t)] + [t for t in no if ACTION_VERBS.search(t)]
+bad += [t for t, c in yes.items() if c and match_class(t) != c]
+print("ACTION_VERBS conjugation " + ("PASS" if not bad else f"FAIL {bad}")); sys.exit(1 if bad else 0)
+PY
 python3 - "$W/project" <<'PY'
 import json, sys
 from pathlib import Path
