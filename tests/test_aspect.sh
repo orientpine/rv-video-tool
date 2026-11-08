@@ -61,4 +61,25 @@ bash "$T/tool/rv" check "$Q" > "$T/rv.log" 2>&1 || true
 sec=$(awk '/^## 변이: 프레임 .* 작은 자리 깜빡임/{f=1;print;next} /^## /{f=0} f' "$Q/out/CHECKS.md")
 echo "$sec" | tail -3
 grep -qx MUTATION_CAUGHT <<<"$sec"
+
+# C: no "aspect", but the scenes draw 2.35:1 bars themselves (131 px, a caption box inside the bottom one) and the picture is
+# black where the mutation box lands (a dark set behind the subject): the box goes inside the picture, white on the dark spot.
+R="$T/drawn"; mkdir -p "$R/build" "$R/out"
+echo '{"name":"d","checks":"strict"}' > "$R/script.json"
+echo '{"total_s":4.0,"order":["a"],"modules":{"a":{"start":0,"duration":4}}}' > "$R/build/timeline.json"
+ffmpeg -nostdin -v error -y -f lavfi -i "color=c=0x606060:s=1920x1080:r=30:d=4" -f lavfi -i sine=frequency=440:duration=4 \
+  -vf "drawbox=x=0:y=560:w=900:h=300:color=black:t=fill,drawbox=x=0:y=0:w=iw:h=131:color=black:t=fill,drawbox=x=0:y=949:w=iw:h=131:color=black:t=fill,drawbox=x=440:y=960:w=1040:h=60:color=0x808080:t=fill" \
+  -c:v libx264 -c:a aac -shortest "$R/out/d.mp4"
+printf '1\n00:00:00,000 --> 00:00:04,000\nx\n\n' > "$R/out/d.srt"
+box=$("${PW[@]}" "$ROOT/lib/check_flicker.py" "$R/out/d.mp4" --place 60)
+echo "$box"
+[[ "$box" == *"y=0.1213*ih+0.7574*ih*5/8"* && "$box" == *":color=white" ]]
+bash "$T/tool/rv" check "$R" > "$T/rv-drawn.log" 2>&1 || true
+sec=$(awk '/^## 변이: 프레임 .* 작은 자리 깜빡임/{f=1;print;next} /^## /{f=0} f' "$R/out/CHECKS.md")
+echo "$sec" | tail -3
+grep -qx MUTATION_CAUGHT <<<"$sec"
+# A plain bright 16:9 video keeps the old box: x = iw/8, y = ih*5/8, black.
+ffmpeg -nostdin -v error -y -f lavfi -i "color=c=0x808890:s=1920x1080:r=30:d=1" -c:v libx264 "$T/plain.mp4"
+[[ "$("${PW[@]}" "$ROOT/lib/check_flicker.py" "$T/plain.mp4" --place 15)" == \
+   "x=0.0000*iw+1.0000*iw/8:y=0.0000*ih+1.0000*ih*5/8:w=1.0000*iw/8:h=1.0000*ih/8:color=black" ]]
 echo "ASPECT_TESTS PASS"
