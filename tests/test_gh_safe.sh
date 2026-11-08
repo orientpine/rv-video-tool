@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# scripts/gh-safe.sh with a synthetic pattern and a fake gh: a leak posts nothing and never prints the word.
+set -euo pipefail
+TOOL="$(cd "$(dirname "$0")/.." && pwd)"
+T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
+export RV_SCAN_PATTERNS="$T/patterns" RV_SCAN_EXTRA="" RV_SCAN_ALLOW_IDENTITIES=/dev/null
+printf '%s\n' 'SyntheticForbiddenMarker' > "$RV_SCAN_PATTERNS"
+mkdir "$T/bin"
+cat > "$T/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$GH_SAFE_TEST_LOG"
+prev=""
+for a; do
+  [[ "$prev" == --body-file || "$prev" == --notes-file ]] && cp "$a" "$GH_SAFE_TEST_POSTED"
+  [[ "$prev" == -F && "$a" == body=@* ]] && cp "${a#body=@}" "$GH_SAFE_TEST_POSTED"
+  prev="$a"
+done
+exit "${GH_SAFE_TEST_EXIT:-0}"
+EOF
+chmod +x "$T/bin/gh"
+export PATH="$T/bin:$PATH" GH_SAFE_TEST_LOG="$T/gh.log" GH_SAFE_TEST_POSTED="$T/posted"
+printf 'Summary\nfixes the SyntheticForbiddenMarker scene\n' > "$T/leak.md"
+printf 'Summary\nfixes the dark scene\n' > "$T/clean.md"
+: > "$T/empty.md"
+
+fail=0
+# run <name> <expected exit> <text that must be in the output, or -> <gh-safe args...>
+run() {
+  local name="$1" expected="$2" want="$3" code=0; shift 3
+  rm -f "$T/gh.log" "$T/posted"
+  bash "$TOOL/scripts/gh-safe.sh" "$@" > "$T/out" 2>&1 || code=$?
+  local why=""
+  [[ "$code" == "$expected" ]] || why="exit $code, expected $expected"
+  [[ "$want" == - ]] || grep -qF -- "$want" "$T/out" || why="$why; output lacks '$want'"
+  ! grep -q SyntheticForbiddenMarker "$T/out" || why="$why; output shows the matched word"
+  if [[ "$expected" == 1 || "$expected" == 2 ]]; then
+    [[ ! -e "$T/gh.log" ]] || why="$why; gh was called"
+  elif [[ ! -e "$T/gh.log" ]]; then why="$why; gh was not called"; fi
+  if [[ -z "$why" ]]; then echo "PASS $name"; else echo "FAIL $name: $why"; cat "$T/out"; fail=1; fi
+}
+
+run leak-in-text 1 'private-patterns(1): text line 2' pr-create "$T/leak.md" --title "Fix the dark scene"
+run leak-in-title 1 'private-patterns(1): argument line 2' pr-create "$T/clean.md" --title "Fix SyntheticForbiddenMarker"
+run leak-in-comment 1 'nothing posted' pr-comment "$T/leak.md" 41
+run leak-in-release-notes 1 'nothing posted' release-notes "$T/leak.md" v9.9.9 --title v9.9.9
+RV_SCAN_PATTERNS="$T/missing" run missing-pattern-file 1 'pattern file missing' pr-edit "$T/clean.md" 41
+run body-flag-bypass 1 'is not allowed' pr-comment "$T/clean.md" 41 --body "other text"
+run body-file-bypass 1 'is not allowed' pr-edit "$T/clean.md" 41 --body-file=/dev/null
+run editor-bypass 1 'is not allowed' pr-create "$T/clean.md" --web
+run empty-file 1 'is empty' pr-comment "$T/empty.md" 41
+run unknown-command 2 'usage' pr-merge "$T/clean.md" 41
+run pr-edit-without-number 1 'needs a pull request number' pr-edit "$T/clean.md" --title x
+run pr-edit-other-argument 1 'takes only --title and --repo' pr-edit "$T/clean.md" 41 --add-label x
+run leak-in-pr-edit-title 1 'argument line 3' pr-edit "$T/clean.md" 41 --title "SyntheticForbiddenMarker"
+GH_SAFE_TEST_EXIT=3 run gh-failure-passes-through 3 - pr-comment "$T/clean.md" 41
+
+run clean-pr-create 0 - pr-create "$T/clean.md" --title "Fix the dark scene" --base main
+if grep -qx -- "pr create --body-file .*text.txt --title Fix the dark scene --base main" "$T/gh.log" &&
+  cmp -s "$T/clean.md" "$T/posted"; then
+  echo "PASS clean-pr-create-posts-scanned-text"
+else
+  echo "FAIL clean-pr-create-posts-scanned-text"; cat "$T/gh.log" 2>/dev/null; fail=1
+fi
+run clean-pr-edit 0 - pr-edit "$T/clean.md" 41 -R o/r --title "Fix the dark scene"
+if grep -qx -- "api -X PATCH repos/o/r/pulls/41 -F body=@.*text.txt -f title=Fix the dark scene" "$T/gh.log" &&
+  cmp -s "$T/clean.md" "$T/posted"; then
+  echo "PASS clean-pr-edit-posts-scanned-text"
+else
+  echo "FAIL clean-pr-edit-posts-scanned-text"; cat "$T/gh.log" 2>/dev/null; fail=1
+fi
+run clean-release-notes 0 - release-notes "$T/clean.md" v9.9.9 --verify-tag
+if grep -qx -- "release create --notes-file .*text.txt v9.9.9 --verify-tag" "$T/gh.log" &&
+  cmp -s "$T/clean.md" "$T/posted"; then
+  echo "PASS clean-release-notes-posts-scanned-text"
+else
+  echo "FAIL clean-release-notes-posts-scanned-text"; cat "$T/gh.log" 2>/dev/null; fail=1
+fi
+
+[[ "$fail" == 0 ]] && echo "GH_SAFE_TESTS PASS" || { echo "GH_SAFE_TESTS FAIL"; exit 1; }
