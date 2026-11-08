@@ -78,6 +78,9 @@ SCREEN_JS = """async ([t, mut]) => { await window.renderAt(t);
       if (/출처:/.test(s)) tag = true;
       texts.push(s.replace(/출처:.*$/, '')); }
     if (tag) texts.push('출처');
+    // 장면 위 공용 표지(script.json badge, #badge)도 그 장면 화면 글자다: 숫자·"목표" 표시를 같이 읽는다
+    const badge = document.getElementById('badge');
+    if (badge && vis(badge) && badge.textContent.trim()) texts.push(badge.textContent.replace(/\\s+/g, ' ').trim());
     out.push({scene: o.dataset.scene, texts}); }
   return out; }"""
 
