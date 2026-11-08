@@ -1453,7 +1453,8 @@ async def main(a):
                 action_rows.append(f"ACTION_MATCH {scene} {text!r} FAIL {md}")
                 action_failures.append((round(begin * a.fps), scene, "action_unlinked", md + f" action={text!r}"))
             else:
-                act_linked += any(probe["parts"][k]["handles"] for k in targets)
+                # An exhaust is active in the span whichever way it runs, so reversing it breaks nothing.
+                act_linked += any(probe["parts"][k]["handles"] and probe["parts"][k]["kind"] != "exhaust" for k in targets)
                 results = []
                 for k in targets:
                     part = probe["parts"][k]
@@ -1646,7 +1647,7 @@ async def main(a):
             mutation["linked"] = 0
         print(f"mutation={mutation}")
         if skip:   # reversed handles sit on parts no action line names, so no ACTION_MATCH can see them
-            print("ACTION_MUTATION SKIP no action line is linked to a part with a KIT.process handle")
+            print("ACTION_MUTATION SKIP no action line is linked to a part with a reversible KIT.process handle (exhaust runs the same backwards)")
             print("MUTATION_SKIP")
         else:
             print("MUTATION_CAUGHT" if caught else "MUTATION_NOT_CAUGHT")
