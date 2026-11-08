@@ -232,4 +232,9 @@ room_want() { local case="$1" verdict="$2"
 room_want lift PASS
 room_want still FAIL
 room_want bgmove FAIL
+# Same page twice -> the same ACTION_SPAN lines (values included): the part region adds no run-to-run noise.
+"${PW[@]}" "$ROOT/lib/check_motion.py" "$W/room_lift.html" > "$W/room_lift2.log" 2>&1 || true
+if ! diff <(grep '^ACTION_SPAN' "$W/room_lift.log") <(grep '^ACTION_SPAN' "$W/room_lift2.log") || ! grep -q '^ACTION_SPAN' "$W/room_lift2.log"; then
+  echo "FAIL room lift: ACTION_SPAN lines differ between two runs of the same page"; ok=0
+else echo "ACTION_SPAN repeat PASS"; fi
 [ "$ok" = 1 ] && echo "ACTION_MATCH_TESTS PASS" || { echo "ACTION_MATCH_TESTS FAIL"; exit 1; }
