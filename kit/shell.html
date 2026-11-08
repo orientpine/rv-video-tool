@@ -21,6 +21,8 @@ html,body { margin:0; width:1920px; height:1080px; overflow:hidden; background:v
 #cap .box:empty { display:none; }
 #badge { position:absolute; right:48px; top:40px; z-index:5; display:none; font:700 30px/1 var(--ui); color:var(--ink); background:var(--surface); padding:12px 20px; border-left:6px solid var(--accent); }
 #fade { position:absolute; inset:0; background:var(--fade); z-index:9; opacity:0; }
+#matte { position:absolute; inset:0; pointer-events:none; z-index:4; display:none; }
+#matte .bar { position:absolute; background:#000; }
 #theme-blend { position:absolute; left:0; top:0; width:1920px; height:1080px; pointer-events:none; z-index:2; display:none; }
 </style>
 </head>
@@ -29,6 +31,7 @@ html,body { margin:0; width:1920px; height:1080px; overflow:hidden; background:v
 <div id="steps"></div>
 <div id="cap"><div class="box"></div></div>
 <div id="badge"></div>
+<div id="matte"></div>
 <div id="fade"></div>
 <script>
 /*__THREE__*/
@@ -45,6 +48,20 @@ html,body { margin:0; width:1920px; height:1080px; overflow:hidden; background:v
   // transitions between listed scenes instead of fading out and back in with each scene's own copy.
   const badge = document.getElementById("badge"), badgeScenes = window.BADGE && (window.BADGE.scenes || null);
   if (window.BADGE) badge.textContent = window.BADGE.text || "";
+  // script.json "aspect": "2.35:1" (wider: letterbox bars top/bottom) or "4:3" (narrower: pillar bars left/right). Scenes still
+  // render the whole 16:9 frame; window.PICTURE is the visible rectangle that checks and mutations measure inside.
+  window.PICTURE = {x: 0, y: 0, w: 1920, h: 1080};
+  if (window.ASPECT) {
+    const [aw, ah] = String(window.ASPECT).split(":").map(Number), r = aw / (ah || 1), matte = document.getElementById("matte");
+    if (r > 0 && Math.abs(r - 16 / 9) > 1e-3) {
+      const w = r > 16 / 9 ? 1920 : Math.round(1080 * r), h = r > 16 / 9 ? Math.round(1920 / r) : 1080;
+      window.PICTURE = {x: (1920 - w) / 2, y: (1080 - h) / 2, w, h};
+      const P = window.PICTURE, bars = r > 16 / 9 ? [[0, 0, 1920, P.y], [0, P.y + h, 1920, 1080 - P.y - h]] : [[0, 0, P.x, 1080], [P.x + w, 0, 1920 - P.x - w, 1080]];
+      for (const [x, y, bw, bh] of bars) { const b = document.createElement("div"); b.className = "bar";
+        b.style.cssText = `left:${x}px;top:${y}px;width:${bw}px;height:${bh}px`; matte.append(b); }
+      matte.style.display = "block";
+    }
+  }
   const renderer = new THREE.WebGLRenderer({antialias:true});
   renderer.setPixelRatio(1); renderer.setSize(1920, 1080);
   stage.append(renderer.domElement);

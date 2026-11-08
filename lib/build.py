@@ -136,6 +136,8 @@ def main():
         portions.append("window.SCENE_SITE=" + js_json(scene_sites) + ";")
     if transitions:
         portions.append("window.TRANSITIONS=" + js_json(transitions) + ";")
+    if isinstance(script.get("aspect"), str):   # "2.35:1" letterbox / "4:3" pillarbox (kit/shell.html #matte, window.PICTURE)
+        portions.append("window.ASPECT=" + js_json(script["aspect"]) + ";")
     if isinstance(script.get("badge"), dict):   # one label that stays on screen across the listed scenes (kit/shell.html #badge)
         portions.append("window.BADGE=" + js_json(script["badge"]) + ";")
     portions.extend([

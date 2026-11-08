@@ -155,7 +155,7 @@ OCCLUSION = r"""([mutate, now]) => {
   const cards=[...document.querySelectorAll('body *')].filter(e=>{
     // rv's own captions, step chips and scene fade are not explanation cards (measured: 5 mm caption 1.0, fade 44 samples).
     if(!shown(e)||e instanceof SVGElement||
-      e.matches('html,body,canvas,#stage,.overlay')||e.closest('#cap,#steps,#fade')) return false;
+      e.matches('html,body,canvas,#stage,.overlay')||e.closest('#cap,#steps,#fade,#matte')) return false;
     const s=getComputedStyle(e), c=s.backgroundColor.match(/[\d.]+/g);
     let opacity=1;
     for(let a=e;a;a=a.parentElement) opacity*=+getComputedStyle(a).opacity;

@@ -37,7 +37,7 @@ jobs:
           - group: motion
             tests: action_motion sharp layout_fixes check_error timeline_steps camera_action
           - group: checks
-            tests: clearance_ext detach sfx_cue_skip rv_live_edit shot_parts camera_scene_cut pre_push
+            tests: clearance_ext detach sfx_cue_skip rv_live_edit shot_parts camera_scene_cut pre_push aspect
           - group: new_checks
             tests: new_checks
           - group: match

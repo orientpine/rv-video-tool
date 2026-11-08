@@ -112,7 +112,9 @@ checks() {   # mp4 하나에 모든 검사. 하나라도 FAIL 이면 종료 코�
       [ -f "$DPJ" ] || run "디스코드판 크기 (≤ 20 MiB = 20971520 B)" bash -c "s=\$(stat -c %s '$DC'); echo \$s B; [ \$s -le 20971520 ]" || fail=1
     fi; }
   g_flickmut() { local FL="$B/mut_flicker.mp4"   # 변이: 한 프레임만 왼쪽 아래 작은 자리(화면 1/8)를 검게 → check_flicker 가 잡아야 정상(check_cuts 는 못 잡을 크기)
-    ffmpeg -nostdin -v error -y -i "$MP4" -vf "drawbox=enable='eq(n\,$MID)':x=iw/8:y=ih*5/8:w=iw/8:h=ih/8:color=black:t=fill" -an -c:v libx264 -preset ultrafast -crf 18 "$FL"
+    # "aspect" 레터박스·필러박스: 막대(늘 검정) 안에 넣으면 바뀌는 게 없어 못 잡음 → 그림 영역 안 같은 비율 자리
+    local FB; FB=$(python3 -c "import json,sys;a=json.load(open('$P/script.json')).get('aspect');w,h=(map(float,a.split(':')) if isinstance(a,str) else (16,9));r=w/h;W,H=(1920,round(1920/r)) if r>16/9 else (round(1080*r),1080);x,y=(1920-W)/2,(1080-H)/2;print(f'x={x/1920:.4f}*iw+{W/1920:.4f}*iw/8:y={y/1080:.4f}*ih+{H/1080:.4f}*ih*5/8:w={W/1920:.4f}*iw/8:h={H/1080:.4f}*ih/8')")
+    ffmpeg -nostdin -v error -y -i "$MP4" -vf "drawbox=enable='eq(n\,$MID)':$FB:color=black:t=fill" -an -c:v libx264 -preset ultrafast -crf 18 "$FL"
     mut_exit "변이: 프레임 $MID 작은 자리 깜빡임 (FAIL 이어야 정상)" uv run -q --no-project --with numpy python "$L/check_flicker.py" "$FL"
     rm -f "$FL"; }
   g_legacy() { run "센서·팔이 기계 부품에 파묻히지 않기 (check_clearance)" "${UVPW[@]}" "$L/check_clearance.py" "$B/video.html" --rules legacy || fail=1
