@@ -30,14 +30,15 @@ const sleeve = new THREE.Mesh(tube,
 sleeve.name = 'sleeve'; parent.add(sleeve);
 if (mode === 'slide') sleeve.position.y = .02;
 if (mode === 'gap') sleeve.position.x = .25;
-if (['box', 'auto-box', 'sink'].includes(mode)) {
+if (['box', 'auto-box', 'sink', 'sunk'].includes(mode)) {
   arm.geometry = new THREE.BoxGeometry(.2, .1, .2);
   sleeve.geometry = new THREE.BoxGeometry(.04, .08, .04);
   sleeve.position.y = .09;
 }
 if (mode === 'none') { arm.visible = false; sleeve.visible = false; }
+if (mode === 'sunk') sleeve.position.y = .03;   // seated 4 cm into its seat: a real finding, and no attachment to detach
 const start = sleeve.position.clone();
-if (mode === 'sink') {
+if (mode === 'sink' || mode === 'sunk') {
   const contact = new THREE.Object3D(); contact.position.y = -.04; sleeve.add(contact);
   sleeve.userData.pose = 'sit';
   sleeve.userData.contacts = {seat: contact, feet: [], hands: []};
@@ -49,12 +50,12 @@ window.renderAt = async t => {
   if (sleeve.position.distanceTo(start) > 1e-10) throw new Error('mutation was not restored');
   KIT.fx.reset();
   if (label) label.place(camera, sleeve.getWorldPosition(new THREE.Vector3()), 60, -40, 1);
-  else if (mode === 'sink') KIT.fx.seat(sleeve, {seat: arm, floor: arm});
+  else if (mode === 'sink' || mode === 'sunk') KIT.fx.seat(sleeve, {seat: arm, floor: arm});
   else if (mode !== 'none') KIT.fx.attach(sleeve, arm, {tol_mm: 2});
   renderer.render(scene, camera);
 };
 """
-for mode in ["sleeve", "slide", "gap", "parent", "box", "none", "auto", "auto-box", "sink"]:
+for mode in ["sleeve", "slide", "gap", "parent", "box", "none", "auto", "auto-box", "sink", "sunk"]:
     html = '<html><body><script>' + three + '</script><script>\n'
     html += 'window.DATA={"timeline":{"total_s":0.1}};\n' + kit
     html += fixture.replace("MODE", repr(mode)) + '</script></body></html>'
@@ -81,6 +82,9 @@ run box 1 --mutate detach; grep -qx MUTATION_CAUGHT "$W/result.log"
 run auto-box 1 --mutate detach; grep -qx MUTATION_CAUGHT "$W/result.log"
 run auto 0 --mutate detach; grep -qx MUTATION_SKIP "$W/result.log"
 run none 0 --mutate detach; grep -qx MUTATION_SKIP "$W/result.log"
+# Nothing to detach is a SKIP even when the scene already fails for another reason (that FAIL is the real run's).
+run sunk 1
+run sunk 0 --mutate detach; grep -qx MUTATION_SKIP "$W/result.log"
 # The shared transform restoration also preserves the existing sink mutation.
 run sink 0
 run sink 1 --mutate sink; grep -qx MUTATION_CAUGHT "$W/result.log"
