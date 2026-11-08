@@ -19,6 +19,7 @@ html,body { margin:0; width:1920px; height:1080px; overflow:hidden; background:v
 #cap { position:absolute; left:0; right:0; bottom:56px; display:flex; justify-content:center; z-index:6; }
 #cap .box { max-width:1560px; background:var(--surface); border-top:3px solid var(--accent); color:var(--ink); font:600 44px/1.36 var(--ui); letter-spacing:-0.6px; padding:14px 36px 16px; text-align:center; white-space:pre-line; word-break:keep-all; }
 #cap .box:empty { display:none; }
+#badge { position:absolute; right:48px; top:40px; z-index:5; display:none; font:700 30px/1 var(--ui); color:var(--ink); background:var(--surface); padding:12px 20px; border-left:6px solid var(--accent); }
 #fade { position:absolute; inset:0; background:var(--fade); z-index:9; opacity:0; }
 #theme-blend { position:absolute; left:0; top:0; width:1920px; height:1080px; pointer-events:none; z-index:2; display:none; }
 </style>
@@ -27,6 +28,7 @@ html,body { margin:0; width:1920px; height:1080px; overflow:hidden; background:v
 <div id="stage"></div>
 <div id="steps"></div>
 <div id="cap"><div class="box"></div></div>
+<div id="badge"></div>
 <div id="fade"></div>
 <script>
 /*__THREE__*/
@@ -39,6 +41,10 @@ html,body { margin:0; width:1920px; height:1080px; overflow:hidden; background:v
   const TL = window.TIMELINE;
   const stage = document.getElementById("stage"), stepsEl = document.getElementById("steps");
   const caption = document.querySelector("#cap .box"), fade = document.getElementById("fade");
+  // script.json "badge": {"text", "scenes"}: one label drawn once above the scenes, so it stays still through the
+  // transitions between listed scenes instead of fading out and back in with each scene's own copy.
+  const badge = document.getElementById("badge"), badgeScenes = window.BADGE && (window.BADGE.scenes || null);
+  if (window.BADGE) badge.textContent = window.BADGE.text || "";
   const renderer = new THREE.WebGLRenderer({antialias:true});
   renderer.setPixelRatio(1); renderer.setSize(1920, 1080);
   stage.append(renderer.domElement);
@@ -185,6 +191,7 @@ html,body { margin:0; width:1920px; height:1080px; overflow:hidden; background:v
     let text = "";
     for (const item of timeline.captions || []) if (item.t <= time) text = item.text;
     if (caption.textContent !== text) caption.textContent = text;
+    if (window.BADGE) badge.style.display = !badgeScenes || badgeScenes.includes(selected.name) ? "block" : "none";
     if (chipFrom === undefined) {
       chipFrom = firstStep - 0.4;
       const containing = entries.findIndex(entry => firstStep >= entry.start && firstStep < entry.end);

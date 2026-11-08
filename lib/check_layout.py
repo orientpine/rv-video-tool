@@ -44,10 +44,10 @@ COLLECT = r"""() => {
       return a.textContent.trim()==='개념도 · 목표 시나리오' &&
         z.position==='absolute' && z.right==='48px' && q[1]>=0 && q[3]<=120;
     });
-    const chrome=!!e.closest('#steps, #cap')||!!badge;
+    const chrome=!!e.closest('#steps, #cap, #badge')||!!badge;
     // A containing card's padding also belongs inside the safe area.
     const cards=chain.filter(a=>a!==document.body && a!==document.documentElement &&
-      !a.matches('.overlay,#stage,#steps,#cap') &&
+      !a.matches('.overlay,#stage,#steps,#cap,#badge') &&
       getComputedStyle(a).position==='absolute' &&
       rgba(getComputedStyle(a).backgroundColor)[3]>.05);
     const id=e.id || `${e.closest('.overlay')?.dataset.scene||'chrome'}:${els.indexOf(e)}`;
