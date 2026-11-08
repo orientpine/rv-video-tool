@@ -7,6 +7,7 @@
 # ③ 예전 프로젝트가 window.KIT 를 통째로 바꿔도 렌더됨. 되돌림: KIT 합치기 없음 → 페이지 오류
 # ④ 셔터: 바깥 장면은 outdoor 셔터, 챔버 안은 1.0 (MBENV)
 # ⑤ 디스코드 나눔: 한 파일이면 바닥 아래인 영상 → 조각마다 ≤ 한도 · 바닥 이상 · 길이 합 = 원본. 되돌림: 예전 discord.sh(한 파일) → 바닥 아래
+# ⑦ 0.3 Mb/s 변이: 어두운 큰 면 장면 → 해상도 낮춰 잡힘 · 평평한 화면 → 이유 붙은 SKIP · 흐린 판 → FAIL. 되돌림: 0.3 Mb/s 한 단계 → 안 잡힘
 set -uo pipefail
 TOOL="$(cd "$(dirname "$0")/.." && pwd)"
 P="${RV_TEST_PROJECT:-$TOOL/tests/project}"
@@ -162,5 +163,25 @@ asyncio.run(main())
 PY
 }
 r=$(masks "$H" 2>/dev/null | tail -1); echo "  $r"; echo "$r" | grep -q SAME && ok "주인공 마스크 같은 자세 6 번 첫 장부터 면적 같음" || bad "마스크 면적이 장마다 다름 $r"
+# ⑦ 0.3 Mb/s 변이는 장면 결에 맞춘다: 어둡고 큰 면뿐인 장면은 0.3 Mb/s 로 거의 안 상하므로(실제 어두운 렌더 장면에서 거짓 NOT_CAUGHT)
+#    해상도를 1/2·1/4 로 낮춰 화면이 실제로 상한 단계로 잰다 → MUTATION_CAUGHT. 평평한 화면은 손상이 성립하지 않으니 이유 붙은
+#    MUTATION_SKIP(종료 0). 같은 장면을 흐린 판은 지금처럼 SHARP_CHECK FAIL. 되돌림: 0.3 Mb/s 한 단계만 → 안 잡힘. (합성 영상만)
+#    잴 순간은 6 · 6.5 s: 0.3 Mb/s 인코딩의 첫 2~3 s 는 x264 비트 배분이 아직 덜 차 더 거칠다(같은 판이 2 s 0.75, 6 s 0.92).
+"${UVPW[@]}" "$TOOL/tests/fixtures/sharp_dark.py" "$W/dark.mp4" 10
+ffmpeg -nostdin -v error -y -f lavfi -i color=c=0x30363a:size=1920x1080:rate=30:duration=10 -c:v libx264 -crf 18 -pix_fmt yuv420p "$W/flat.mp4"
+ffmpeg -nostdin -v error -y -i "$W/dark.mp4" -vf gblur=sigma=3 -c:v libx264 -crf 18 -pix_fmt yuv420p "$W/dark_blur.mp4"
+v=$(sharp "$TOOL" "$H" --mutate bitrate --ref "$W/dark.mp4" --t 6 6.5); echo "  $v"; grep '^SHARP_MUTATION' "$W/sharp_cur--mutate.log" | sed 's/^/    /'
+echo "$v" | grep -q '^MUTATION_CAUGHT bitrate' && ok "어두운 큰 면 장면: 해상도 낮춘 손상 잡힘" || bad "어두운 장면 bitrate 변이인데 $v"
+v=$(sharp "$TOOL" "$H" --mutate bitrate --ref "$W/flat.mp4" --t 6 6.5); e=$?; echo "  $v"; grep '^SHARP_MUTATION_SKIP' "$W/sharp_cur--mutate.log" | sed 's/^/    /'
+[ "$v" = MUTATION_SKIP ] && [ $e = 0 ] && grep -q '^SHARP_MUTATION_SKIP bitrate: ' "$W/sharp_cur--mutate.log" && ok "평평한 화면: 이유 붙은 MUTATION_SKIP" || bad "평평한 화면인데 $v (종료 $e)"
+v=$(sharp "$TOOL" "$H" --mp4 "$W/dark_blur.mp4" --ref "$W/dark.mp4" --t 6 6.5); echo "  $v"
+[ "$v" = "SHARP_CHECK FAIL" ] && ok "흐린 인코딩 → SHARP_CHECK FAIL" || bad "흐린 인코딩인데 $v"
+mutant; python3 - "$W/tool/lib/check_sharp.py" <<'EOF'
+import sys; p = sys.argv[1]; s = open(p).read()
+old = "LADDER = ((300, 1), (300, 2), (300, 4))"
+assert old in s, "mutation not applied"; open(p, "w").write(s.replace(old, "LADDER = ((300, 1),)", 1))
+EOF
+v=$(sharp "$W/tool" "$H" --mutate bitrate --ref "$W/dark.mp4" --t 6 6.5); echo "  되돌림 $v"
+echo "$v" | grep -q '^MUTATION_CAUGHT' && bad "되돌림(0.3 Mb/s 한 단계)인데 잡힘 $v" || ok "되돌림(0.3 Mb/s 한 단계) → 어두운 장면 안 잡힘"
 echo "통과 $pass · 실패 $fail"
 [ $fail = 0 ] && echo "SHARP_TESTS PASS" || { echo "SHARP_TESTS FAIL"; exit 1; }
