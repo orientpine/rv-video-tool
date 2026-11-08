@@ -36,7 +36,7 @@ async def main():
         await p.goto("file://" + sys.argv[1]); await p.evaluate("Promise.resolve(window.renderReady)")
         got = await p.evaluate("() => ({pic: window.PICTURE, bars: [...document.querySelectorAll('#matte .bar')].map(b => { const r = b.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; })})")
         await b.close()
-    want_h = round(1920 / 2.35); y = (1080 - want_h) / 2
+    want_h = round(1920 / 2.35); y = (1080 - want_h) // 2
     assert got["pic"] == {"x": 0, "y": y, "w": 1920, "h": want_h}, got
     assert got["bars"] == [[0, 0, 1920, y], [0, y + want_h, 1920, 1080 - y - want_h]], got
     print("ASPECT_PAGE PASS", json.dumps(got))
