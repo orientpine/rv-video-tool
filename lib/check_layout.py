@@ -432,6 +432,8 @@ async def main(a):
                         bad("overlap", f"with={other['text']!r} ({other['id']} {other['tag']} {w}x{h}) area={area:.2f}px^2")
             samples += 1
             text_count += len(rows)
+            if a.mutate and mutation_caught:   # a mutation only has to be caught once; the real check samples every time
+                break
         await browser.close()
     print("| t (s) | text | rule | values |")
     print("|---:|---|---|---|")
@@ -439,7 +441,7 @@ async def main(a):
         print(f"| {t:.3f} | {text.replace('|', '/')} | {rule} | {values.replace('|', '/')} |")
     for err in errors:
         print(f"PAGE_ERROR {err}")
-    if not occlusion_count:
+    if not occlusion_count and not a.mutate:   # a mutation run may stop before any target; only the real run may say SKIP
         print("OCCLUSION_CHECK 실제 SKIP no resolvable explained targets (legacy project)")
     for reason in sorted(occlusion_skips):
         print(f"OCCLUSION_SKIP {reason}")
