@@ -177,9 +177,17 @@
       // SAOShader 가 버리는데, 클리어가 0x000000 이고 scene.background(색)가 그 패스에서 배경색으로 다시 칠해 중간 깊이로 읽혔음.
       // → 깊이 패스는 배경 없이 흰색(=깊이 1)으로 지우고, 하늘 돔처럼 먼 면은 fade 거리에서 AO 를 0 으로.
       sao.depthMaterial.clearColor = 0xffffff;
+      // 비치는 것은 AO 깊이·법선 패스에서 뺀다. 덮어쓰기 재질(overrideMaterial)이 모든 물체를 불투명 면으로 그려
+      // 반투명 유리는 판 전체가 검게(비스듬히 돌린 판 81 %), 스프라이트는 검은 네모, 입자(Points)는 검은 점, additive 빛줄기는 검은 줄이 됐음.
+      // 불투명 물체는 그대로 두므로 접촉 그림자·모서리 그늘은 전과 같다. 수치는 tests/test_sao_numbers.sh.
+      // 불투명도 경계 0.5 = 위 solid() 와 KIT 페이드(반 넘게 보이면 depthWrite)와 같은 기준: 나타나는 부품의 접촉 그림자가
+      // 페이드 끝 한 프레임에 톡 생기지 않고 반쯤 보일 때 들어온다.
+      const seeThrough = x => !x || (x.transparent && x.opacity < 0.5) || x.transmission > 0 || x.depthWrite === false || x.blending === THREE.AdditiveBlending;
       const override = sao.renderOverride.bind(sao);
-      sao.renderOverride = (r, m, t, c, al) => { const bg = sao.scene.background; if (m === sao.depthMaterial) sao.scene.background = null;
-        try { override(r, m, t, c, al); } finally { sao.scene.background = bg; } };
+      sao.renderOverride = (r, m, t, c, al) => { const bg = sao.scene.background, hid = []; if (m === sao.depthMaterial) sao.scene.background = null;
+        sao.scene.traverseVisible(o => { if (o.isPoints || o.isSprite || (o.material && [].concat(o.material).every(seeThrough))) hid.push(o); });
+        for (const o of hid) o.visible = false;
+        try { override(r, m, t, c, al); } finally { sao.scene.background = bg; for (const o of hid) o.visible = true; } };
       const sm = sao.saoMaterial;
       sm.uniforms.aoFade = {value: new THREE.Vector2(...(a.fade || [1e9, 2e9]))};
       sm.fragmentShader = sm.fragmentShader.replace("uniform float bias;", "uniform float bias;\nuniform vec2 aoFade;")
