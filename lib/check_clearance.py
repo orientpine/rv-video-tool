@@ -144,6 +144,27 @@ MESH_CHECK = "() => {\n" + LEGACY_HUMAN + "\nconst PERSON_NAME=" + PERSON_NAME +
     return hits.filter((t, i) => !i || t - hits[i - 1] > 1e-7).length % 2 === 1;
   }
   const insideDepth = (p, s) => { if (!s.box.containsPoint(p) || !odd(p, s)) return 0; const d = nearest(p, s); return d < 1e-8 ? 0 : d; };
+  // Penetration depth of a point: inside a closed mesh by one ray, inside an open mesh (a cab shell with window and
+  // door openings) only when the six other rays agree, as for machine pairs. One ray alone counted an operator's head
+  // 434 mm deep in an open cab shell it was not in.
+  // An open panel has no inside to be deep in. A limb through it has surface on both sides of a panel triangle, over
+  // that triangle: how far it reaches on the shallower side (a palm resting on the panel: ~0; a hand pushed through: the push).
+  function panelDepth(a, b) {
+    let depth = 0; const plane = new THREE.Plane(), q = V(), near = new THREE.Box3();
+    for (const t of b.triangles) {
+      if (!t.box.intersectsBox(a.box)) continue;
+      t.getPlane(plane); near.copy(t.box).expandByScalar(.15); let up = 0, down = 0;
+      for (const p of a.samples) {
+        if (!near.containsPoint(p)) continue;
+        const d = plane.distanceToPoint(p); plane.projectPoint(p, q);
+        if (!t.containsPoint(q)) continue;
+        if (d > up) up = d; else if (-d > down) down = -d;
+      }
+      depth = Math.max(depth, Math.min(up, down));
+    }
+    return depth;
+  }
+  const solidDepth = (p, s) => { const d = insideDepth(p, s); return d && (closed(s) || DIRECTIONS.slice(1).every(r => odd(p, s, r))) ? d : 0; };
   function signed(p, s) {
     if (grid(s)) { const d = nearest(p, s); return d < 1e-8 || !s.box.containsPoint(p) ? d : odd(p, s) ? -d : d; }
     let dist = Infinity; const q = V(), ray = new THREE.Ray(p, direction), hits = [];
@@ -200,13 +221,13 @@ MESH_CHECK = "() => {\n" + LEGACY_HUMAN + "\nconst PERSON_NAME=" + PERSON_NAME +
     if(contactOnly)return surfaceGap(a,b);
     let gap = Infinity, depth = 0;
     if (penetrationOnly) {
-      for (const [s,t] of [[a,b], [b,a]]) for (const p of s.samples) depth = Math.max(depth, insideDepth(p, t));
+      for (const [s,t] of [[a,b], [b,a]]) for (const p of s.samples) depth = Math.max(depth, solidDepth(p, t));
       const overlap = a.box.clone().intersect(b.box);
       if (!overlap.isEmpty()) {
         const size = overlap.getSize(V());
         for (const x of [.25,.5,.75]) for (const y of [.25,.5,.75]) for (const z of [.25,.5,.75]) {
-          const p = overlap.min.clone().add(new THREE.Vector3(size.x*x,size.y*y,size.z*z)), da = insideDepth(p, a);
-          if (da) depth = Math.max(depth, 2 * Math.min(da, insideDepth(p, b)));
+          const p = overlap.min.clone().add(new THREE.Vector3(size.x*x,size.y*y,size.z*z)), da = solidDepth(p, a);
+          if (da) depth = Math.max(depth, 2 * Math.min(da, solidDepth(p, b)));
         }
       }
       return depth > 1e-7 ? -depth : 0;
@@ -488,13 +509,15 @@ MESH_CHECK = "() => {\n" + LEGACY_HUMAN + "\nconst PERSON_NAME=" + PERSON_NAME +
           // Reject distant terrain/high-detail assemblies before expanding triangles.
           if (!other.isInstancedMesh &&
               !new THREE.Box3().setFromObject(part).intersectsBox(new THREE.Box3().setFromObject(other))) continue;
-          let depth = 0;
+          let depth = 0, through = 0;
           for (const a of shapes(part)) for (const b of otherShapes) {
             if (!a.box.intersectsBox(b.box)) continue;
             depth = Math.max(depth,-pair(a,b,true));
+            if (!closed(b)) through = Math.max(through, panelDepth(a,b));
           }
-          if (depth > .01 + 1e-8) add('human penetration',
-            (h.userData.rvHuman?'':(h.name||'legacy human')+' / ')+label(part)+' / '+label(other),depth*1000,10,h.uuid);
+          const name = (h.userData.rvHuman?'':(h.name||'legacy human')+' / ')+label(part)+' / '+label(other);
+          if (Math.max(depth, through) > .01 + 1e-8) add('human penetration',
+            name+(through > depth ? ' (열린 면을 뚫음)' : ''),Math.max(depth, through)*1000,10,h.uuid);
         }
       }
       for (const d of declarations().seats) {
