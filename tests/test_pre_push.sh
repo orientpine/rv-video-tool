@@ -58,6 +58,37 @@ check() {
 check rebased-force-push 0 "$old_remote"
 check new-branch-clean 0 "$ZERO"
 
+# Fail real command boundaries without adding switches to the production hook.
+RV_TEST_REAL_GIT="$(command -v git)"
+RV_TEST_REAL_TAR="$(command -v tar)"
+export RV_TEST_REAL_GIT RV_TEST_REAL_TAR
+mkdir "$T/fault-bin"
+cat > "$T/fault-bin/git" <<'EOF'
+#!/usr/bin/env bash
+for arg; do
+  if [[ "$arg" == "${RV_TEST_FAIL_GIT:-}" ]]; then
+    echo "synthetic git $arg failure" >&2
+    exit 42
+  fi
+done
+exec "$RV_TEST_REAL_GIT" "$@"
+EOF
+cat > "$T/fault-bin/tar" <<'EOF'
+#!/usr/bin/env bash
+if [[ "${RV_TEST_FAIL_TAR:-}" == 1 ]]; then
+  echo "synthetic tar failure" >&2
+  exit 42
+fi
+exec "$RV_TEST_REAL_TAR" "$@"
+EOF
+chmod +x "$T/fault-bin/git" "$T/fault-bin/tar"
+PATH="$T/fault-bin:$PATH" RV_TEST_FAIL_GIT=log \
+  check git-log-failure 1 "$old_remote" 'cannot read pushed commit history'
+PATH="$T/fault-bin:$PATH" RV_TEST_FAIL_GIT=archive \
+  check git-archive-failure 1 "$old_remote" 'cannot export pushed tree'
+PATH="$T/fault-bin:$PATH" RV_TEST_FAIL_TAR=1 \
+  check tar-failure 1 "$old_remote" 'cannot export pushed tree'
+
 # Maintenance history diverges before main's newer commits.
 g switch -qc release-x "$initial_main"
 echo maintenance > release.txt
@@ -136,7 +167,11 @@ fi
 check remote-main-not-fetched 1 "$old_remote" 'fetch origin main first'
 g --git-dir="$T/remote.git" update-ref refs/heads/main "$remote_main"
 g --git-dir="$T/remote.git" update-ref refs/heads/unfetched "$remote_only"
-check unfetched-remote-branch 0 "$old_remote"
+g switch -qc unfetched-private "$clean_tip"
+g commit -q --allow-empty -m "SyntheticForbiddenMarker"
+g commit -q --allow-empty -m "Clean tip"
+check unfetched-remote-branch 1 "$old_remote"
+g switch -q topic
 g --git-dir="$T/remote.git" update-ref -d refs/heads/unfetched
 
 check remote-main-unreadable 1 "$old_remote" 'fetch origin main first' "$T/missing.git"
