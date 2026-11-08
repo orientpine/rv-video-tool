@@ -426,10 +426,13 @@ MESH_CHECK = "() => {\n" + LEGACY_HUMAN + "\nconst PERSON_NAME=" + PERSON_NAME +
     boxes(ids) { return ids.map(id => { for (const s of scenes) { const o = s.getObjectById(id); if (o) return fingerprint(o); } return null; }); },
     mutate(kind) {
       if (kind === 'detach') {
+        const trials = this.detachTrials = {declared_considered:0, declared_skipped:0, support_in_part:0, auto_tried:0};
         for (const d of declarations().attachments) {
-          if (!visible(d.part) || !visible(d.support) || belongs(d.support,d.part)) continue;
+          trials.declared_considered++;
+          if (!visible(d.part) || !visible(d.support)) { trials.declared_skipped++; continue; }
+          if (belongs(d.support,d.part)) { trials.declared_skipped++; trials.support_in_part++; continue; }
           const a = bounds(d.part), b = bounds(d.support);
-          if (a.isEmpty() || b.isEmpty()) continue;
+          if (a.isEmpty() || b.isEmpty()) { trials.declared_skipped++; continue; }
           // A sleeve can slide along +Y without losing contact. Move beyond the
           // support's world bounds, using the shortest axis escape with a real gap.
           const margin = .02 + d.tol_mm/1000;
@@ -441,6 +444,7 @@ MESH_CHECK = "() => {\n" + LEGACY_HUMAN + "\nconst PERSON_NAME=" + PERSON_NAME +
         }
         const targets=autoTargets().sort((a,b)=>bounds(a.target).getSize(V()).lengthSq()-bounds(b.target).getSize(V()).lengthSq());
         for(const entry of targets) {
+          trials.auto_tried++;
           const moved = move(entry.target,new THREE.Vector3(0,1,0),.02);
           if(autoGap(entry)>.005+1e-8)return moved;
           entry.target.position.copy(moved.position); entry.target.updateWorldMatrix(false,true);
@@ -647,6 +651,7 @@ async def measure(pw, html, a, batches):
             const change = __rvClearance.mutate(mutation), moved = change && change.part;
             const ext = rules === 'legacy' ? {count:0,findings:[],targets:{attach:0,human:0,seat:0,auto:0,machine:0}} : __rvClearance.check();
             ext.mutated = !!moved; ext.moved_id = moved && moved.uuid; ext.drawn = __rvClearance.drawn();
+            if (mutation === 'detach') ext.detach_trials = __rvClearance.detachTrials;
             // Restore the injected displacement even when a scene does not rewrite its transform.
             if (moved) { moved.position.copy(change.position); moved.updateWorldMatrix(false,true); }
             out.push([i, rules === 'mesh' ? null : window.CLEAR, ext]); }
@@ -768,7 +773,10 @@ async def main(a):
     for s_, e_, v_, w in runs[:40]:
         print(f"  {s_ / 30:7.2f} ~ {e_ / 30:7.2f} s (프레임 {s_}~{e_}) {w} · 측정 {v_:.1f} mm")
     if a.mutate == "detach" and not bad and not errs and not any(ext["mutated"] for _, _, ext in rows):
-        print("CLEARANCE_MUTATION SKIP no detachable target (no attachment or auto target loses contact)")
+        trials = {key: sum(ext["detach_trials"][key] for _, _, ext in rows)
+                  for key in ("declared_considered", "declared_skipped", "support_in_part", "auto_tried")}
+        print("CLEARANCE_MUTATION SKIP no eligible declared attachment or successful auto detachment; frame_trials "
+              + " ".join(f"{key}={value}" for key, value in trials.items()))
         print("MUTATION_SKIP")
         sys.exit(0)
     if n == 0 and ext_n == 0 and not errs:
