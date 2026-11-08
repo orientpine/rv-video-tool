@@ -128,7 +128,7 @@ What the parts do:
 
 Each checker also runs on a deliberately broken copy (a mutation) and must report `MUTATION_CAUGHT`, so a checker that quietly stops working shows up as a failure. A checker that crashes, or a page that loses its WebGL context, counts as `CHECK_ERROR` or `PAGE_ERROR`, never as a pass.
 
-Times are wall-clock seconds from `out/CHECKS.timing.tsv` of the run above (93 s video), including each checker's mutation runs. Checks run in parallel (up to `RV_CHECK_JOBS`, default 6), so the rows add up to more than the total (266 s of checker time in 32 s). "Skipped" means the example has nothing for that checker to measure, so only its mutation runs took time.
+Times are wall-clock seconds from `out/CHECKS.timing.tsv` of the run above (93 s video), including each checker's mutation runs. Checks run in parallel (up to `RV_CHECK_JOBS`, default 6; the long `check_clearance` and `check_layout` real runs also share their frames over `RV_CHECK_SHARDS` browsers, default 4), so the rows add up to more than the total (266 s of checker time in 32 s). "Skipped" means the example has nothing for that checker to measure, so only its mutation runs took time.
 
 | What | Checker | Time on `examples/hello` |
 |---|---|---:|
