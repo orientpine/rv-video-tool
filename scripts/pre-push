@@ -12,7 +12,7 @@ while read -r _ local_sha _ remote_sha; do
   git -C "$ROOT" archive "$local_sha" | tar -x -C "$work"
   if [[ "$remote_sha" == "$ZERO" ]]; then range="$(git -C "$ROOT" merge-base "$local_sha" origin/main 2>/dev/null)..$local_sha"
   else range="$remote_sha..$local_sha"; fi
-  git -C "$ROOT" log -p --format='%an <%ae>%n%B' "$range" > "$work/.pushed-commits.txt"
+  git -C "$ROOT" log -p --format='%an <%ae>%n%cn <%ce>%n%B' "$range" > "$work/.pushed-commits.txt"
   if ! bash "$ROOT/scripts/scan-public.sh" "$work" > "$work.scan" 2>&1; then
     cat "$work.scan" >&2
     echo "pre-push: leak scan is not 0 for ${local_sha:0:7}; push refused" >&2

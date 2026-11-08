@@ -3,6 +3,7 @@
 ## How a fix reaches an install
 1. Branch, fix, and update tests and docs (README, HOWTO, RELEASES) in the same pull request.
 2. Review: every change goes through a pull request with at least one review and a green `test` workflow before it is merged to `main`.
+   Merge with `gh pr merge <n> --rebase`: no merge commit, and each commit keeps its author. GitHub records the merging account (its GitHub noreply address) as the committer of rebased commits, and the one early merge commit (62d6ea0) carries it as author; history scans list these as known exceptions. Never push to `main` directly.
 3. Tag: `vX.Y.Z` (Z for fixes, Y for features). Add a Korean and English note to [RELEASES.md](RELEASES.md) and the GitHub release page.
 4. Install from the tag, never from a branch: `bash scripts/install.sh https://github.com/orientpine/rv-video-tool vX.Y.Z ~/.local/share/rv-video-tool`. The old copy stays beside it as `<folder>.bak-<time>`.
 5. Verify: `bash scripts/verify.sh <install folder>` prints `RV_TREE <sha256> <files>`. Run the same command on the tag's files (`git archive vX.Y.Z | tar -x -C <dir>`); the two lines must match. On one machine `diff -r -x VERSION <install folder> <dir>` must print nothing.
