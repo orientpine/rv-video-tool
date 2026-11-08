@@ -1774,6 +1774,9 @@ async def main(a):
                 fs = still_stretch(times, [True if h or pc else m for m, h, pc in zip(frozen["moved"], in_hold, frozen["pictured"])])[0]
                 mutation = {"kind": "textstill", "scene": scene, "window": [round(begin, 3), round(end, 3)], "still_s": round(fs, 2)}
                 match_caught = fs >= TEXT_STILL_S
+                if match_caught:   # rv counts a mutation as caught only when the checker also exits 1 (rv mut)
+                    action_failures.append((round(begin * a.fps), scene, "text_still",
+                                            f"mutation textstill window={begin:.2f}..{end:.2f}s still={fs:.2f}s"))
         action_rows.extend(text_motion_rows + picture_rows)
         text_summary = (f"TEXT_MOTION_CHECK {'FAIL' if text_still or picture_bad else 'PASS' if text_motion_rows or pictures else '실제 SKIP'} "
                         f"windows={len(text_motion_rows)} still={text_still} "

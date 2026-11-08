@@ -55,7 +55,10 @@ cp "$W/module.orig.js" "$M"; cp "$W/project/scenes/device/clinic.svg" "$W/clinic
 printf '<svg xmlns="http://www.w3.org/2000/svg" width="720" height="480"><rect width="720" height="480" fill="#fff"/><text x="40" y="250" font-size="44" font-family="sans-serif">The whole clinic sees it</text></svg>' > "$W/project/scenes/device/clinic.svg"
 run_case poorpic kit; need poorpic "^PICTURE device picture='clinic' .* FAIL poor$"; need poorpic "^TEXT_MOTION device window=.* FAIL$"
 cp "$W/clinic.orig.svg" "$W/project/scenes/device/clinic.svg"
-run_case textstill kit --mutate textstill; need textstill "^MUTATION_CAUGHT$"
+# rv counts a mutation as caught only with MUTATION_CAUGHT and exit 1, also when the real check passes.
+printf '{"mode":"kit"}\n' > "$W/project/scenes/device/mode.json"; VIDEO_HTML="$W/textstill.html" python3 "$ROOT/lib/build.py" "$W/project" > /dev/null
+rc=0; "${PW[@]}" "$ROOT/lib/check_motion.py" "$W/textstill.html" --mutate textstill > "$W/textstill.log" 2>&1 || rc=$?
+need textstill "^MUTATION_CAUGHT$"; [ "$rc" = 1 ] || { echo "FAIL textstill: exit $rc, want 1"; ok=0; }
 # An intended hold on the text (declared ui-only shot) is not a still window.
 sed -i 's|^    init(r, THREE, overlay) {$|&\n      KIT.shot.declare(NAME, [{t: 0, kind: "ui-only", end: 1e3}]);|' "$W/project/scenes/device/module.js"
 run_case hold still; need hold "^TEXT_MOTION device .* EXEMPT declared_hold"; need hold "^TEXT_MOTION_CHECK PASS "
