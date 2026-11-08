@@ -80,6 +80,10 @@ rv discord <project> [--min-kbps 1200]
 - `still` saves PNGs of single moments to `build/stills/`, `scrub` saves PNGs every 0.2 s between A and B.
 - `check` reruns the checks on the existing mp4. `discord` rebuilds only the share copy (at most 20 MiB per file, split at scene borders when one file would drop below the bitrate floor) and then checks.
 
+### How many browsers
+
+`rv make`, `rv preview` and `rv check` size their browser counts to the machine: one browser per CPU core, as many as three quarters of the memory free at the start holds at 1.5 GiB each (`lib/workers.py`; `python3 lib/workers.py explain` prints the numbers). Frame capture uses at most 12, because on one GPU more browsers stopped helping, and runs four browsers per Python process so the frames do not queue behind one process. The long `check_clearance` and `check_layout` real runs each share their frames over a third of the browsers (`RV_CHECK_SHARDS`). `--jobs N`, `RV_CHECK_JOBS` and `RV_CHECK_SHARDS` still set them by hand; `RV_CORES` and `RV_MEM_GIB` replace the detected values (to leave room for other work). Frames and check results do not depend on these counts.
+
 A project folder holds `script.json` (voice, lines, scenes), `scenes/<name>/module.js`, optional `deps.json`, `shared/` and `sources.json`. Full guide: [HOWTO.md](HOWTO.md).
 
 ## Scene kit in short
@@ -151,7 +155,7 @@ What the parts do:
 
 Each checker also runs on a deliberately broken copy (a mutation) and must report `MUTATION_CAUGHT`, so a checker that quietly stops working shows up as a failure. A checker that crashes, or a page that loses its WebGL context, counts as `CHECK_ERROR` or `PAGE_ERROR`, never as a pass.
 
-Times are wall-clock seconds from `out/CHECKS.timing.tsv` of the run above (93 s video), including each checker's mutation runs. Checks run in parallel (up to `RV_CHECK_JOBS`, default 6; the long `check_clearance` and `check_layout` real runs also share their frames over `RV_CHECK_SHARDS` browsers, default 4), so the rows add up to more than the total (266 s of checker time in 32 s). "Skipped" means the example has nothing for that checker to measure, so only its mutation runs took time.
+Times are wall-clock seconds from `out/CHECKS.timing.tsv` of the run above (93 s video), including each checker's mutation runs. Checks run in parallel (up to `RV_CHECK_JOBS`; the long `check_clearance` and `check_layout` real runs also share their frames over `RV_CHECK_SHARDS` browsers; both default to what this machine's cores and free memory hold, see "How many browsers" below), so the rows add up to more than the total (266 s of checker time in 32 s). "Skipped" means the example has nothing for that checker to measure, so only its mutation runs took time.
 
 | What | Checker | Time on `examples/hello` |
 |---|---|---:|

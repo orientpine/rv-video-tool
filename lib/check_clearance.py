@@ -10,6 +10,7 @@ import argparse, asyncio, json, math, os, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from capture import CHROME, CHROME_ARGS  # noqa: E402
+import workers  # noqa: E402
 from playwright.async_api import async_playwright  # noqa: E402
 from human_detection import LEGACY_HUMAN, PERSON_NAME  # noqa: E402
 
@@ -823,6 +824,6 @@ if __name__ == "__main__":
                     help="legacy keeps the existing mandatory rotor verdict; mesh is strict-mode opt-in")
     ap.add_argument("--from", dest="a", type=float, default=0.0)
     ap.add_argument("--to", dest="b", type=float, default=None)
-    ap.add_argument("--shards", type=int, default=int(os.environ.get("RV_CHECK_SHARDS", "4")),
-                    help="browsers that share the real check's frames (env RV_CHECK_SHARDS, default 4); mutations use one")
+    ap.add_argument("--shards", type=int, default=int(os.environ.get("RV_CHECK_SHARDS") or workers.check_shards()),
+                    help="browsers that share the real check's frames (env RV_CHECK_SHARDS, default from cores and memory, lib/workers.py); mutations use one")
     asyncio.run(main(ap.parse_args()))
