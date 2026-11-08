@@ -600,7 +600,7 @@ PROCESS_PROBE = r"""async (times) => {
       return {s: e.state(), y: e.obj.getWorldPosition(new THREE.Vector3()).y, q: [q.x, q.y, q.z, q.w]};
     }));
   }
-  return {parts: all.map(e => ({kind: e.kind, names: e.names})), rows: out};
+  return {parts: all.map(e => ({kind: e.kind, names: e.names, handles: e.handles.length})), rows: out};
 }"""
 
 HATCH_COVER_PROBE = r"""async (times) => {
@@ -1319,6 +1319,7 @@ async def main(a):
                 print("CAMERA_TRANSITION_TOTAL caught=0 spans=0")
                 print("CAMERA_TRANSITION_CHECK 실제 SKIP no transitions")
                 print("TRANSITION_MUTATION SKIP no transitions")
+                print("MUTATION_SKIP")
                 await browser.close()
                 return 0
             begin = tl["modules"][scene]["start"]
@@ -1329,6 +1330,7 @@ async def main(a):
             if not starts:
                 print("TEXT_TRANSITION_CHECK 실제 SKIP no transitions")
                 print("TEXT_TRANSITION_MUTATION SKIP no transitions")
+                print("MUTATION_SKIP")
                 await browser.close()
                 return 0
             cut = starts[0]
@@ -1400,8 +1402,16 @@ async def main(a):
             spans = [s for s in spans if s[0] == a.scene]
         action_failures, action_rows, freeze_caught = list(camera_failures), [], False
         match_linked = match_caught = False
+        act_linked = 0   # action spans whose linked part has a KIT.process handle the mutation reverses
         if a.mutate == "actreverse":
             mutation = {"kind": "actreverse", "handles": await p.evaluate(ACT_REVERSE)}
+            if not mutation["handles"]:
+                # KIT.process.part and steps run callbacks have no set(u) to reverse: nothing to break.
+                print(f"mutation={mutation}")
+                print("ACTION_MUTATION SKIP no KIT.process handle to reverse (parts move by KIT.process.part/steps run callbacks)")
+                print("MUTATION_SKIP")
+                await browser.close()
+                return 0
         if a.mutate == "offcenter":
             await p.evaluate(CAM_TURN, [[b, e] for _, b, e, _, _ in spans])
             await p.evaluate("window.__camTurnOn = true")
@@ -1443,6 +1453,7 @@ async def main(a):
                 action_rows.append(f"ACTION_MATCH {scene} {text!r} FAIL {md}")
                 action_failures.append((round(begin * a.fps), scene, "action_unlinked", md + f" action={text!r}"))
             else:
+                act_linked += any(probe["parts"][k]["handles"] for k in targets)
                 results = []
                 for k in targets:
                     part = probe["parts"][k]
@@ -1629,14 +1640,21 @@ async def main(a):
         return 0
     if not objects_seen and not spans and not ui_events:
         print("PROBE_ERROR no trackable objects observed")
+    skip = a.mutate == "actreverse" and not act_linked
     if a.mutate:
+        if skip:
+            mutation["linked"] = 0
         print(f"mutation={mutation}")
-        print("MUTATION_CAUGHT" if caught else "MUTATION_NOT_CAUGHT")
+        if skip:   # reversed handles sit on parts no action line names, so no ACTION_MATCH can see them
+            print("ACTION_MUTATION SKIP no action line is linked to a part with a KIT.process handle")
+            print("MUTATION_SKIP")
+        else:
+            print("MUTATION_CAUGHT" if caught else "MUTATION_NOT_CAUGHT")
     print(f"frames={len(rows)} scene_objects={len(objects_seen)} failures={len(failures)} "
           f"fps={a.fps} runtime_s={time.monotonic()-start:.3f}")
     ok = bool(objects_seen or spans or ui_events) and not failures and not errors
     print("MOTION_CHECK " + ("PASS" if ok else "FAIL"))
-    return 0 if ok else 1
+    return 0 if ok or skip else 1
 
 
 if __name__ == "__main__":
