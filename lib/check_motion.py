@@ -88,6 +88,29 @@ POP_CUT_M, POP_CUT_DEG = .25, 8.0
 FRAME_BOX = .15
 FRAME_SHARE = .5
 FRAME_LEAD_S = .5
+# Motion beside the text (TEXT_MOTION, owner 2026-11-08 19:13 KST: while text is shown, meaningful animation in the part
+# of the picture the text does not cover). A text window = consecutive frames of one scene, outside its transitions,
+# with a card, label or caption on screen (step chips and the badge are only masked; gaps up to TEXT_GAP_S between
+# lines join) while the camera is held (<= CAMERA_TEXT_DISTANCE from the window's first frame). Every TEXT_STEP_S the
+# 3D picture is drawn without the DOM, camera locked; the screen boxes of all texts seen in the window (painted card,
+# else the glyph box) are masked. A sample moves when >= TEXT_MOVE_SHARE of the uncovered pixels differ by > 12/255
+# from the last moving sample; the longest stretch with no move must stay below TEXT_STILL_S. EXEMPT: a declared
+# ui-only shot (an intended hold on the text) or text covering more than 1 - TEXT_FREE_MIN of the frame.
+TEXT_STEP_S = .25
+TEXT_STILL_S = 2.0
+TEXT_MOVE_SHARE = .005
+TEXT_FREE_MIN = .2
+TEXT_GAP_S = .5
+# Still picture for a meaning that motion cannot show (owner 2026-11-08 19:26 KST): KIT.info.picture boxes
+# ([data-rv-picture]). Thresholds fixed before any measurement: fully shown (opacity >= .95) for >= PICTURE_MIN_S at
+# the 4 Hz card samples, >= PICTURE_MIN_AREA of the frame, and rich: >= PICTURE_FILL of the image differs from its
+# dominant colour and >= PICTURE_COLORS colour bins (4 bits per channel) hold >= .2% of its pixels each (an empty panel
+# or a text-only image has one dominant colour and few bins). While a rich picture of that size is shown (opacity >= .5)
+# TEXT_MOTION counts the time as intended content.
+PICTURE_MIN_S = 3.0
+PICTURE_MIN_AREA = .08
+PICTURE_FILL = .30
+PICTURE_COLORS = 24
 
 
 HOOK = r"""
@@ -172,6 +195,17 @@ UI_SNAPSHOT = r"""() => {
         }
       }
       if(alpha<.15||right-left<4||bottom-top<4)continue;
+      // Screen area the text hides: its painted card (background alpha >= .3, under 60% of the frame), else the glyphs.
+      let box=[left,top,right,bottom];
+      for(let a=el;a&&a!==root.parentElement;a=a.parentElement) {
+        const bg=getComputedStyle(a).backgroundColor.match(/[\d.]+/g);
+        if(!bg||(bg.length>3&&+bg[3]<.3))continue;
+        const ar=a.getBoundingClientRect();
+        if(ar.width*ar.height>.6*innerWidth*innerHeight)continue;
+        box=[Math.min(box[0],ar.left),Math.min(box[1],ar.top),Math.max(box[2],ar.right),Math.max(box[3],ar.bottom)];
+      }
+      box=[Math.max(0,box[0])/innerWidth,Math.max(0,box[1])/innerHeight,
+        Math.min(innerWidth,box[2])/innerWidth,Math.min(innerHeight,box[3])/innerHeight].map(v=>+v.toFixed(4));
       // A live angle/counter update is not a new card. Text replacement is.
       const identity=root.id==='cap'?text:text.replace(/[+\-−]?\d+(?:\.\d+)?/g,'#');
       // Stable under innerHTML replacement of telemetry spans each render.
@@ -179,11 +213,47 @@ UI_SNAPSHOT = r"""() => {
       for(let a=el;a!==root;a=a.parentElement)
         path.unshift(a.tagName+':'+[...a.parentElement.children].indexOf(a));
       out.push({id:(root.dataset.scene||root.id)+'/'+path.join('/')+':'+identity,
-        text:text.slice(0,120),source:root.id==='cap'?'caption':'ui'});
+        text:text.slice(0,120),source:root.id==='cap'?'caption':'ui',root:root.id||'overlay',box});
     }
   }
   return out;
 }"""
+
+PICTURE_SNAPSHOT = r"""async () => {
+  const cache = window.__motion.picCache || (window.__motion.picCache = new WeakMap()), out = [];
+  for (const box of document.querySelectorAll('[data-rv-picture]')) {
+    let alpha = 1;
+    for (let e = box; e; e = e.parentElement) { const s = getComputedStyle(e); if (s.display === 'none' || s.visibility === 'hidden') { alpha = 0; break; } alpha *= +s.opacity; }
+    if (alpha <= .01) continue;
+    const r = box.getBoundingClientRect();
+    const area = Math.max(0, Math.min(innerWidth, r.right) - Math.max(0, r.left)) * Math.max(0, Math.min(innerHeight, r.bottom) - Math.max(0, r.top)) / (innerWidth * innerHeight);
+    const img = box.tagName === 'IMG' ? box : box.querySelector('img');
+    let m = img && cache.get(img);
+    if (img && (!m || m.src !== img.src)) {
+      try { await img.decode(); } catch (e) {}
+      let fill = 0, colors = 0;
+      if (img.naturalWidth) {
+        const c = document.createElement('canvas'); c.width = 96; c.height = 64;
+        const x = c.getContext('2d', {willReadFrequently: true}); x.drawImage(img, 0, 0, 96, 64);
+        const d = x.getImageData(0, 0, 96, 64).data, n = 96 * 64, bins = new Map();
+        for (let i = 0; i < d.length; i += 4) { const k = (d[i] >> 4) << 8 | (d[i + 1] >> 4) << 4 | d[i + 2] >> 4; bins.set(k, (bins.get(k) || 0) + 1); }
+        let top = 0, key = 0; for (const [k, v] of bins) if (v > top) { top = v; key = k; }
+        const br = (key >> 8) * 16 + 8, bg = ((key >> 4) & 15) * 16 + 8, bb = (key & 15) * 16 + 8;
+        for (let i = 0; i < d.length; i += 4) if ((Math.abs(d[i] - br) + Math.abs(d[i + 1] - bg) + Math.abs(d[i + 2] - bb)) / 3 > 24) fill++;
+        fill /= n; for (const v of bins.values()) if (v >= .002 * n) colors++;
+      }
+      m = {src: img.src, fill, colors}; cache.set(img, m);
+    }
+    out.push({id: box.dataset.rvPicture || 'picture', alpha: +alpha.toFixed(3), area: +area.toFixed(4),
+      fill: m ? +m.fill.toFixed(3) : 0, colors: m ? m.colors : 0});
+  }
+  return out;
+}"""
+
+
+def picture_rich(pic):
+    return pic["area"] >= PICTURE_MIN_AREA and pic["fill"] >= PICTURE_FILL and pic["colors"] >= PICTURE_COLORS
+
 
 # Per frame: on-screen weight (clipped area share x opacity) of every painted overlay element and visible 3D mesh.
 # A tracker keeps the last weight per key and records each onset (weight leaving ~0) with the next weights, so a
@@ -365,6 +435,121 @@ CAM_TURN = r"""spans => {
     c.updateMatrixWorld(true);
   };
 }"""
+
+
+# TEXT_MOTION: the 3D picture (no DOM) at each time with the first time's camera, 160x90; pixels inside text boxes are
+# masked. moved[i] = the uncovered picture changed enough since the last moving sample (the first sample is one).
+# Subjects (KIT.process parts, KIT.fx.focus, scene.userData.subject) are listed with their screen centre and whether
+# a text box covers it.
+TEXT_PROBE = r"""async ([times, boxes, share, rich]) => {
+  const q = window.__motion, W = 160, H = 90, mask = new Uint8Array(W * H);
+  const inBox = (u, v) => boxes.some(b => u >= b[0] && u <= b[2] && v >= b[1] && v <= b[3]);
+  let free = 0;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const m = inBox((x + .5) / W, (y + .5) / H) ? 0 : 1; mask[y * W + x] = m; free += m; }
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const ctx = c.getContext('2d', {willReadFrequently: true});
+  let cam = null, anchor = null, x0 = W, y0 = H, x1 = -1, y1 = -1, subjects = [];
+  const moved = [], shares = [], pictured = [];
+  for (const t of times) {
+    q.scene = null; await window.renderAt(t);
+    pictured.push((await q.pictureSnapshot()).some(p => p.alpha >= .5 && p.area >= rich[0] && p.fill >= rich[1] && p.colors >= rich[2]));
+    if (!q.scene || !q.camera) { moved.push(null); shares.push(null); continue; }
+    if (!cam) {
+      cam = q.camera.clone();
+      cam.position.copy(q.camera.getWorldPosition(new THREE.Vector3()));
+      cam.quaternion.copy(q.camera.getWorldQuaternion(new THREE.Quaternion()));
+      cam.updateMatrixWorld(true);
+      const objs = new Map();
+      for (const e of window.__rvProcess || []) objs.set(e.obj, e.names[0] || e.kind);
+      for (const o of (window.KIT && KIT.fx && KIT.fx.emphasis && KIT.fx.emphasis.extra) || []) if (!objs.has(o)) objs.set(o, o.name || 'focus');
+      if (q.scene.userData.subject && !objs.has(q.scene.userData.subject)) objs.set(q.scene.userData.subject, q.scene.userData.subject.name || 'subject');
+      q.scene.updateMatrixWorld(true);
+      for (const [o, name] of objs) {
+        let root = o, shown = true; for (let a = o; a; a = a.parent) { if (!a.visible) shown = false; root = a; }
+        if (root !== q.scene || !shown) continue;
+        const b = new THREE.Box3().expandByObject(o); if (b.isEmpty()) continue;
+        const p = b.getCenter(new THREE.Vector3()), v = p.clone().applyMatrix4(cam.matrixWorldInverse);
+        if (v.z > -cam.near) continue;
+        p.project(cam); const u = (p.x + 1) / 2, w = (1 - p.y) / 2;
+        if (u < 0 || u > 1 || w < 0 || w > 1) continue;
+        subjects.push({name: String(name).slice(0, 40), x: +u.toFixed(2), y: +w.toFixed(2), covered: inBox(u, w)});
+      }
+    }
+    q.scene.updateMatrixWorld(true);
+    q.raw.call(q.renderer, q.scene, cam);
+    q.renderer.getContext().finish();
+    ctx.drawImage(q.renderer.domElement, 0, 0, W, H);
+    const d = ctx.getImageData(0, 0, W, H).data;
+    if (!anchor) { anchor = d; moved.push(true); shares.push(0); continue; }
+    let n = 0; const hit = [];
+    for (let i = 0; i < W * H; i++) {
+      if (!mask[i]) continue;
+      const j = i * 4;
+      if ((Math.abs(d[j] - anchor[j]) + Math.abs(d[j + 1] - anchor[j + 1]) + Math.abs(d[j + 2] - anchor[j + 2])) / 3 > 12) { n++; hit.push(i); }
+    }
+    const s = free ? n / free : 0; shares.push(+s.toFixed(5));
+    if (s >= share) {
+      anchor = d; moved.push(true);
+      for (const i of hit) { const x = i % W, y = (i - x) / W; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+    } else moved.push(false);
+  }
+  return {free: free / (W * H), moved, shares, subjects, pictured,
+    bbox: x1 < 0 ? null : [x0 / W, y0 / H, (x1 + 1) / W, (y1 + 1) / H].map(v => +v.toFixed(2))};
+}"""
+
+# Mutation textstill: inside one text window the page shows its first instant (3D, camera and text all stand still).
+TEXT_FREEZE = r"""([a, b]) => {
+  const render = window.__rvTextRender || (window.__rvTextRender = window.renderAt);
+  window.renderAt = b == null ? render : async t => render(t >= a && t <= b ? a : t);
+}"""
+
+
+def text_windows(rows, tl, fps, edges):
+    """Text windows: (scene, begin, end, {box: text}) with the camera held while text is shown (see TEXT_MOTION)."""
+    out, cur = [], None
+    gap = round(TEXT_GAP_S * fps)
+
+    def close():
+        if cur and (cur["last"] - cur["first"]) / fps >= TEXT_STILL_S:
+            out.append((cur["scene"], cur["first"] / fps, cur["last"] / fps, cur["boxes"]))
+    for r in rows:
+        f, scene, cam = r["frame"], r["scene"], r.get("camera")
+        t, ui = f / fps, r.get("ui") or []
+        texts = [e for e in ui if e.get("box") and e.get("root") not in ("steps", "badge")]
+        ok = False
+        if scene in tl["modules"] and cam:
+            s0, (lead, tail) = tl["modules"][scene]["start"], edges.get(scene, (0, 0))
+            ok = s0 + lead <= t <= s0 + tl["modules"][scene]["duration"] - tail
+        held = (cur and ok and scene == cur["scene"] and f == cur["prev"] + 1 and cam.get("id") == cur["cam"].get("id")
+                and math.dist(cam["p"], cur["cam"]["p"]) <= CAMERA_TEXT_DISTANCE
+                and math.dist(look_points([r])[0], cur["look"]) <= CAMERA_TEXT_DISTANCE)
+        if held and (texts or f - cur["last"] <= gap):
+            cur["prev"] = f
+        else:
+            close()
+            cur = {"scene": scene, "first": f, "last": f, "prev": f, "cam": cam, "look": look_points([r])[0],
+                   "boxes": {}} if ok and texts else None
+        if cur and texts:
+            cur["last"] = f
+            for e in ui:
+                if e.get("box"):
+                    cur["boxes"].setdefault(tuple(e["box"]), e["text"])
+    close()
+    return out
+
+
+def still_stretch(times, moved):
+    """Longest time between moving samples (or the window end): (seconds, begin, end)."""
+    seen = [(t, m) for t, m in zip(times, moved) if m is not None]
+    if not seen:
+        return 0.0, None, None
+    best, anchor = (0.0, seen[0][0], seen[0][0]), seen[0][0]
+    for t, m in seen[1:] + [(seen[-1][0], True)]:
+        if m:
+            if t - anchor > best[0]:
+                best = (t - anchor, anchor, t)
+            anchor = t
+    return best
 
 
 def camera_cut(a, b):
@@ -1267,7 +1452,7 @@ async def main(a):
     if marker not in source:
         raise RuntimeError("page lacks the rv compositor marker")
     source = source.replace(marker, HOOK + "\nwindow.__motion.uiSnapshot=" + UI_SNAPSHOT + ";\nwindow.__motion.popStep=" +
-                            POP_STEP + ";\n  " + marker, 1)
+                            POP_STEP + ";\nwindow.__motion.pictureSnapshot=" + PICTURE_SNAPSHOT + ";\n  " + marker, 1)
     errors, rows = [], []
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(executable_path=CHROME, headless=True, args=CHROME_ARGS)
@@ -1381,12 +1566,21 @@ async def main(a):
         if a.mutate == "transglide":
             camera_caught = any(f[1] == mutation_scene and f[2] == "transition_camera_motion"
                                 for f in transition_failures)
-        cards, active = [], None
+        cards, active, pictures = [], None, {}
         # Four DOM observations per second, independent of 30-fps trajectory tests.
-        for frame in range(lo, count, max(1, round(a.fps / 4))):
+        step = max(1, round(a.fps / 4))
+        for frame in range(lo, count, step):
             t = frame / a.fps
             await p.evaluate("(t)=>window.renderAt(t)", t)
             text = await p.evaluate(CARD_TEXT, ACTION_VERBS.pattern)
+            for pic in await p.evaluate("window.__motion.pictureSnapshot()"):
+                rec = pictures.setdefault(pic["id"], {"first": t, "run": 0, "best": 0, "last": None, "pic": pic})
+                full = pic["alpha"] >= .95
+                rec["run"] = rec["run"] + 1 if full and rec["last"] == frame - step else (1 if full else 0)
+                rec["last"] = frame if full else None
+                rec["best"] = max(rec["best"], rec["run"])
+                if pic["area"] > rec["pic"]["area"]:
+                    rec["pic"] = pic
             scene = next(s for s in reversed(tl["order"]) if t + 1e-7 >= tl["modules"][s]["start"])
             if active and (active[0] != scene or active[2] != text):
                 cards.append((active[0], active[1], t, active[2]))
@@ -1500,6 +1694,74 @@ async def main(a):
             match_caught = offcenter_caught
         if a.mutate == "popin":
             match_caught = any(abs(f[0] - pop_mutation) <= 1 and f[2] == "pop_in" for f in pop_failures)
+        # Meaningful motion beside the text (TEXT_MOTION).
+        text_motion_rows, text_still = [], 0
+        edges = transition_spans(tl, transitions, looks, blend_s)
+        for scene, begin, end, boxes in text_windows(rows, tl, a.fps, edges):
+            if a.mutate == "textstill" and match_caught:
+                break
+            n = max(2, math.ceil((end - begin) / TEXT_STEP_S))
+            times = [begin + (end - begin) * i / n for i in range(n + 1)]
+            rich = [PICTURE_MIN_AREA, PICTURE_FILL, PICTURE_COLORS]
+            v = await p.evaluate(TEXT_PROBE, [times, list(boxes), TEXT_MOVE_SHARE, rich])
+            scene_lo, shots = tl["modules"][scene]["start"], kinds.get(scene, [])
+            # A declared ui-only shot is an intended hold on the text: its samples restart the still clock.
+            holds = [(scene_lo + s["t"], scene_lo + s.get("end", shots[i + 1]["t"] if i + 1 < len(shots)
+                                                          else tl["modules"][scene]["duration"]))
+                     for i, s in enumerate(shots) if s.get("kind") == "ui-only"]
+            in_hold = [any(h0 - 1e-6 <= t <= h1 + 1e-6 for h0, h1 in holds) for t in times]
+            hold, pictured = all(in_hold), all(v["pictured"])
+            # A rich still picture on screen (KIT.info.picture) is intended content too.
+            still, s0, s1 = still_stretch(times, [True if h or pc else m for m, h, pc in zip(v["moved"], in_hold, v["pictured"])])
+            covered = {}
+            for b, txt in sorted(boxes.items(), key=lambda kv: -(kv[0][2] - kv[0][0]) * (kv[0][3] - kv[0][1])):
+                covered.setdefault(txt, b)   # one box per text (a moving label leaves many)
+            covered = [(b, txt) for txt, b in covered.items()]
+            region = " ".join(f"x{b[0]:.2f}-{b[2]:.2f},y{b[1]:.2f}-{b[3]:.2f}:{txt[:24]!r}" for b, txt in covered[:3])
+            subj = " ".join(f"{s['name']!r}@{s['x']:.2f},{s['y']:.2f}{'(covered)' if s['covered'] else ''}"
+                            for s in v["subjects"][:6])
+            moved = v["bbox"] and f"x{v['bbox'][0]:.2f}-{v['bbox'][2]:.2f},y{v['bbox'][1]:.2f}-{v['bbox'][3]:.2f}"
+            detail = (f"window={begin:.2f}..{end:.2f}s still={still:.2f}s" +
+                      (f"@{s0:.2f}..{s1:.2f}s" if s0 is not None else "") +
+                      f" need<{TEXT_STILL_S}s free={v['free']:.2f} moved_at={moved or 'none'} "
+                      f"max_change={max([x for x in v['shares'] if x is not None] or [0]):.4f} need>={TEXT_MOVE_SHARE} " +
+                      (f"held={sum(in_hold) / len(times):.2f} " if any(in_hold) else "") +
+                      (f"pictured={sum(v['pictured']) / len(times):.2f} " if any(v["pictured"]) else "") + f"texts={len(covered)} [{region}] subjects=[{subj}]")
+            if v["free"] < TEXT_FREE_MIN or hold or pictured:
+                why = ("declared_hold (ui-only shot)" if hold else "picture (KIT.info.picture shown throughout)" if pictured
+                       else f"covered (free<{TEXT_FREE_MIN})")
+                text_motion_rows.append(f"TEXT_MOTION {scene} {detail} EXEMPT {why}")
+                continue
+            ok = still < TEXT_STILL_S
+            text_motion_rows.append(f"TEXT_MOTION {scene} {detail} {'PASS' if ok else 'FAIL'}")
+            if not ok:
+                text_still += 1
+                action_failures.append((round((s0 if s0 is not None else begin) * a.fps), scene, "text_still",
+                                        detail + " (animate the uncovered subject: HOWTO 4-2)"))
+            elif a.mutate == "textstill":
+                await p.evaluate(TEXT_FREEZE, [begin, end])
+                frozen = await p.evaluate(TEXT_PROBE, [times, list(boxes), TEXT_MOVE_SHARE, rich])
+                await p.evaluate(TEXT_FREEZE, [0, None])
+                fs = still_stretch(times, [True if h or pc else m for m, h, pc in zip(frozen["moved"], in_hold, frozen["pictured"])])[0]
+                mutation = {"kind": "textstill", "scene": scene, "window": [round(begin, 3), round(end, 3)], "still_s": round(fs, 2)}
+                match_caught = fs >= TEXT_STILL_S
+        action_rows.extend(text_motion_rows)
+        picture_bad = 0
+        for pid, rec in pictures.items():
+            pic, shown = rec["pic"], rec["best"] * step / a.fps
+            scene_ = next(s_ for s_ in reversed(tl["order"]) if rec["first"] + 1e-7 >= tl["modules"][s_]["start"])
+            why = [w for w, bad in (("short", shown < PICTURE_MIN_S), ("small", pic["area"] < PICTURE_MIN_AREA),
+                                    ("poor", pic["fill"] < PICTURE_FILL or pic["colors"] < PICTURE_COLORS)) if bad]
+            pd = (f"picture={pid!r} t={rec['first']:.2f}s shown={shown:.2f}s need>={PICTURE_MIN_S}s area={pic['area']:.3f} "
+                  f"need>={PICTURE_MIN_AREA} fill={pic['fill']:.2f} need>={PICTURE_FILL} colors={pic['colors']} need>={PICTURE_COLORS}")
+            action_rows.append(f"PICTURE {scene_} {pd} {'FAIL ' + ','.join(why) if why else 'PASS'}")
+            if why:
+                picture_bad += 1
+                action_failures.append((round(rec["first"] * a.fps), scene_, "picture_" + why[0], pd))
+        text_summary = (f"TEXT_MOTION_CHECK {'FAIL' if text_still or picture_bad else 'PASS' if text_motion_rows or pictures else '실제 SKIP'} "
+                        f"windows={len(text_motion_rows)} still={text_still} "
+                        f"exempt={sum(' EXEMPT ' in r for r in text_motion_rows)} pictures={len(pictures)} "
+                        f"pictures_failed={picture_bad}")
         mids = [tl["modules"][s_]["start"] + tl["modules"][s_]["duration"] / 2 for s_ in tl["order"] if not a.scene or s_ == a.scene]
         for hc in await p.evaluate(HATCH_COVER_PROBE, mids):
             scene_ = next(s_ for s_ in reversed(tl["order"]) if hc["t"] + 1e-7 >= tl["modules"][s_]["start"])
@@ -1618,6 +1880,7 @@ async def main(a):
         print("ACTION_MOTION_CHECK 실제 SKIP (동작 낱말/단계 카드 없음)")
     print(f"POP_IN_CHECK {'FAIL' if pop_failures else 'PASS'} pops={len(pop_failures)} exempt={pop_exempt} "
           f"onsets={len(pop_records)}")
+    print(text_summary)
     framed = [r for r in frame_rows if " SKIP " not in r]
     print(f"SUBJECT_FRAME_CHECK {'FAIL' if frame_failures else 'PASS' if framed else '실제 SKIP'} "
           f"spans={len(framed)} off_center={len(frame_failures)} skipped={len(frame_rows) - len(framed)}")
@@ -1644,7 +1907,7 @@ if __name__ == "__main__":
     ap.add_argument("html")
     ap.add_argument("--fps", type=float, default=30)
     ap.add_argument("--mutate", choices=["teleport", "freeze", "camnudge", "transglide", "actreverse", "textcut",
-                                         "popin", "offcenter"])
+                                         "popin", "offcenter", "textstill"])
     ap.add_argument("--scene", help="limit trajectory/action probes to one timeline scene")
     a = ap.parse_args()
     if a.fps <= 0:

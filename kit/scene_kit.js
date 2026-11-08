@@ -173,6 +173,27 @@
     return {pts, labels};
   }
   const SAFE = {x0: 40, x1: 1880, y0: 130, y1: 870};   // KIT.label 안전 영역(위 단계 띠·아래 자막)
+  // avoid 항목: [x0, y0, x1, y1] px · 카드 DOM 요소 · {box: 요소}(numCard·label 이 돌려주는 것). 요소는 숨김(display:none)이어도 잠깐 켜서 잰다.
+  // 장면 overlay 가 아직 안 보여 크기 0 으로 재지면 null(다음 render 에서 다시)
+  function measure(el) {   // 화면 상자: 자신이나 조상(장면 overlay)이 display:none 이어도 잠깐 켜서 잰다
+    const shown = [];
+    for (let a = el; a && a !== document.body; a = a.parentElement)
+      if (getComputedStyle(a).display === "none") { shown.push([a, a.style.display]); a.style.display = "block"; }
+    const r = el.getBoundingClientRect();
+    for (const [a, d] of shown) a.style.display = d;
+    return r;
+  }
+  function avoidRects(avoid) {
+    const out = [];
+    for (const a of [].concat(avoid || [])) {
+      const el = a && a.nodeType === 1 ? a : a && a.box && a.box.nodeType === 1 ? a.box : null;
+      if (!el) { if (Array.isArray(a) && a.length === 4) out.push(a); continue; }
+      const r = measure(el);
+      if (!(r.width > 0 && r.height > 0)) return null;
+      out.push([r.left, r.top, r.right, r.bottom]);
+    }
+    return out;
+  }
   function framed(p, c, fov, keep, avoid, subject) {
     const cam = new THREE.PerspectiveCamera(fov, 1920 / 1080, 0.01, 1e4);
     cam.position.copy(p); cam.lookAt(c); cam.updateMatrixWorld(true);
@@ -225,7 +246,7 @@
     const t0 = Math.max(o.t, e.lead), t1 = Math.min(t0 + dur, e.duration - e.tail);
     const st = s => Array.isArray(s) ? {p: s[0], l: s[1], fov: s[2]} : s;
     const from = st(o.from || (o.base && o.base(t0)));
-    const keep = keepItems(o.keep ?? o.at), avoid = o.avoid || [];
+    const keep = keepItems(o.keep ?? o.at), avoid = avoidRects(o.avoid) || [];
     const c = keep.pts.length ? new THREE.Box3().setFromPoints(keep.pts).getCenter(new THREE.Vector3()) : vec(o.at);
     const p0 = new THREE.Vector3(...from.p), d0 = p0.distanceTo(c), u = p0.clone().sub(c).normalize(), fov = o.fov ?? from.fov;
     const rects = freeRects(avoid), sc = vec(o.at);
@@ -260,6 +281,32 @@
         return {p: mix(s0.p, end.p, w), l: mix(s0.l, end.l, w), fov: s0.fov + (end.fov - s0.fov) * w};
       }};
   };
+  // 글자 옆 구도 부품(HOWTO 4-2): KIT.shot.free(NAME, {from, at, avoid, keep}) → {at(t), fits, centred}
+  //   글자(카드·이름표)가 떠 있는 동안 서 있는 카메라 자리. from 구도({p, l, fov})를 그대로 두거나 옆·위아래로만 옮겨(거리·화각은 그대로)
+  //   at(주인공)이 avoid(카드 요소나 px 상자)에 안 가리고 안전 영역 안에 다 들어오게 한다. 먼저 주인공이 화면 가운데 30% 안(SUBJECT_FRAME)인
+  //   자리를 찾고, 없으면 안 가리는 자리만. 둘 다 없으면 from 그대로·fits = false(콘솔 경고). 카드 크기는 처음 보이는 render 에서 재고 기억한다.
+  //   render: KIT.camSet(cam, F.at(t)) — 글자 구간 내내 같은 값(카메라 고정). 움직임은 주인공에: KIT.fx.pulse · KIT.process.spin · exhaust({path})
+  shot.free = (scene, o) => {
+    const st = s => Array.isArray(s) ? {p: s[0], l: s[1], fov: s[2]} : s;
+    let done = null;
+    const solve = () => {
+      const from = st(o.from), avoid = avoidRects(o.avoid);
+      if (!avoid) return null;
+      const keep = keepItems(o.keep ?? o.at), sc = vec(o.at), fov = from.fov;
+      const p = new THREE.Vector3(...from.p), c = new THREE.Vector3(...from.l), rects = freeRects(avoid);
+      for (const [centre, order] of [[sc, [1, .75, .5, .25, 0]], [null, [0, .25, .5, .75, 1]]]) {
+        if (framed(p, c, fov, keep, avoid, centre)) return {p: from.p.slice(), l: from.l.slice(), fov, fits: true, centred: !!centre};
+        for (const r of rects) for (const b of order) {
+          const [q, cc] = panned(p, c, fov, keep, [(r[0] + r[2]) / 2 * (1 - b) + 960 * b, (r[1] + r[3]) / 2 * (1 - b) + 540 * b]);
+          if (framed(q, cc, fov, keep, avoid, centre)) return {p: q.toArray(), l: cc.toArray(), fov, fits: true, centred: !!centre};
+        }
+      }
+      console.warn(`KIT.shot.free ${scene}: 주인공을 카드에 안 가리게 둘 자리가 없음 — from 그대로`);
+      return {p: from.p.slice(), l: from.l.slice(), fov, fits: false, centred: false};
+    };
+    const get = () => done || (done = solve()) || {...st(o.from), fits: false, centred: false};
+    return {at: () => get(), get fits() { return get().fits; }, get centred() { return get().centred; }};
+  };
   // 따라가기 부품: KIT.shot.track(NAME, {t, dur, subject: 물체, off, fov}) → {t0, t1, at(t)} — 움직이는 물체 중심을 늘 바라보며 off 만큼 떨어져 따름.
   //   전환 뒤에 시작, kind "follow" 로 선언(검사가 시선 오차 5 cm 안·물체 실제 움직임을 확인). 물체에 .name 이 있어야 함.
   shot.track = (scene, o) => {
@@ -291,7 +338,50 @@
     ov.append(cardBox);
     return {box: cardBox, show(a, rise = 24) { cardBox.style.opacity = a.toFixed(3); cardBox.style.transform = `translateY(${((1 - a) * rise).toFixed(1)}px)`; }};
   }
-  const info = {TYPE, ACC, PANEL, INK, MUTE, source, numCard};
+  // 정지 그림(HOWTO 4-2): 움직임으로 보여 주기 힘든 뜻은 그 뜻을 풍부하게 그린 그림으로. src = deps.json assets 의 이름(ASSETS) 또는 data:/url.
+  //   KIT.info.picture(ov, {src: "clinic", left, top, width, height, caption}) → {box, show(a)}. render 에서 show(KIT.win(t, a, b, 0.5))
+  //   (서서히 나타나고 사라짐). check_motion PICTURE: 다 보이는 시간 3 s 이상 · 화면 8% 이상 · 그림이 채워져 있고 색이 다양(빈 판·글자만 아님).
+  //   그림이 떠 있는 동안은 TEXT_MOTION 이 의도된 내용으로 본다. 글자(카드·자막)를 가리지 않는 자리에 둔다(check_layout).
+  function picture(ov, o) {
+    const box = document.createElement("div"), img = document.createElement("img");
+    const w = o.width ?? 720, h = o.height ?? 480;
+    box.dataset.rvPicture = o.src;
+    box.style.cssText = `position:absolute;left:${o.left ?? 80}px;top:${o.top ?? 170}px;width:${w}px;background:${PANEL};padding:14px;opacity:0;` +
+      `border-left:8px solid ${ACC};transform-origin:50% 60%`;
+    img.src = (window.ASSETS || {})[o.src] || o.src;
+    img.style.cssText = `display:block;width:${w}px;height:${h}px;object-fit:${o.fit || "cover"}`;
+    box.append(img);
+    if (o.caption) { const c = document.createElement("div"); c.textContent = o.caption;
+      c.style.cssText = `font:600 ${TYPE.tag + 4}px/1.3 var(--ui);color:${INK};margin-top:10px`; box.append(c); }
+    ov.append(box);
+    return {box, img, show(a) { box.style.opacity = a.toFixed(3); box.style.transform = `scale(${(.96 + .04 * a).toFixed(4)})`;
+      box.style.display = a > 0 ? "block" : "none"; }};
+  }
+  // 빈 자리에 카드 놓기(HOWTO 4-2): KIT.info.clear(카드 요소|{box}, {from: {p, l, fov}, objects: [물체…], pad: .1, spots})
+  //   init 에서 물체를 그 글자 구간 자세로 놓고 부른다. 물체들의 화면 상자(합, 각 변 pad 비만큼 넓힘)와 안 겹치는 자리로 카드를 옮긴다:
+  //   지금 자리 → spots(기본: 안전 영역 네 구석·위 가운데) 순. 도는·떠다니는 무리는 모두 objects 에(돌아도 묶음 상자 안). 못 찾으면 가장 덜 겹치는 자리·fits false.
+  //   check_layout OCCLUSION 이 카드에 일부 가려진(10~90%) 설명·움직이는 물체를 cut 으로 잡는다.
+  function clear(card, o) {
+    const el = card && card.nodeType === 1 ? card : card.box, s = Array.isArray(o.from) ? {p: o.from[0], l: o.from[1], fov: o.from[2]} : o.from;
+    const cam = new THREE.PerspectiveCamera(s.fov, 1920 / 1080, .01, 1e4); cam.position.set(...s.p); cam.lookAt(...s.l); cam.updateMatrixWorld(true);
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const obj of [].concat(o.objects || [])) {
+      obj.updateMatrixWorld(true); const b = new THREE.Box3().setFromObject(obj); if (b.isEmpty()) continue;
+      for (let j = 0; j < 8; j++) { const v = new THREE.Vector3(j & 1 ? b.max.x : b.min.x, j & 2 ? b.max.y : b.min.y, j & 4 ? b.max.z : b.min.z).project(cam);
+        const x = (v.x + 1) / 2 * 1920, y = (1 - v.y) / 2 * 1080; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+    }
+    const pad = o.pad ?? .1, px = (x1 - x0) * pad, py = (y1 - y0) * pad; x0 -= px; x1 += px; y0 -= py; y1 += py;
+    const r = measure(el), w = r.width, h = r.height, ov = measure(el.offsetParent || el.parentElement);
+    const spots = [[r.left - ov.left, r.top - ov.top], ...(o.spots || [[SAFE.x0 + 40, SAFE.y0 + 40], [SAFE.x1 - 40 - w, SAFE.y0 + 40],
+      [SAFE.x0 + 40, SAFE.y1 - 24 - h], [SAFE.x1 - 40 - w, SAFE.y1 - 24 - h], [960 - w / 2, SAFE.y0 + 40]])];
+    const hit = ([l, t]) => Math.max(0, Math.min(l + w, x1) - Math.max(l, x0)) * Math.max(0, Math.min(t + h, y1) - Math.max(t, y0));
+    const best = spots.reduce((a, b) => hit(b) < hit(a) ? b : a);
+    const pick = spots.find(q => hit(q) === 0) || best;
+    el.style.left = `${Math.round(pick[0])}px`; el.style.top = `${Math.round(pick[1])}px`; el.style.right = "auto";
+    if (hit(pick) > 0) console.warn("KIT.info.clear: 카드를 물체와 안 겹치게 둘 자리가 없음 — 가장 덜 겹치는 자리");
+    return {left: pick[0], top: pick[1], fits: hit(pick) === 0};
+  }
+  const info = {TYPE, ACC, PANEL, INK, MUTE, source, numCard, picture, clear};
 
   // ── 보여 주는 방식(3단계 보강): 기준 A·B 가 쓰는 투시·분해·크기 대비·앞 물체 깊이·박자 컷. 모두 t 의 순수 함수로 쓰고 render 마다 다시 정한다
   // 투시·단면: root 아래 메시 재질에 자르는 면을 달아 카메라 쪽 벽을 걷어 냄. cut.set(amount, normal, offset) — amount 0 이면 안 자름
@@ -520,7 +610,8 @@
   // real part. Call it after the scene assigns materials for the frame. Switching obj.visible on in one frame is a
   // pop (check_motion POP_IN).
   // Copies are kept per mesh, so meshes that share a material can fade at different times.
-  const revealCopies = new WeakMap(), revealOriginal = new WeakMap();
+  const revealCopies = new WeakMap(), revealOriginal = new WeakMap(), pulseBase = new WeakMap(), pulseCopies = new WeakMap();
+  const ownOf = m => { for (let x = revealOriginal.get(m) || pulseBase.get(m); x; x = revealOriginal.get(m) || pulseBase.get(m)) m = x; return m; };
   function reveal(obj, u) {
     const k = smooth(0, 1, clamp(u, 0, 1));
     obj.visible = k > 0;
@@ -528,7 +619,7 @@
       if (!o.material) return;
       let copies = revealCopies.get(o);
       const fade = m => {
-        const own = revealOriginal.get(m) || m;
+        const own = ownOf(m);
         if (k >= 1) return own;
         if (!copies) revealCopies.set(o, copies = new Map());
         let copy = copies.get(own);
@@ -541,7 +632,35 @@
     });
     return obj;
   }
-  const fx = {cutaway, explode, human, prop, emphasis, reveal, focus(...objs) { for (const o of objs) if (o) emphasis.extra.add(o); }, env(...objs) { for (const o of objs) if (o) emphasis.env.add(o); },
+  // Emphasis that keeps moving while text is on screen (TEXT_MOTION): KIT.fx.pulse(obj, t, {on: KIT.win(t, a, b, 0.4)})
+  // lights obj's meshes in the accent colour, breathing 0 -> amount -> 0 every period seconds (emissive, no geometry
+  // change, so contact checks see the real part). on (0..1) scales it, so it fades in and out instead of switching on.
+  // Call it every render, after KIT.fx.reveal. Materials without emissive (MeshBasic) are left as they are.
+  const accent = new THREE.Color();
+  function pulse(obj, t, {on = 1, period = 1.6, amount = .55, color = 0xF2A33A} = {}) {
+    const k = clamp(on, 0, 1) * amount * (.5 - .5 * Math.cos(2 * Math.PI * t / period));
+    accent.set(color);
+    obj.traverse(o => {
+      if (!o.isMesh || !o.material) return;
+      let copies = pulseCopies.get(o);
+      const light = m => {
+        const base = pulseBase.get(m) || m;
+        if (k < 1e-3 || !base.emissive) return base;
+        if (!copies) pulseCopies.set(o, copies = new Map());
+        let copy = copies.get(base);
+        if (!copy) { copy = base.clone(); copies.set(base, copy); pulseBase.set(copy, base); }
+        copy.color && base.color && copy.color.copy(base.color).lerp(accent, .5 * k);   // tint too: glow alone is lost on white parts
+        copy.transparent = base.transparent; copy.opacity = base.opacity; copy.depthWrite = base.depthWrite;
+        copy.emissive.copy(base.emissive).lerp(accent, k); copy.emissiveIntensity = Math.max(1, base.emissiveIntensity || 0);
+        return copy;
+      };
+      o.material = Array.isArray(o.material) ? o.material.map(light) : light(o.material);
+    });
+    return obj;
+  }
+  // 배경 장식 선언: 일부러 카드 뒤에 깔거나 흐리게 둔 물체는 check_layout 의 가림·잘림(cut) 대상에서 빠진다.
+  const decor = (...objs) => { for (const o of objs) if (o) o.userData.rvDecor = true; return objs[0]; };
+  const fx = {cutaway, explode, human, prop, emphasis, reveal, pulse, decor, focus(...objs) { for (const o of objs) if (o) emphasis.extra.add(o); }, env(...objs) { for (const o of objs) if (o) emphasis.env.add(o); },
     clearance,
     attach(part, support, {tol_mm = 2} = {}) { clearance.attachments.push({part, support, tol_mm}); },
     seat(human, {seat, floor, levers = [], hand_mm = 150, up = [0, 1, 0]} = {}) {

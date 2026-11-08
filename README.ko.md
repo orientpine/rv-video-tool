@@ -64,6 +64,8 @@ rv discord <project> [--min-kbps 1200]
 
 ## 장면 키트 맛보기
 
+`examples/text-motion` 은 장면 하나를 두 가지로 보여 준다(`scenes/device/mode.json`): `still` 은 카드가 떠 있는 동안 기기가 서 있어 `TEXT_MOTION` 이 잡고, `kit` 은 `KIT.shot.free`·`KIT.fx.pulse`·`KIT.process.spin`·흐르는 `KIT.process.exhaust` 길·`KIT.info.picture` 하나로 글자 옆에서 기기가 계속 일한다(HOWTO 4-2).
+
 `examples/hello` 는 작은 무대 하나(`shared/bench.js`: 작업대, 판, 탐침)를 같이 쓰는 장면 셋이다. `bench` 는 자막이 바뀌는 동안 카메라를 세워 두고, `probe` 는 탐침이 판에 닿을 때 다가가고, `slide` 는 낮은 각도에서 탐침이 움직이는 것을 보여 준다. 장면 사이는 dip 전환으로 잇고, 밑에는 조용한 합성 배경음이 깔린다.
 
 `script.json` 에서 중요한 부분:
@@ -144,6 +146,8 @@ SCENES.probe = (() => {
 | 문·뚜껑 (`HATCH_COVER`): 닫힌 해치가 틀 구멍을 80% 이상 덮는지 | `check_motion` | 28.0 s 안 (예시에 해치 없음) |
 | 갑자기 등장 (`POP_IN`): 카드·이름표·부품이 서서히 나타나기·밀려 들어오기·카메라가 비춰 드러내기 없이 한두 프레임에 나타나는지 | `check_motion` | `check_motion` 시간 안 |
 | 설명 대상 화면 가운데 (`SUBJECT_FRAME`): 동작을 말하는 동안 그 말이 가리키는 부품이 화면 가운데 30% 안에 오는지 | `check_motion` | `check_motion` 시간 안 (예시에 동작 낱말 없음) |
+| 글자 옆 움직임 (`TEXT_MOTION`): 카드·이름표·자막이 떠 있고 카메라가 서 있는 동안 글자가 가리지 않은 3D 화면이 2 s 이상 멈춰 있지 않은지. 선언한 `ui-only` 멈춤과 풍부한 정지 그림은 의도로 봄 | `check_motion` | `check_motion` 시간 안 |
+| 정지 그림 (`PICTURE`): `KIT.info.picture` 가 3 s 이상 다 보이고, 화면 8% 이상이고, 풍부한지(빈 판·글자만 아님) | `check_motion` | `check_motion` 시간 안 (예시에 그림 없음) |
 | 부품이 지지대에 파묻히거나 떨어짐, 이름표 단 부품이 떠 있음, 기계끼리 충돌, 앉은 자세 접촉 | `check_clearance` | 34.5 s |
 | 사람: `KIT.fx.human` 만, 몸 부위, 접촉점, 복식이 현장과 맞는지 | `check_human` | 16.1 s (건너뜀, 변이는 돎) |
 | `sources.json` 에 출처 없는 화면·나레이션 숫자 | `check_numbers` | 14.3 s (건너뜀, `sources.json` 없음) |
