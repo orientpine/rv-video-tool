@@ -424,10 +424,11 @@
       const y = x - (T - dec);
       return v * acc / 2 + v * (T - dec - acc) + v * (y / 2 + dec / (2 * P) * Math.sin(P * y / dec));
     }
-    const plans = new WeakMap();
+    const plans = new Map(), vec = v => v.isVector3 ? v.clone() : Vc(...v);
     function plan(w) {
-      if (plans.has(w)) return plans.get(w);
-      const from = Vc(...w.from), to = Vc(...w.to), D = from.distanceTo(to);
+      const key = JSON.stringify([w.from, w.to, w.t0, w.t1]);
+      if (plans.has(key)) return plans.get(key);
+      const from = vec(w.from), to = vec(w.to), D = from.distanceTo(to);
       const n = Math.max(2, Math.round(D / .54)), L = D / n;
       const tAt = s => { let a = w.t0, b = w.t1; for (let i = 0; i < 40; i++) { const m = (a + b) / 2; travel(m, w.t0, w.t1, D) < s ? a = m : b = m; } return (a + b) / 2; };
       const steps = [], last = {r: 0, l: 0};
@@ -439,7 +440,7 @@
         steps.push({side, a: last[side], b: f, tl, td}); last[side] = f;
       }
       const p = {from, to, D, L, steps, dir: to.clone().sub(from).normalize()};
-      plans.set(w, p); return p;
+      plans.set(key, p); return p;
     }
     function foot(p, side, t) {   // distance along the path, lift, toe pitch, how much weight it carries
       let z = 0;
@@ -476,7 +477,7 @@
     }
     const interior = (a, b, d) => Math.acos(clamp((a * a + b * b - d * d) / (2 * a * b), -1, 1));
     function act(g, t, {walk, look, press} = {}, {R, M, joints, tips, deform}) {
-      g.pose("stand");
+      g.pose("stand", {}, true);
       const J = n => joints[n], V = (a, b) => Vc(R[a][0] - (b ? R[b][0] : 0), R[a][1] - (b ? R[b][1] : 0), R[a][2] - (b ? R[b][2] : 0));
       const TH = V("knee_r", "hip_r").length(), SH = V("ankle_r", "knee_r").length(), ANK = R.ankle_r[1];
       const UA = V("elbow_r", "shoulder_r").length(), FA = V("wrist_r", "elbow_r").length() + Vc(...M.tip_r).sub(V("wrist_r")).length();
@@ -524,7 +525,7 @@
       if (look) {
         const lw = (walk ? .55 * step(walk.t0, walk.t0 + .8, t) : .55) + .45 * (press ? step(press.t0 - .45, press.t0 + .1, t) * (1 - step(press.t1, press.t1 + .6, t)) : 0);
         const eye = g.localToWorld(torsoPos.clone().add(V("neck", "spine").add(Vc(0, .14, .08)).applyQuaternion(qT)));
-        const dirL = look.clone().sub(eye).normalize().transformDirection(new THREE.Matrix4().copy(g.matrixWorld).invert()).applyQuaternion(qT.clone().invert());
+        const dirL = vec(look).sub(eye).normalize().transformDirection(new THREE.Matrix4().copy(g.matrixWorld).invert()).applyQuaternion(qT.clone().invert());
         qN = rot(Y, .75 * clamp(Math.atan2(dirL.x, dirL.z), -1, 1) * lw).multiply(rot(X, .4 * clamp(-Math.asin(clamp(dirL.y, -1, 1)), -.5, .6) * lw));
       }
       J("neck").quaternion.copy(qN);
@@ -537,8 +538,8 @@
         const restQ = qT.clone().multiply(Q().setFromEuler(new THREE.Euler(swing, 0, sg * .02)));
         const restEl = -.12 - .3 * Math.max(0, -swing);
         if (press && f === (press.hand || "r") && rw > 0) {
-          const inv = new THREE.Matrix4().copy(g.matrixWorld).invert(), goal = press.target.clone().applyMatrix4(inv);
-          const n = press.normal.clone().transformDirection(inv);
+          const inv = new THREE.Matrix4().copy(g.matrixWorld).invert(), goal = vec(press.target).applyMatrix4(inv);
+          const n = vec(press.normal).transformDirection(inv);
           const approach = .035 * (1 - mjerk(press.touch - .25, press.press, t)) + .035 * mjerk(press.release, press.release + .14, t);
           const push = (press.depth ?? .012) * step(press.press, press.press + .08, t) * (1 - step(press.release, press.release + .1, t));
           goal.addScaledVector(n, (approach - push) / k);
@@ -616,15 +617,14 @@
       o.userData.rvSkin = true;
       skins.push({o, rest, nrm, piv: new Uint8Array(bytes(p.piv)), wgt: new Uint8Array(bytes(p.wgt))});
     }
-    const D = pivots.map(() => new THREE.Matrix4()), inv = new THREE.Matrix4();
-    let signature = NaN;
+    const D = pivots.map(() => new THREE.Matrix4()), inv = new THREE.Matrix4(), seen = new Float64Array(pivots.length * 16).fill(NaN);
     function deform() {
       g.updateWorldMatrix(true, true);
       inv.copy(g.matrixWorld).invert();
-      let sig = 0;
+      let same = true;
       pivots.forEach((pv, i) => { D[i].multiplyMatrices(inv, pv.matrixWorld).multiply(restInv[i]);
-        const e = D[i].elements; for (let k = 0; k < 15; k++) sig += e[k] * (k + 1 + i * 16); });
-      if (sig === signature) return; signature = sig;
+        const e = D[i].elements; for (let k = 0; k < 16; k++) if (seen[16 * i + k] !== e[k]) { same = false; seen[16 * i + k] = e[k]; } });
+      if (same) return;
       for (const s of skins) {
         const pos = s.o.geometry.attributes.position.array, nor = s.o.geometry.attributes.normal.array;
         for (let v = 0, n = s.rest.length / 3; v < n; v++) {
@@ -644,7 +644,9 @@
         s.o.geometry.computeBoundingBox(); s.o.geometry.computeBoundingSphere();
       }
     }
-    for (const s of skins) s.o.onBeforeRender = deform;   // joints moved directly after pose() still reach the surface
+    // Joints moved directly after pose() (legacy children[0..5]) reach the surface whenever the scene updates its
+    // matrices: before culling and upload in a render, and in checks that sample without drawing.
+    g.updateMatrixWorld = function (force) { THREE.Object3D.prototype.updateMatrixWorld.call(this, force); deform(); };
     // Outfit pieces ride on the head and torso pivots, sized from the body's measured head and chest.
     const hc = new THREE.Vector3().addVectors(new THREE.Vector3(...M.head_min), new THREE.Vector3(...M.head_max)).multiplyScalar(.5).sub(V("head"));
     const hr = (M.head_max[0] - M.head_min[0]) / 2, top = M.head_max[1] - R.head[1];
@@ -674,7 +676,7 @@
       geo.setAttribute("position", new THREE.BufferAttribute(rest.slice(), 3)); geo.setAttribute("normal", new THREE.BufferAttribute(base.nrm.slice(), 3));
       geo.setIndex(keep);
       const vest = mesh(g, "torso", geo, hi);
-      vest.userData.rvSkin = true; vest.onBeforeRender = deform;
+      vest.userData.rvSkin = true;
       skins.push({o: vest, rest, nrm: base.nrm, piv: base.piv, wgt: base.wgt});
     }
     const tablet = mesh(torso, "torso", new THREE.BoxGeometry(.24, .16, .014), boot, 0, .2, tz + td + .24);
@@ -696,7 +698,7 @@
     const rest = controls.map(o => o.position.clone()), restPelvis = R.pelvis[1];
     const headFromNeck = V("head", "neck"), sitPelvis = (R.knee_l[1] - R.ankle_l[1]) + R.ankle_l[1] + (R.pelvis[1] - R.hip_l[1]);
     // The target of point is a world-space Vector3 (or [x,y,z]).
-    g.pose = function(name, {t = 0, target} = {}) {
+    g.pose = function(name, {t = 0, target} = {}, keep) {
       for (const o of Object.values(joints)) o.rotation.set(0, 0, 0);
       controls.forEach((o, i) => o.position.copy(rest[i]));
       pelvis.position.set(...R.pelvis); tablet.visible = false;
@@ -746,7 +748,7 @@
       for (const o of controls) o.position.y += pelvis.position.y - restPelvis;
       head.position.copy(headFromNeck).applyQuaternion(neck.quaternion).add(neck.position).applyQuaternion(torso.quaternion).add(torso.position);
       head.quaternion.copy(torso.quaternion).multiply(neck.quaternion);
-      g.userData.pose = name; deform(); return g;
+      g.userData.pose = name; if (!keep) deform(); return g;
     };
     g.act = (t, spec) => HUMAN_MOTION.act(g, t, spec, {R, M, joints, tips, deform});
     g.pose("stand"); g.visible = false; scene.add(g);
