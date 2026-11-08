@@ -14,7 +14,7 @@ for case in ("normal", "depth75", "depth25", "dom75", "dom25", "own", "fallback"
              "group", "orthographic", "legacy", "accent45", "focus45", "look45",
              "lookoff", "arc86", "effective516", "effective430", "card39", "late",
              "accenthidden", "capcover", "fadecover", "focustiny", "looktiny",
-             "letterbox", "letterboxcard", "letterboxlate", "pillarbox"):
+             "letterbox", "letterboxcard", "letterboxlate", "pillarbox", "letterboxpanel"):
     html = """<!doctype html><meta charset="utf-8"><style>
 html,body{margin:0;width:1920px;height:1080px;--ui:sans-serif}
 #stage,.overlay{position:absolute;inset:0}
@@ -52,6 +52,7 @@ const overlay=document.querySelector('.overlay');
 const bars=[];
 if(mode.startsWith('letterbox')||mode==='pillarbox')   // fixed black frame bars over the stage, outside the picture
   for(const css of mode==='pillarbox'?['left:0;top:0;width:240px;height:1080px','right:0;top:0;width:240px;height:1080px']
+      :mode==='letterboxpanel'?['left:0;bottom:0;width:1920px;height:200px']   // one black panel on one edge: a card, not a bar
       :['left:0;top:0;width:1920px;height:131px','left:0;bottom:0;width:1920px;height:131px']) {
     const bar=document.createElement('div'); bar.style.cssText='position:absolute;background:#000;z-index:4;'+css;
     document.body.append(bar); bars.push(bar);
@@ -166,11 +167,13 @@ run pillarbox 0
 grep -q "visible_fraction=1.000000 .*card='none'" "$W/pillarbox.log"
 run letterboxcard 1
 grep -q "card='real-card'" "$W/letterboxcard.log"
+run letterboxpanel 1
+! grep -q 'LAYOUT_PICTURE' "$W/letterboxpanel.log"
 # A black strip that appears only from 0.5 s is not a frame bar: it covers the target like any card.
 rc=0
 "${PW[@]}" "$ROOT/lib/check_layout.py" "$W/letterboxlate.html" --from .25 --to .76 --every .25 > "$W/letterboxlate.log" 2>&1 || rc=$?
 [[ "$rc" == 1 ]]
-grep -q 'LAYOUT_PICTURE bars=1 ' "$W/letterboxlate.log"
+grep -q 'LAYOUT_PICTURE bars=0 ' "$W/letterboxlate.log"
 grep -Eq '\| 0.500 \| Explained target \| (occlude|cut) \|' "$W/letterboxlate.log"
 run accenthidden 0
 grep -q 'accent part hidden by the scene itself' "$W/accenthidden.log"

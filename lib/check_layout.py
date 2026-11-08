@@ -166,11 +166,12 @@ OCCLUSION = r"""([mutate, now, fixedBars]) => {
   // What lies outside the picture is not covered, like what lies outside the frame. script.json "aspect" declares the
   // picture (kit/shell.html window.PICTURE, its #matte bars are not cards). Without it, frame bars a scene draws itself
   // (2.35:1 letterbox, 4:3 pillarbox): a fully opaque black strip on one edge of the frame, across the whole width (at most
-  // a quarter of the height) or the whole height (at most a quarter of the width). Python keeps only strips that are there
-  // with the same rect at every sample (fixedBars); a strip that comes and goes is judged as a card.
+  // a quarter of the height) or the whole height (at most a quarter of the width), with a matching strip of the same
+  // thickness on the opposite edge (one black panel on one edge is a card). Python keeps only strips that are there with
+  // the same rect at every sample (fixedBars); a strip that comes and goes is judged as a card.
   const P=window.PICTURE, declared=P&&(P.w<1920||P.h<1080)?P:null;
   const barKey=r=>[r.left,r.top,r.right,r.bottom].map(Math.round).join(',');
-  const frameBars=declared?[]:cards.filter(({e,r})=>{
+  const edgeStrips=declared?[]:cards.filter(({e,r})=>{
     const c=getComputedStyle(e).backgroundColor.match(/[\d.]+/g).map(Number);
     let opacity=1;
     for(let a=e;a;a=a.parentElement) opacity*=+getComputedStyle(a).opacity;
@@ -178,6 +179,9 @@ OCCLUSION = r"""([mutate, now, fixedBars]) => {
     return (r.left<=0&&r.right>=1920&&(r.top<=0||r.bottom>=1080)&&r.height<=270) ||
       (r.top<=0&&r.bottom>=1080&&(r.left<=0||r.right>=1920)&&r.width<=480);
   });
+  const across=r=>r.left<=0&&r.right>=1920&&r.height<=270;
+  const frameBars=edgeStrips.filter(({r})=>edgeStrips.some(({r:q})=>across(r)===across(q)&&(across(r)
+    ?(r.top<=0)!==(q.top<=0)&&Math.abs(r.height-q.height)<=2:(r.left<=0)!==(q.left<=0)&&Math.abs(r.width-q.width)<=2)));
   const bars=frameBars.filter(({r})=>!fixedBars||fixedBars.includes(barKey(r)));
   for(const bar of bars) cards.splice(cards.indexOf(bar),1);
   const offPicture=declared?(px,py)=>px<declared.x||px>=declared.x+declared.w||py<declared.y||py>=declared.y+declared.h
