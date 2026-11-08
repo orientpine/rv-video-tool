@@ -142,7 +142,7 @@ HOOK = r"""
 
 UI_SNAPSHOT = r"""() => {
   const out=[],seen=new Set();
-  for(const root of document.querySelectorAll('.overlay[data-scene], #steps, #cap')) {
+  for(const root of document.querySelectorAll('.overlay[data-scene], #steps, #cap, #badge')) {
     if(getComputedStyle(root).display==='none')continue;
     const walk=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
     while(walk.nextNode()) {
