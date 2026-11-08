@@ -54,6 +54,26 @@ BED = r"""async ([bedKind, boom, boomOpen, frames = [[6, 0], [0, 0]]]) => {
   return outs;
 }"""
 
+# Two pages build the same scene with the two look-alike bodies created in opposite order (as an async load race does),
+# so their Object3D.ids swap while names, places and boxes match. X pokes 30 mm into S from the start; Y starts clear
+# then S slides 45 mm into both at frame 1. Frame 0 is measured on page 0, frame 1 on page 1.
+TWO = r"""async ([order]) => {
+  window.__rvClearanceNoGrid = false;
+  const r = new THREE.WebGLRenderer(); r.setSize(64, 64); document.body.append(r.domElement);
+  const scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(50, 1, .1, 100); cam.position.set(0, 3, 9); cam.lookAt(0, 0, 0);
+  const box = (w, h, d, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial()); m.position.set(x + w / 2, y + h / 2, z); return m; };
+  const body = (name, parts) => { const g = new THREE.Group(); g.name = name; for (const m of parts) g.add(m); return g; };
+  const S = body('S', [box(1, .5, .3, 1, 0, -.3), box(1, .5, .3, 1, 0, 0), box(1, .5, .3, 1, 0, .3)]);   // x 1..2, y 0..0.5
+  const make = tipY => () => body('Scene', [box(1, .5, .2, 0, 0, 0), box(1, .5, .2, 0, .5, 0), box(.03, .1, .1, 1, tipY, 0)]);
+  const makeX = make(.2), makeY = make(.85);
+  const made = order === 0 ? (() => { const x = makeX(), y = makeY(); return {x, y}; })() : (() => { const y = makeY(), x = makeX(); return {x, y}; })();
+  scene.add(S); scene.add(made.x); scene.add(made.y);
+  // Same box at frame 0 (x 0..1.03, y 0..1): X's tip is at the height of S (30 mm in), Y's tip above it (clear).
+  // At frame 1 S slides 45 mm into both plates; Y's box never changes, so only Y's inside tells X and Y apart.
+  window.renderAt = async t => { S.position.x = t > 0 ? -.045 : 0; scene.updateMatrixWorld(true); r.render(scene, cam); };
+  return [made.x.id, made.y.id];
+}"""
+
 
 def last_frame(outs):
     """Machine rows are decided by check_clearance.machine_findings over the frames in order, as rv check does."""
@@ -111,7 +131,40 @@ async def main():
         answer = await p.evaluate("""() => { const r = new THREE.WebGLRenderer(); const s = new THREE.Scene(), c = new THREE.PerspectiveCamera();
           const g = new THREE.Group(); g.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial())); g.position.x = 2; s.add(g);
           window.__rvClearance.begin(); r.render(s, c); const out = window.__rvClearance.boxes([g.id, 987654321]); r.dispose(); return out; }""")
+        # Same world triangles, different parts (challenge 2026-11-08T07:10): one closed box against the same box as six
+        # open faces. Closedness changes how depth is measured, so their fingerprints must differ.
+        split_faces = await p.evaluate("""() => { const r = new THREE.WebGLRenderer(); const s = new THREE.Scene(), c = new THREE.PerspectiveCamera();
+          const aux = () => [0, 1].map(i => { const m = new THREE.Mesh(new THREE.BoxGeometry(.2, .2, .2), new THREE.MeshStandardMaterial()); m.position.set(3 + i, 0, 0); return m; });
+          const whole = new THREE.Group(); whole.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial()), ...aux());
+          const faces = new THREE.Group(), g = new THREE.BoxGeometry(1, 1, 1).toNonIndexed(), pos = g.attributes.position.array;
+          for (let f = 0; f < 6; f++) { const one = new THREE.BufferGeometry(); one.setAttribute('position', new THREE.Float32BufferAttribute(pos.slice(f * 18, f * 18 + 18), 3));
+            faces.add(new THREE.Mesh(one, new THREE.MeshStandardMaterial())); }
+          faces.add(...aux()); s.add(whole); s.add(faces);
+          window.__rvClearance.begin(); r.render(s, c); const out = window.__rvClearance.boxes([whole.id, faces.id]); r.dispose(); return out; }""")
+        # The two-page race (challenge 2026-11-08T07:06): one page measures frames 0 and 1 (the reference); two pages
+        # split them. Equal boxes are not enough, the bodies must also have the same triangles.
+        FRAME = """async f => { window.CLEAR = null; __rvClearance.begin(); await window.renderAt(f / 30); return __rvClearance.check(); }"""
+        pages = []
+        for order in (0, 1):
+            q = await b.new_page(); await q.goto("about:blank")
+            await q.add_script_tag(path=str(ROOT / "vendor/three-0.147.0.min.js"))
+            await q.evaluate("window.KIT = window.KIT || {fx: {clearance: {attachments: [], seats: []}}}")
+            await q.evaluate(check_clearance.MESH_CHECK); await q.evaluate(TWO, [order]); pages.append(q)
+        one = await b.new_page(); await one.goto("about:blank")
+        await one.add_script_tag(path=str(ROOT / "vendor/three-0.147.0.min.js"))
+        await one.evaluate("window.KIT = window.KIT || {fx: {clearance: {attachments: [], seats: []}}}")
+        await one.evaluate(check_clearance.MESH_CHECK); await one.evaluate(TWO, [0])
+        reference = [[f, None, await one.evaluate(FRAME, f)] for f in (0, 1)]
+        split = [([[0, None, await pages[0].evaluate(FRAME, 0)]],), ([[1, None, await pages[1].evaluate(FRAME, 1)]],)]
+        expected, wanted = check_clearance.identity_checks(split)
+        race_agree = await check_clearance.same_bodies(pages, expected, wanted)
+        merged = sorted([row for part in split for row in part[0]], key=lambda row: row[0])
+        check_clearance.machine_findings(merged); check_clearance.machine_findings(reference)
         await b.close()
+    fails = lambda rows: [(i, f["name"].split(" (")[0], round(f["mm"] or 0)) for i, _, ext in rows for f in ext["findings"] if f["rule"] == "machine penetration" and "Scene" in f["name"]]
+    ref, got = fails(reference), fails(merged)
+    race = bool(ref) and (not race_agree or got == ref)
+    print(f"{'PASS' if race else 'FAIL'} two pages built in opposite order: split rows {'refused (one page)' if not race_agree else got} vs one page {ref}")
     same = grid_on == grid_off and bool(grid_on["fails"])
     print(f"{'PASS' if same else 'FAIL'} 864-triangle boxes: grid index and full loop give the same rows: {grid_on['fails']} vs {grid_off['fails']}")
     want = {"swings into it 0.1 m": True, "apart": False, "touching": False, "seated from the first frame": False, "load in bed overlaps arm": False, "0.3 m held tool into a body": False, "arm into a loaded bed (boxes + heap)": True}
@@ -160,9 +213,12 @@ async def main():
     differ = same and not swapped and not shifted
     print(f"{'PASS' if differ else 'FAIL'} a key that names another body on another page is caught (swapped or shifted load order)")
     ok = ok and split and differ
-    real = len(sighted) == 1 and len(sighted[0]["boxes"]) == 2 and answer == [[1.5, -0.5, -0.5, 2.5, 0.5, 0.5], None]
+    real = (len(sighted) == 1 and len(sighted[0]["boxes"]) == 2 and answer[1] is None and answer[0] is not None
+            and answer[0].split("|")[0] == "1.5,-0.5,-0.5,2.5,0.5,0.5")
     print(f"{'PASS' if real else 'FAIL'} in the page: one first sighting with two boxes, boxes() by id: {[m['boxes'] for m in sighted]} {answer}")
-    ok = ok and real
+    parts_differ = bool(split_faces[0]) and split_faces[0].split("|")[0] == split_faces[1].split("|")[0] and split_faces[0] != split_faces[1]
+    print(f"{'PASS' if parts_differ else 'FAIL'} same box and triangles, closed box vs six open faces: fingerprints differ")
+    ok = ok and real and race and parts_differ
     print("MACHINE_COLLISION", "PASS" if ok else "FAIL")
     return 0 if ok else 1
 

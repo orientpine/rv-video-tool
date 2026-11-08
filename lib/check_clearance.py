@@ -22,10 +22,22 @@ from human_detection import LEGACY_HUMAN, PERSON_NAME  # noqa: E402
 MESH_CHECK = "() => {\n" + LEGACY_HUMAN + "\nconst PERSON_NAME=" + PERSON_NAME + ";\n" + r"""
   const scenes = new Set(), cameras = new Map(), cache = new WeakMap(), pairs = new WeakMap();
   const seenApart = new Set(), seenKey = new Set();   // 기계 짝이 떨어져 보인 것을 이 페이지에서 처음 한 번만 알림(처음 깊이는 machine_findings 가 프레임 순서로 정함)
-  // 짝을 이 페이지에서 처음 본 때 두 몸체의 세계 상자를 함께 보냄: 다른 페이지가 같은 프레임을 그려 같은 키의 상자가 같은지 대조(same_bodies)
+  // At a pair's first sighting on this page, send both bodies' prints; other pages draw that frame and compare (same_bodies).
+  // Print = world box + sorted hashes of the world triangles of each part the depth is measured on: equal prints, equal depths.
   const boxOf = b => [b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z].map(v => Math.round(v * 1e6) / 1e6);
-  const firstBoxes = (key, A, B) => { if (seenKey.has(key)) return undefined; seenKey.add(key); return [boxOf(A.b), boxOf(B.b)]; };
+  const vertexHash = v => (Math.imul(Math.round(v.x * 1e6), 73856093) ^ Math.imul(Math.round(v.y * 1e6), 19349663) ^ Math.imul(Math.round(v.z * 1e6), 83492791)) >>> 0;
+  let prints = new Map();
+  const fingerprint = top => {
+    if (prints.has(top)) return prints.get(top);
+    const parts = bodyParts(top).flatMap(o => shapes(o)).map(sh => {
+      let h = 0; for (const t of sh.triangles) for (const v of [t.a, t.b, t.c]) h = (h + vertexHash(v)) >>> 0;
+      return h + ':' + sh.triangles.length; }).sort();
+    const out = boxOf(bounds(top)).join(',') + '|' + parts.join(','); prints.set(top, out); return out; };
+  const firstBoxes = (key, A, B) => { if (seenKey.has(key)) return undefined; seenKey.add(key); return [fingerprint(A.top), fingerprint(B.top)]; };
   let frameHumans = null;
+  // 기계 몸체의 부품: 흙·짐 알갱이(이름 soil·load·grain·dirt·흙)는 뺌(적재함에 쏟는 흙은 닿는 게 정상)
+  const LOOSE = /soil|load|grain|dirt|흙|모래/i;
+  const bodyParts = top => meshes(top).filter(o => penetrationSolid(o, true) && !humanOf(o) && ![o, o.parent].some(x => x && LOOSE.test(x.name || '')));
   const previous = THREE.Scene.prototype.onBeforeRender;
   THREE.Scene.prototype.onBeforeRender = function(...args) {
     scenes.add(this);
@@ -407,9 +419,9 @@ MESH_CHECK = "() => {\n" + LEGACY_HUMAN + "\nconst PERSON_NAME=" + PERSON_NAME +
     o.position.copy(o.parent ? o.parent.worldToLocal(p) : p); o.updateWorldMatrix(false,true);
   }
   window.__rvClearance = {
-    begin() { scenes.clear(); cameras.clear(); frameTargets=null; frameHumans=null; },
+    begin() { scenes.clear(); cameras.clear(); frameTargets=null; frameHumans=null; prints = new Map(); },
     drawn() { return scenes.size; },
-    boxes(ids) { return ids.map(id => { for (const s of scenes) { const o = s.getObjectById(id); if (o) return boxOf(bounds(o)); } return null; }); },
+    boxes(ids) { return ids.map(id => { for (const s of scenes) { const o = s.getObjectById(id); if (o) return fingerprint(o); } return null; }); },
     mutate(kind) {
       if (kind === 'detach') {
         const d = declarations().attachments.find(d => visible(d.part) && visible(d.support));
@@ -487,13 +499,12 @@ MESH_CHECK = "() => {\n" + LEGACY_HUMAN + "\nconst PERSON_NAME=" + PERSON_NAME +
       // 기계↔기계: 위 규칙들은 사람·부착·좌석만 봐서
       // 기계 팔이 다른 기계의 적재함을 뚫어도 아무 규칙에 안 걸렸음. 장면 바로 아래 몸체(보이는 단단한 메시 3개 이상, 15 m 이하 = 땅·챔버 껍데기 아님,
       // 사람 아님)끼리 20 mm 넘게 파고들면 FAIL. 흙·짐 알갱이(이름 soil·load·grain·dirt·흙)는 몸체 부품에서 뺌(적재함에 쏟는 흙은 닿는 게 정상).
-      const LOOSE = /soil|load|grain|dirt|흙|모래/i;
       const shapeCache = new Map(), shapeOf = o => { if (!shapeCache.has(o)) shapeCache.set(o, shapes(o)); return shapeCache.get(o); };
       for (const scene of window.__rvClearanceNoMachine ? [] : scenes) {
         const bodies = [];
         for (const top of scene.children) {
           if (!visible(top) || humanOf(top)) continue;
-          const parts = meshes(top).filter(o => penetrationSolid(o, true) && !humanOf(o) && ![o, o.parent].some(x => x && LOOSE.test(x.name || '')));
+          const parts = bodyParts(top);
           if (parts.length < 3) continue;
           const b = bounds(top), size = b.getSize(new THREE.Vector3());
           // 기계 = 가장 긴 변 0.8 m 이상(운반 장비·로봇 몸체). 센서 헤드·공구처럼 작은 것은 붙잡혀 들려 다니며 집게와 겹치는 게 정상 — 부착·떠 있음 규칙이 봄
