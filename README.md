@@ -50,7 +50,7 @@ You can give the whole job to a coding agent (Claude Code, Codex, ...) the way y
 Make a 3-minute explainer video from script.md and the notes in notes/. Keep going until rv check passes.
 ```
 ```
-Make a short video from examples/hello that explains how a thermometer works. Finish when rv check passes.
+Starting from examples/hello, make a short video that explains how a thermometer works. Finish when rv check passes.
 ```
 ```
 In projects/demo, the lid at about 1:20 pops in. Make it open smoothly, and rebuild until rv check passes.
