@@ -6,7 +6,7 @@
 FAIL: 어느 프레임이든 부품 간극 < 0 mm (파묻힘) · 센서 끝 < 4.9 mm · 붙잡는 중인데 5.00 ± 0.1 mm 밖.
 --mutate gap: 목표 간극을 −5 mm 로 바꾼 사본(센서가 축 안으로) → FAIL 이어야 정상.
 """
-import argparse, asyncio, json, sys
+import argparse, asyncio, json, math, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from capture import CHROME, CHROME_ARGS  # noqa: E402
@@ -527,6 +527,18 @@ MESH_CHECK = "() => {\n" + LEGACY_HUMAN + "\nconst PERSON_NAME=" + PERSON_NAME +
 }"""
 
 
+def moved_caught(mutate, rows):
+    """A detach/sink mutation is caught when a finding names the part it moved in that frame."""
+    return any(
+        ext["mutated"] and any(
+            f.get("target_id") == ext["moved_id"] and (
+                f["rule"].startswith("attach" if mutate == "detach" else "human")
+                or (mutate == "detach" and f["rule"] == "auto floating")
+                or (mutate == "sink" and f["rule"] == "seat contact"))
+            for f in ext["findings"])
+        for _, _, ext in rows)
+
+
 async def main(a):
     html = Path(a.html).resolve()
     line = next(l for l in html.read_text(encoding="utf-8").split("\n") if l.startswith("window.DATA="))
@@ -544,8 +556,12 @@ async def main(a):
             await p.evaluate("window.__rvClearanceNoMachine = true")
         if a.mutate == "gap":
             await p.evaluate("window.RIG && (RIG.P.GAP = -0.005)")
-        rows = await p.evaluate("""async ([a, b, mutation, rules]) => { const out = [];
-          for (let i = Math.round(a * 30); i < Math.round(b * 30); i++) {
+        # Frames go to the page in batches of 30 so a mutation run can stop at the first frame that catches it
+        # (a mutation only has to be caught once, see moved_caught); the real check measures every frame as before.
+        rows, f1 = [], math.floor(t1 * 30 + .5)
+        for f0 in range(math.floor(t0 * 30 + .5), f1, 30):
+          batch = await p.evaluate("""async ([a, b, mutation, rules]) => { const out = [];
+          for (let i = a; i < b; i++) {
             window.CLEAR = null; __rvClearance.begin(); await window.renderAt(i / 30);
             const moved = __rvClearance.mutate(mutation);
             const ext = rules === 'legacy' ? {count:0,findings:[],targets:{attach:0,human:0,seat:0,auto:0,machine:0}} : __rvClearance.check();
@@ -557,7 +573,10 @@ async def main(a):
               const world = moved.getWorldPosition(new THREE.Vector3()).addScaledVector(up,-d);
               moved.position.copy(moved.parent ? moved.parent.worldToLocal(world) : world); moved.updateWorldMatrix(false,true); }
             out.push([i, rules === 'mesh' ? null : window.CLEAR, ext]); }
-          return out; }""", [t0, t1, a.mutate, a.rules])
+          return out; }""", [f0, min(f0 + 30, f1), a.mutate, a.rules])
+          rows += batch
+          if a.mutate in ("detach", "sink") and moved_caught(a.mutate, batch):
+            break
         lost, canvases = await p.evaluate("""() => { const cs = [...document.querySelectorAll('canvas')];
           return [cs.some(c => { const g = c.getContext('webgl2') || c.getContext('webgl'); return !!g && g.isContextLost(); }), cs.length]; }""")
         await b.close()
@@ -649,14 +668,7 @@ async def main(a):
         print(f"CLEARANCE_CHECK {name} SKIP (장면이 window.CLEAR 를 적지 않음)")
         sys.exit(0)
     ok = not bad and not errs
-    caught = (a.mutate == "gap" and bad) or any(
-        ext["mutated"] and any(
-            f.get("target_id") == ext["moved_id"] and (
-                f["rule"].startswith("attach" if a.mutate == "detach" else "human")
-                or (a.mutate == "detach" and f["rule"] == "auto floating")
-                or (a.mutate == "sink" and f["rule"] == "seat contact"))
-            for f in ext["findings"])
-        for _, _, ext in rows)
+    caught = (a.mutate == "gap" and bad) or moved_caught(a.mutate, rows)
     if a.mutate and caught:
         print("MUTATION_CAUGHT")
     print(f"CLEARANCE_CHECK {name} " + ("PASS" if ok else f"FAIL ({len({i for i, _, _ in bad})} 프레임)"))
