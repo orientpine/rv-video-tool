@@ -113,11 +113,50 @@ checks() {   # mp4 하나에 모든 검사. 하나라도 FAIL 이면 종료 코�
     fi; }
   g_flickmut() { local FL="$B/mut_flicker.mp4"   # 변이: 한 프레임만 왼쪽 아래 작은 자리(화면 1/8)를 검게 → check_flicker 가 잡아야 정상(check_cuts 는 못 잡을 크기)
     # 막대("aspect" 또는 장면이 직접 그린 가장자리 검은 띠) 안이나 검은 그림 위에 검정을 칠하면 바뀌는 게 없어 못 잡음
-    # → 그림 영역 안 같은 비율 자리, 그 자리가 어두우면 흰색(check_flicker --place; 막대 없고 밝으면 옛 자리·검정 그대로)
-    local FB; FB=$(uv run -q --no-project --with numpy python "$L/check_flicker.py" "$MP4" --place "$MID" \
-      --aspect "$(python3 -c "import json;a=json.load(open('$P/script.json')).get('aspect');print(a if isinstance(a,str) else '')")")
+    # → 그림 영역(aspect, 없으면 프레임 MID 에서 가장자리부터 양 끝까지 검은 행·열을 뺀 나머지) 안 같은 비율 자리(왼쪽 1/8,
+    # 위에서 5/8, 크기 1/8), 그 자리 평균 밝기가 128 아래면 흰색. 막대 없고 밝으면 옛 자리(x = iw/8, y = ih*5/8)·검정 그대로.
+    # 상자 자리는 변이 칸에 MUTATION_BOX 줄로 남긴다.
+    local A WH FB PY; A=$(python3 -c "import json;a=json.load(open('$P/script.json')).get('aspect');print(a if isinstance(a,str) else '')")
+    WH=$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 "$MP4")
+    PY=$(cat <<'PYEOF'
+import sys
+a, w, h = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+f = sys.stdin.buffer.read()
+def run(n, black):   # lines from the edge that are black (<= 8) at both ends; captions and badges stop short of the ends
+    k = 0
+    while k < n and black(k):
+        k += 1
+    return k
+if len(f) < w * h:   # no frame MID: the box is drawn on no frame either (old spot; check_flicker then reports NOT_CAUGHT)
+    print("x=0.0000*iw+1.0000*iw/8:y=0.0000*ih+1.0000*ih*5/8:w=1.0000*iw/8:h=1.0000*ih/8:color=black")
+    sys.exit()
+if a:   # same picture as kit/shell.html window.PICTURE
+    aw, ah = map(float, a.split(":"))
+    r = aw / ah
+    pw, ph = (1, round(1920 / r) / 1080) if r > 16 / 9 else (round(1080 * r) / 1920, 1)
+    x, y = (1 - pw) / 2, (1 - ph) / 2
+else:
+    row = lambda y: max(f[y * w:y * w + 8]) <= 8 and max(f[y * w + w - 8:y * w + w]) <= 8
+    top, bottom = run(h, row), run(h, lambda k: row(h - 1 - k))
+    if top + bottom >= h:   # a black frame has no bars, only black
+        top = bottom = 0
+    ends = [*range(top, min(top + 8, h - bottom)), *range(max(top, h - bottom - 8), h - bottom)]   # inside the letterbox
+    col = lambda c: all(f[y * w + c] <= 8 for y in ends)
+    left, right = run(w, col), run(w, lambda k: col(w - 1 - k))
+    if left + right >= w:
+        left = right = 0
+    x, y, pw, ph = left / w, top / h, (w - left - right) / w, (h - top - bottom) / h
+bx, by = round((x + pw / 8) * w), round((y + ph * 5 / 8) * h)
+bw, bh = max(1, round(pw * w / 8)), max(1, round(ph * h / 8))
+mean = sum(sum(f[yy * w + bx:yy * w + bx + bw]) for yy in range(by, by + bh)) / (bw * bh)
+print(f"x={x:.4f}*iw+{pw:.4f}*iw/8:y={y:.4f}*ih+{ph:.4f}*ih*5/8:w={pw:.4f}*iw/8:h={ph:.4f}*ih/8:"
+      f"color={'black' if mean >= 128 else 'white'}")
+PYEOF
+)
+    FB=$(ffmpeg -nostdin -v error -i "$MP4" -vf "select=eq(n\,$MID)" -frames:v 1 -f rawvideo -pix_fmt gray - | python3 -c "$PY" "$A" "${WH%%,*}" "${WH#*,}")
     ffmpeg -nostdin -v error -y -i "$MP4" -vf "drawbox=enable='eq(n\,$MID)':$FB:t=fill" -an -c:v libx264 -preset ultrafast -crf 18 "$FL"
-    mut_exit "변이: 프레임 $MID 작은 자리 깜빡임 (FAIL 이어야 정상)" uv run -q --no-project --with numpy python "$L/check_flicker.py" "$FL"
+    mut_exit "변이: 프레임 $MID 작은 자리 깜빡임 (FAIL 이어야 정상)" bash -c 'echo "MUTATION_BOX $1"; shift; exec "$@"' _ "$FB" \
+      uv run -q --no-project --with numpy python "$L/check_flicker.py" "$FL"
     rm -f "$FL"; }
   g_legacy() { run "센서·팔이 기계 부품에 파묻히지 않기 (check_clearance)" "${UVPW[@]}" "$L/check_clearance.py" "$B/video.html" --rules legacy || fail=1
     if ! grep -q "CLEARANCE_CHECK 실제 SKIP" "$R"; then
