@@ -137,6 +137,18 @@ OCCLUSION = r"""([mutate, now, fixedBars]) => {
     }
     return caches.get(view);
   };
+  // Everything the ID passes draw: meshes plus points, lines and sprites. A point, line or sprite that is not part of
+  // the target (rain, mist, dust, lamp halos, bokeh) is weather, not an object in front of it: both passes hide it.
+  // One that belongs to the target (sparks of a torch, a wire under its group) is drawn as target.
+  const drawnCaches=new Map();
+  const drawnOf=view=>{
+    if(!drawnCaches.has(view)) {
+      meshesOf(view);   // updates the world matrices once
+      const drawn=[]; view.scene.traverseVisible(o=>{if(o.isMesh||o.isPoints||o.isLine||o.isSprite)drawn.push(o)});
+      drawnCaches.set(view,drawn);
+    }
+    return drawnCaches.get(view);
+  };
   const add=(target,source,text,view,own=null)=>{
     if(!target) return;
     let subject=subjects.find(s=>s.target===target && s.view===view);
@@ -247,7 +259,7 @@ OCCLUSION = r"""([mutate, now, fixedBars]) => {
       for(const own of labelled.owns) s.owns.add(own);
   for(const subject of subjects) {
     const {target,source,text,view,owns}=subject, {scene,renderer,raw,camera}=view;
-    const meshes=meshesOf(view), parts=meshes.filter(o=>belongs(o,target));
+    const drawn=drawnOf(view), parts=drawn.filter(o=>belongs(o,target));
     if(!parts.length) { skipped.push(text+': target not in visible scene'); continue; }
     if(mutate==='occlude') {
       const bounds=new THREE.Box3().setFromObject(target), points=[];
@@ -269,7 +281,7 @@ OCCLUSION = r"""([mutate, now, fixedBars]) => {
     // target white/rest black. Counts are silhouette pixels, not bounding boxes.
     const w=480,h=270, rt=new THREE.WebGLRenderTarget(w,h),
       alone=new Uint8Array(w*h*4), full=new Uint8Array(w*h*4);
-    const saved=meshes.map(o=>[o,o.material,o.visible]);
+    const saved=drawn.map(o=>[o,o.material,o.visible]);
     const materials=[], oldRT=renderer.getRenderTarget(),
       bg=scene.background, fog=scene.fog, override=scene.overrideMaterial,
       tone=renderer.toneMapping, scissor=renderer.getScissorTest(),
@@ -279,20 +291,35 @@ OCCLUSION = r"""([mutate, now, fixedBars]) => {
       scene.background=new THREE.Color(0); scene.fog=null; scene.overrideMaterial=null;
       renderer.toneMapping=THREE.NoToneMapping; renderer.autoClear=true;
       renderer.setScissorTest(false); renderer.setClearColor(0,1); renderer.setRenderTarget(rt);
+      const hidden=new Set();
       for(const [o,original] of saved) {
+        const own=belongs(o,target);
+        if(!own && !o.isMesh) {o.visible=false;hidden.add(o);continue;}
         const mask=m=>{
-          const mat=new THREE.MeshBasicMaterial({color:belongs(o,target)?0xffffff:0,
-            side:m.side, visible:m.visible, depthTest:m.depthTest, depthWrite:m.depthWrite,
-            transparent:m.transparent, opacity:m.opacity, alphaTest:m.alphaTest,
-            map:m.map, alphaMap:m.alphaMap});
+          const common={color:own?0xffffff:0, visible:m.visible, depthTest:m.depthTest, depthWrite:m.depthWrite,
+            transparent:m.transparent, opacity:m.opacity, alphaTest:m.alphaTest};
+          let mat;
+          if(m.isShaderMaterial && /gl_FragColor/.test(m.fragmentShader)) {
+            // A custom shader (soft particles) keeps its own size and shape; only its colour becomes the ID, and a
+            // fragment counts where it is at least half opaque.
+            mat=m.clone();
+            mat.fragmentShader=m.fragmentShader.replace(/}\s*$/,
+              `if(gl_FragColor.a<.5) discard; gl_FragColor=vec4(vec3(${own?'1.0':'0.0'}),1.0);\n}`);
+            mat.blending=THREE.NormalBlending; mat.transparent=false; mat.toneMapped=false; mat.fog=false;
+          } else if(o.isPoints) mat=new THREE.PointsMaterial({...common, size:m.size??1,
+            sizeAttenuation:m.sizeAttenuation??true, alphaMap:m.alphaMap??null});
+          else if(o.isLine) mat=new THREE.LineBasicMaterial(common);
+          else if(o.isSprite) mat=new THREE.SpriteMaterial({...common, alphaMap:m.alphaMap??null,
+            rotation:m.rotation??0, sizeAttenuation:m.sizeAttenuation??true});
+          else mat=new THREE.MeshBasicMaterial({...common, side:m.side, alphaMap:m.alphaMap});
           // Color textures must not darken the ID; retain only cutout alpha.
           mat.map=null; materials.push(mat); return mat;
         };
         o.material=Array.isArray(original)?original.map(mask):mask(original);
-        if(!belongs(o,target)) o.visible=false;
+        if(!own) o.visible=false;
       }
       raw(scene,camera); renderer.readRenderTargetPixels(rt,0,0,w,h,alone);
-      for(const [o,,visible] of saved) o.visible=visible;
+      for(const [o,,visible] of saved) if(!hidden.has(o)) o.visible=visible;
       raw(scene,camera); renderer.readRenderTargetPixels(rt,0,0,w,h,full);
     } finally {
       for(const [o,material,visible] of saved) {o.material=material;o.visible=visible;}

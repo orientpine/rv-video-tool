@@ -14,7 +14,8 @@ for case in ("normal", "depth75", "depth25", "dom75", "dom25", "own", "fallback"
              "group", "orthographic", "legacy", "accent45", "focus45", "look45",
              "lookoff", "arc86", "effective516", "effective430", "card39", "late",
              "accenthidden", "capcover", "fadecover", "focustiny", "looktiny",
-             "letterbox", "letterboxcard", "letterboxlate", "pillarbox", "letterboxpanel"):
+             "letterbox", "letterboxcard", "letterboxlate", "pillarbox", "letterboxpanel",
+             "glow", "glowshader", "rain", "glowdepth75", "ownparts"):
     html = """<!doctype html><meta charset="utf-8"><style>
 html,body{margin:0;width:1920px;height:1080px;--ui:sans-serif}
 #stage,.overlay{position:absolute;inset:0}
@@ -31,14 +32,43 @@ const automatic=['accent45','focus45','look45','lookoff','arc86','effective516',
 const target=new THREE.Mesh(mode==='arc86'?new THREE.TorusGeometry(.8,.06,8,96):new THREE.PlaneGeometry(2,2),
   new THREE.MeshBasicMaterial({color:['accent45','arc86','accenthidden'].includes(mode)?0xF2A33A:0xffaa00}));
 target.name=mode==='arc86'?'accent-arc':'Explained target';
-const explained=mode==='group'?new THREE.Group():target;
+const explained=mode==='group'||mode==='ownparts'?new THREE.Group():target;
 if(explained!==target) explained.add(target);
 scene.add(explained);
 // Target partly behind a frame bar: low edge under a 2.35:1 letterbox bar, left edge under a 4:3 pillarbox bar.
 if(mode.startsWith('letterbox')) explained.position.y=-1.5;
 if(mode==='pillarbox') explained.position.x=-3;
-if(mode.startsWith('depth')){
-  const width=mode==='depth75'?1.5:.5;
+// Weather behind a wall, not part of the target: big additive lamp halos (built-in or soft-particle shader points)
+// and bright rain streaks. The wall hides them in the scene; they must not count as target pixels either.
+const weather=['glow','glowshader','rain','glowdepth75'].includes(mode);
+if(weather){
+  const wall=new THREE.Mesh(new THREE.PlaneGeometry(14,8),new THREE.MeshBasicMaterial({color:0x2a3a40}));
+  wall.position.z=-1; scene.add(wall);
+  const pos=[];
+  if(mode==='rain') for(let i=0;i<600;i++){const x=-4+8*i/600, y=-2.5+(i*37%50)/10; pos.push(x,y,-2,x+.05,y+1.2,-2);}
+  else for(let i=0;i<20;i++) for(let j=0;j<10;j++) pos.push(-4+8*i/19,-2+4*j/9,-2);
+  const geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  const glow={transparent:true,depthWrite:false,blending:THREE.AdditiveBlending};
+  scene.add(mode==='rain'?new THREE.LineSegments(geo,new THREE.LineBasicMaterial({color:0xffffff,opacity:.9,...glow}))
+    :mode==='glowshader'?new THREE.Points(geo,new THREE.ShaderMaterial({...glow,
+      vertexShader:'void main(){gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);gl_PointSize=48.0;}',
+      fragmentShader:'void main(){float r=length(gl_PointCoord-.5)*2.;if(r>1.)discard;gl_FragColor=vec4(1.,.9,.7,1.-r*r);}'}))
+    :new THREE.Points(geo,new THREE.PointsMaterial({color:0xfff0d0,size:48,sizeAttenuation:false,opacity:.9,...glow})));
+}
+// Dark points, lines and soft-particle points that belong to the target group (beside and above the plate) are target.
+if(mode==='ownparts'){
+  const dark=new THREE.Color(0x203040), pts=[], lines=[], top=[];
+  for(let i=0;i<5;i++) for(let j=0;j<5;j++) {pts.push(1.3+.25*i,-.5+.25*j,0); top.push(-.5+.25*i,1.2+.1*j,0);}
+  for(let i=0;i<20;i++) lines.push(-2.4+.05*i,-.6,0,-2.4+.05*i,.6,0);
+  const geo=a=>{const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(a,3)); return g;};
+  explained.add(new THREE.Points(geo(pts),new THREE.PointsMaterial({color:dark,size:24,sizeAttenuation:false})));
+  explained.add(new THREE.LineSegments(geo(lines),new THREE.LineBasicMaterial({color:dark})));
+  explained.add(new THREE.Points(geo(top),new THREE.ShaderMaterial({
+    vertexShader:'void main(){gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);gl_PointSize=24.0;}',
+    fragmentShader:'void main(){gl_FragColor=vec4(.125,.19,.25,1.);}'})));
+}
+if(mode.startsWith('depth')||mode==='glowdepth75'){
+  const width=mode==='depth75'||mode==='glowdepth75'?1.5:.5;
   const block=new THREE.Mesh(new THREE.PlaneGeometry(width,2.5),new THREE.MeshBasicMaterial({color:0x16323c}));
   block.position.set(-1+width/2,0,.01); scene.add(block);
 }
@@ -175,6 +205,19 @@ rc=0
 [[ "$rc" == 1 ]]
 grep -q 'LAYOUT_PICTURE bars=0 ' "$W/letterboxlate.log"
 grep -Eq '\| 0.500 \| Explained target \| (occlude|cut) \|' "$W/letterboxlate.log"
+# Weather that is not part of the target (halo points, soft-particle points, rain lines) is not counted as target,
+# so a wall hiding it is no cover. A real block in front still FAILs with the halos there. Points, lines and shader
+# points under the target's own group count as target pixels.
+for weather in glow glowshader rain; do
+  run "$weather" 0
+  grep -q "visible_fraction=1.000000 required>=0.500 pixels=$(grep -o 'pixels=[0-9]*/[0-9]*' "$W/normal.log" | head -1 | cut -d= -f2)" "$W/$weather.log"
+done
+run glowdepth75 1
+grep -q "pixels=$(grep -o 'pixels=[0-9]*/[0-9]*' "$W/depth75.log" | head -1 | cut -d= -f2) " "$W/glowdepth75.log"
+run ownparts 0
+plate=$(grep -o 'pixels=[0-9]*/[0-9]*' "$W/normal.log" | head -1 | cut -d/ -f2)
+owned=$(grep -o 'pixels=[0-9]*/[0-9]*' "$W/ownparts.log" | head -1 | cut -d/ -f2)
+(( owned > plate + 1500 )) || { echo "ownparts: target pixels $owned, plate alone $plate"; exit 1; }
 run accenthidden 0
 grep -q 'accent part hidden by the scene itself' "$W/accenthidden.log"
 run capcover 0
