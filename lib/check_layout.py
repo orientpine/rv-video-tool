@@ -303,13 +303,14 @@ OCCLUSION = r"""([mutate, now, fixedBars]) => {
           // A soft-particle shader keeps its own size and shape: its main() runs, then the colour becomes the ID and a
           // fragment counts where it is at least half opaque. Uniforms are shared, not cloned (no texture copies).
           const shader=!o.isMesh && m.isShaderMaterial && !m.isRawShaderMaterial && /gl_FragColor/.test(m.fragmentShader)
-            ? m.fragmentShader.replace(/\bvoid\s+main\s*\(\s*(void)?\s*\)/,'void rvLayoutMain()') : null;
+            ? m.fragmentShader.replace(/^\s*void\s+main\s*\(\s*(void)?\s*\)/m,'void rvLayoutMain()') : null;
           let mat;
           if(shader && shader!==m.fragmentShader) {
             mat=new THREE.ShaderMaterial({vertexShader:m.vertexShader, uniforms:m.uniforms, defines:{...m.defines},
               fragmentShader:shader+`\nvoid main(){rvLayoutMain(); if(gl_FragColor.a<.5) discard;\n`+
                 `gl_FragColor=vec4(vec3(${own?'1.0':'0.0'}),1.0);}`,
-              side:m.side, depthTest:m.depthTest, depthWrite:true, toneMapped:false, fog:false});
+              side:m.side, depthTest:m.depthTest, depthWrite:true, toneMapped:false, fog:false,
+              vertexColors:m.vertexColors, lights:m.lights, clipping:m.clipping, linewidth:m.linewidth});
             mat.extensions={...m.extensions};
           } else if(o.isPoints) mat=new THREE.PointsMaterial({...common, size:m.size??1,
             sizeAttenuation:m.sizeAttenuation??true, alphaMap:m.alphaMap??null});
