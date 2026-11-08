@@ -256,6 +256,7 @@ PYEOF
   QSTRICT=$(python3 -c "import json;print(1 if json.load(open('$P/script.json')).get('quality')=='strict' else 0)")
   quality_fail() { if [ "$QSTRICT" = 1 ]; then fail=1; else echo '참고: quality=strict 아님 → 판정에 안 넣음 (script.json "quality": "strict")' >> "$R"; fi; }
   g_quality() { run "장소·이야기·사람·밀도·카드 크기 (check_quality)" "${QPW[@]}" "$L/check_quality.py" "$B/video.html" --project "$P" || quality_fail
+    [ "$QSTRICT" = 1 ] || return 0   # 참고로만 도는 프로젝트는 변이도 안 돌림: 예전 판정·검사 시간 그대로
     sub quality1 mut "변이: 900x500 카드를 모든 프레임에" "${QPW[@]}" "$L/check_quality.py" "$B/video.html" --project "$P" --every 1000 --mutate card
     sub quality2 mut "변이: 모든 물체 숨김 (빈 화면)" "${QPW[@]}" "$L/check_quality.py" "$B/video.html" --project "$P" --every 1000 --mutate empty
     sub quality3 mut "변이: 사람 숨김" "${QPW[@]}" "$L/check_quality.py" "$B/video.html" --project "$P" --every 1000 --mutate people
@@ -269,7 +270,7 @@ PYEOF
   rm -f "$B/discord_joined.mp4"; rm -rf "$SEC"
   echo "## 판정" >> "$R"
   local REF; REF=$(grep -c "^참고: \(checks\|quality\)=strict 아님" "$R" || true)   # strict 가 아니면 새 검사 FAIL 이 참고로만 남아 놓치기 쉬움 → 끝에 건수를 모아 보여 줌
-  [ "$REF" -gt 0 ] && echo "RV_CHECKS_REFERENCE_FAILS $REF (checks: strict 가 아니라 판정에 안 넣은 검사 FAIL — 새 프로젝트는 script.json \"checks\": \"strict\")" >> "$R"
+  [ "$REF" -gt 0 ] && echo "RV_CHECKS_REFERENCE_FAILS $REF (checks·quality 가 strict 가 아니라 판정에 안 넣은 검사 FAIL — 새 프로젝트는 script.json \"checks\": \"strict\", \"quality\": \"strict\")" >> "$R"
   [ $fail = 0 ] && echo "RV_CHECKS PASS" >> "$R" || echo "RV_CHECKS FAIL" >> "$R"
   tail -1 "$R"; echo "→ $R"
   return $fail

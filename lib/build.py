@@ -141,21 +141,6 @@ def main():
         portions.append("window.SCENE_SITE=" + js_json(scene_sites) + ";")
     if scene_places:
         portions.append("window.SCENE_PLACE=" + js_json(scene_places) + ";")
-    # CC0 place assets (kit/assets/places/<kind>/, common/): only the kinds this project names, so video.html stays small
-    place_dir, kit_assets, loaded_vendor = ROOT / "kit/assets/places", {}, set()
-    for kind in sorted({"common", *scene_places.values()}):
-        folder = place_dir / kind
-        for path in sorted(folder.rglob("*")) if folder.is_dir() else []:
-            if path.is_file() and path.suffix.lower() not in (".md", ".txt"):
-                mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-                kit_assets[f"{kind}/{path.relative_to(folder).as_posix()}"] = f"data:{mime};base64," + base64.b64encode(path.read_bytes()).decode("ascii")
-    if kit_assets:
-        portions.append("window.KIT_ASSETS=" + js_json(kit_assets) + ";")
-        for name in ("GLTFLoader.js", "OBJLoader.js"):   # models in the asset folders are parsed by these (three r147 examples/js)
-            path = (ROOT / "vendor" / name).resolve()
-            if path not in loaded_vendor:
-                loaded_vendor.add(path)
-                portions.append("// vendor/" + name + "\n" + path.read_text(encoding="utf-8"))
     if scene_beats:
         portions.append("window.SCENE_BEAT=" + js_json(scene_beats) + ";")
     if transitions:

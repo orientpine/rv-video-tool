@@ -1,8 +1,8 @@
 """Quality signals for a short-brief video: place, story, people, density and card size.
 
-Every other rv check asks "is anything broken". This one asks "is there enough on screen": the first KIMM
-videos passed every strict check while showing one object on a bare floor in front of a flat wall, with no
-person, no story and number cards covering a big part of the frame. It samples build/video.html at --every
+Every other rv check asks "is anything broken". This one asks "is there enough on screen": a video can pass every
+strict check while showing one object on a bare floor in front of a flat wall, with no person, no story and number
+cards covering a big part of the frame. It samples build/video.html at --every
 seconds inside each scene (away from transitions) and reports per scene:
 
   QUALITY_EMPTY      flat screen tiles (no texture, no edges) over --empty of the frame: bare floor, plain wall, empty sky
@@ -11,9 +11,9 @@ seconds inside each scene (away from transitions) and reports per scene:
   QUALITY_CARD       cards (opaque text panels, not captions or pictures) cover more than --card of the frame
   QUALITY_STORY      script.json scenes[].beat missing, or the beats lack problem / inside / result / after, or "problem" not first
   QUALITY_FAKE_FX    a flat plate named smoke/steam/flame/section, or a large flat translucent panel, instead of KIT.fx.smoke/
-                     steam/flame/section (owner on plasma v2: "네모난 유리같은 박스", "연기가 이상한 거")
+                     steam/flame/section (a smoke plate, a glass box standing in for a cut)
   QUALITY_TEXT_HIDDEN 3D text (a sign plate with canvas text) at least 15% behind another solid, measured by depth rays
-                     (owner on plasma v2: "벤젠이 텍스트가 가려졌어"); KIT.label and KIT.sign are always on top
+                     (a pipe passing in front of a tank's name plate); KIT.label and KIT.sign are always on top
   QUALITY_PLACE      a scene has no scenes[].place (where the story happens), or names a KIT.place kind it never builds
 
 Exceptions with a reason: script.json scenes[].quality_ok = {"EMPTY": "why this scene may be empty"} for one scene,
@@ -21,6 +21,7 @@ or top-level "quality_ok" = {"NO_PEOPLE": "..."} for the whole video. A reason u
 Each exception is printed as QUALITY_EXEMPT so a reader sees it.
 
 Mutations (self-tests, rv runs them): --mutate card (a 900x500 opaque card on every frame) must give QUALITY_CARD;
+Exemptions (quality_ok) are ignored while a mutation runs.
 --mutate empty (every mesh and scene.background hidden) must give QUALITY_EMPTY and QUALITY_SPARSE in every sampled scene;
 --mutate people (every KIT.fx.human hidden) must give QUALITY_NO_PEOPLE (MUTATION_SKIP when the video has no people).
 """
@@ -86,7 +87,12 @@ FRAME = r"""mutate => {
  const FXNAME=/smoke|연기|매연|steam|증기|fume|exhaust|배기|flame|불꽃|불길|plasma|플라즈마|cutaway|section|단면|투시/i;
  const tagged=o=>{for(let x=o;x;x=x.parent){const u=x.userData||{}; if(u.rvFx||u.rvEnv||u.rvPlace||u.rvHuman) return true;} return false;};
  const fxNamed=o=>{for(let x=o;x;x=x.parent) if(x.name&&FXNAME.test(x.name)) return x.name; return null;};
- const humans=new Set(), places=new Set();
+ const humans=new Set(), places=new Set(), mutHidden=[];
+ let realHumans=0;
+ for(const [scene] of window.__qScenesFrame||[]) scene.traverse(o=>{
+  if(o.userData&&o.userData.rvHuman&&o.visible) realHumans++;
+  if(o.visible&&((mutate==='empty'&&o.isMesh)||(mutate==='people'&&o.userData&&o.userData.rvHuman))){o.visible=false;mutHidden.push(o);}
+ });
  // Only scenes drawn for this frame (renderAt draws the current scene; a transition draws two).
  for(const [scene,cam] of window.__qScenesFrame||[]){
   cam.updateMatrixWorld(true);
@@ -107,8 +113,8 @@ FRAME = r"""mutate => {
    out.objects++; if(out.names.length<12) out.names.push(o.name||o.type);
   };
   for(const c of scene.children) visit(c,0);
-  // 3D text (a flat mesh showing a canvas texture: sign plates, name boards) hidden behind other solids (owner, plasma v2:
-  // pipes in front of the "벤젠" plate). Rays from the camera to a 7x3 grid on the plate; a ray that hits another solid first
+  // 3D text (a flat mesh showing a canvas texture: sign plates, name boards) hidden behind other solids (a pipe in
+  // front of a tank's name plate). Rays from the camera to a 7x3 grid on the plate; a ray that hits another solid first
   // counts as covered. Plates drawn on top (depthTest false, KIT.sign) and parts of the same KIT.process gauge are not counted.
   const ray=new THREE.Raycaster(), solids=[];
   scene.traverse(m=>{ if(m.isMesh&&!m.isInstancedMesh&&shown(m)&&[].concat(m.material).some(x=>x&&x.visible!==false&&!(x.transparent&&x.opacity<.5))&&!(m.userData&&m.userData.rvProp)) solids.push(m); });
@@ -139,7 +145,7 @@ FRAME = r"""mutate => {
    }
    if(total>=6&&covered/total>=.15) out.hidden.push(`${m.name||(m.parent&&m.parent.name)||'text plate'} ${Math.round(100*covered/total)}% covered`);
   });
-  // Cheap stand-ins for effects (owner, plasma v2): smoke as one flat plate, a "cutaway" as a translucent panel in front of a solid.
+  // Cheap stand-ins for effects: smoke as one flat plate, a "cutaway" as a translucent panel in front of a solid.
   scene.traverse(m=>{
    if(!m.isMesh||m.isInstancedMesh||!shown(m)||tagged(m)) return;
    box.setFromObject(m); if(box.isEmpty()) return;
@@ -156,8 +162,8 @@ FRAME = r"""mutate => {
    }
   });
  }
- if(mutate==='empty') { out.objects=0; out.names=[]; }   // the hook hid every mesh for the drawn frame
- out.realHumans=humans.size; out.humans=mutate==='people'?0:humans.size; out.places=[...places];
+ for(const o of mutHidden) o.visible=true;
+ out.realHumans=realHumans; out.humans=humans.size; out.places=[...places];
  // Cards: opaque panels with text (the definition check_layout OCCLUSION uses), not rv's captions/steps/fade,
  // not the scene badge and not still pictures (KIT.info.picture, data-rv-picture: they are content, sized by check_motion).
  if(mutate==='card'&&!document.querySelector('[data-quality-mutation]')){
@@ -247,8 +253,10 @@ async def measure(pw, html, mutate, jobs, shard, shards):
 
 
 def exemptions(script):
-    top = script.get("quality_ok") or {}
-    per = {s["name"]: s.get("quality_ok") or {} for s in script.get("scenes", []) if isinstance(s, dict)}
+    top = script.get("quality_ok")
+    top = top if isinstance(top, dict) else {}
+    per = {s["name"]: s["quality_ok"] if isinstance(s.get("quality_ok"), dict) else {}
+           for s in script.get("scenes", []) if isinstance(s, dict) and "name" in s}
     return top, per
 
 
@@ -276,6 +284,9 @@ def main(a):
     is_hello = project.name == "hello" and project.parent.name == "examples"
 
     def warn(rule, scene, text):
+        if a.mutate:
+            warns.append((rule, scene, text))
+            return
         reason = (scene_ok.get(scene, {}) if scene else {}).get(rule) or top_ok.get(rule)
         if isinstance(reason, str) and HELLO_ONLY in reason and not is_hello:
             bad_reasons.append(f"QUALITY_EXEMPT_BAD rule={rule} scene={scene or '-'} reason copied from examples/hello "
