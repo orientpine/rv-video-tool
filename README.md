@@ -144,6 +144,7 @@ What the parts do:
 - `KIT.camSet(cam, {p, l, fov})` places the camera. The `bench` and `slide` scenes call it with a fixed state, which is the other shot you'll use most: a still camera while text changes.
 - `KIT.label(overlay, text, {target})` adds a name tag; `place(cam, point, dx, dy, alpha)` positions it each frame. The example switches labels on and off instead of fading them, so the contrast check never samples a half-faded tag.
 - Also available: `KIT.shot.track(NAME, {t, dur, subject})` follows a named moving object, `KIT.shot.declare(NAME, [{t, end, kind, subject}])` declares shots by hand (`"action"`, `"ui-only"`), and `KIT.shot.establish / pushIn / orbit` build keyframes for `KIT.camAt`. Cutaways, exploded views, people, process steps and numbered cards are in [HOWTO.md](HOWTO.md) section 4.
+- For a real video, start from `examples/story` instead: four beats (`scenes[].beat`: problem, inside, result, after), each scene in a place (`scenes[].place` + `KIT.place(NAME, scene)`: sidewalk, factory, recycling, clinic, kitchen or lab, with depth, light, haze and background motion, all procedural), people from `KIT.fx.human`, and small number cards (`KIT.info.numCard`, top right by default).
 
 ## What `rv check` catches
 
@@ -172,6 +173,7 @@ Times are wall-clock seconds from `out/CHECKS.timing.tsv` of the run above (93 s
 | Numbers on screen or in narration without a source in `sources.json` | `check_numbers` | 14.3 s (skipped, no `sources.json`) |
 | Subject sharpness after depth of field, motion blur and share-copy encoding | `check_sharp` | 15.5 s (skipped, no `look`) |
 | Loudness and clipping, silence inside speech; music and effects audible but under the voice | `check_audio` | 21.0 s |
+| Thin videos: bare background, too few things on screen, no people, cards too big, story beats or place missing, 3D text hidden behind a part, smoke drawn as a flat plate or a cutaway faked with a see-through panel (`QUALITY_*`, exceptions need a written reason) | `check_quality` | QUALITY_TIME |
 | SRT cue count and contact sheets | `sheet` | 5.7 s |
 | **Total `rv check`** (first step start to last step end) | | **32.0 s** |
 

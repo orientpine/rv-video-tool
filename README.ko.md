@@ -144,6 +144,7 @@ SCENES.probe = (() => {
 - `KIT.camSet(cam, {p, l, fov})` 는 카메라를 놓는다. `bench` 와 `slide` 장면은 고정 값으로 부른다. 가장 자주 쓸 또 하나의 샷, 글자가 바뀌는 동안 세워 둔 카메라다.
 - `KIT.label(overlay, text, {target})` 는 이름표를 달고, `place(cam, point, dx, dy, alpha)` 로 프레임마다 자리를 잡는다. 예시는 이름표를 서서히 나타내지 않고 켜고 끈다. 그래야 대비 검사가 반쯤 투명한 이름표를 재지 않는다.
 - 그 밖에: `KIT.shot.track(NAME, {t, dur, subject})` 는 이름 있는 움직이는 물체를 따라가고, `KIT.shot.declare(NAME, [{t, end, kind, subject}])` 는 샷을 손으로 선언하고(`"action"`, `"ui-only"`), `KIT.shot.establish / pushIn / orbit` 은 `KIT.camAt` 에 줄 열쇠를 만든다. 투시, 분해, 사람, 공정 단계, 숫자 카드는 [HOWTO.md](HOWTO.md) 4절.
+- 실제 영상은 `examples/story` 에서 시작한다: 네 박자(`scenes[].beat`: problem 문제 장면, inside 기술 속, result 결과 순간, after 바뀐 모습), 장면마다 장소(`scenes[].place` + `KIT.place(NAME, scene)`: 보도·공장·재활용장·진료실·부엌·연구실, 깊이·빛·공기·배경 움직임까지 모두 절차 생성), `KIT.fx.human` 사람, 작은 숫자 카드(`KIT.info.numCard`, 기본 오른쪽 위).
 
 ## `rv check` 가 잡는 것
 
@@ -171,7 +172,7 @@ SCENES.probe = (() => {
 | 사람: `KIT.fx.human` 만, 몸 부위, 접촉점, 복식이 현장과 맞는지 | `check_human` | 16.1 s (건너뜀, 변이는 돎) |
 | `sources.json` 에 출처 없는 화면·나레이션 숫자 | `check_numbers` | 14.3 s (건너뜀, `sources.json` 없음) |
 | 심도, 모션 블러, 공유판 인코딩 뒤 주인공 선명도 | `check_sharp` | 15.5 s (건너뜀, `look` 없음) |
-| 음량과 찢어짐, 말 사이 무음, 배경음·효과음이 들리되 말보다 작게 | `check_audio` | 21.0 s |
+| 앙상한 영상: 빈 배경, 화면에 물체가 너무 적음, 사람 없음, 카드가 너무 큼, 이야기 박자·장소 없음, 부품 뒤에 가린 3D 글자, 납작한 판 연기·반투명 판 단면 (`QUALITY_*`, 예외는 이유를 적어야) | `check_quality` | QUALITY_TIME |
 | SRT 큐 수, 접촉 시트 | `sheet` | 5.7 s |
 | **`rv check` 전체** (첫 단계 시작부터 마지막 단계 끝까지) | | **32.0 s** |
 

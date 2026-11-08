@@ -8,11 +8,14 @@ This file is for coding agents (Claude Code, Codex and similar) working in this 
 
 Your job is to finish it end to end with the tools in this repo, then hand the user a video they can watch. Reply to the user in the language they wrote in.
 
+A short request is not a request for a short effort. Where the user gives guidance (story, place, style, length, scenes), follow it. Where they don't, follow the defaults in this file: they are there so that a one-line request still gets a video worth showing, with a real place, people, a story from problem to result, and something moving in every shot. `rv check` warns (`QUALITY_*`) when a video falls short of that.
+
 Read these when you need detail. This file tells you the order of work and the rules.
 
 - [README.md](README.md): install, commands, the scene kit in short, what each check catches.
 - [HOWTO.md](HOWTO.md) (Korean): the full project guide. Section 4 = KIT helpers, section 4-0 = camera rules, section 5 = reading `CHECKS.md` and how to fix each failure.
-- `examples/hello/`: a small project that passes every check in strict mode. Copy its patterns.
+- `examples/story/`: the starting point for a real video (four beats, places, people, cards). It passes every check in strict mode, quality included. Copy its patterns.
+- `examples/hello/`: the smallest project that runs, for learning the API.
 
 ## 0. Setup (once)
 
@@ -27,19 +30,30 @@ If `uv`, `ffmpeg` or a Chromium is missing and you can't install it yourself, te
 
 ## 1. Start a project from the example
 
-Keep user projects in `projects/` (git-ignored), one folder each:
+Keep user projects in `projects/` (git-ignored), one folder each. Start from `examples/story` (a one-minute video in four beats, with a place, people, small number cards and moving subjects). `examples/hello` is only a minimal demo of the API. If the user tells you to start from `examples/hello`, do: copy it, then delete its `quality_ok` block (those reasons only count inside `examples/hello`) and give the video the same story, places and people as `examples/story` (copy its patterns).
 
 ```
-mkdir -p projects && cp -r examples/hello projects/<name>
+mkdir -p projects && cp -r examples/story projects/<name>
 ```
+
+Before writing the script, find out what you are showing. If the user didn't give the facts and you don't know the place, the machine or the process, look them up on the web (official pages, papers, press releases, manuals). Put every number and fact you use in `sources.json` with its URL, licence and the date you read it. Use only public facts, and draw everything with rv: no copied images, logos or photos of real people.
+
+Plan the story in four beats, one or more scenes each, and write them into `script.json` as `scenes[].beat`:
+
+1. `problem`: a real place where a real person runs into the problem (5 to 8 s, readable at a glance: who is stuck, and why).
+2. `inside`: how the technology works, from the inside (cutaway, close-up, exploded view, `look: "relief"` if it helps).
+3. `result`: the one moment it works (an action shot: `KIT.shot.action`).
+4. `after`: what changes for the person or the place (the same place as `problem`, now solved).
+
+Give each scene a `"place"`: one of `sidewalk`, `factory`, `recycling`, `clinic`, `kitchen`, `lab` (built by `KIT.place`), or your own words if you build the set yourself.
 
 Then edit `projects/<name>/script.json`:
 
 - `"name"`: the output file name (`out/<name>.mp4`).
 - `"voice"`: an edge-tts voice in the user's language, e.g. `en-US-AriaNeural`, `ko-KR-SunHiNeural`, `ko-KR-InJoonNeural`.
-- Keep `"checks": "strict"`. Without it most checks only report and never fail, so a PASS would mean little.
-- Set `"site"` (`lab`, `construction` or `office`) to where the story takes place. People in the video are dressed for it.
-- `"aspect"` (optional): `"2.35:1"` for a cinema frame (bars top and bottom), `"4:3"` for side bars. rv draws the bars above the scenes; `check_layout` does not count them as cards and the flicker mutation lands inside the picture. Keep the subject and its labels inside the picture: anything under a bar is hidden. Never draw bars in a scene.
+- Keep `"checks": "strict"` and `"quality": "strict"`. Without them most checks and the `QUALITY_*` lines only report and never fail, so a PASS would mean little.
+- Set `"site"` (`lab`, `construction` or `office`) to where the story takes place. People in the video are dressed for it. With `KIT.place`, use `KIT.place.site(kind)` per scene (`scenes[].site`): sidewalk, kitchen and clinic dress people as `office`, factory and lab as `lab`, recycling as `construction`.
+- `"aspect"` (optional): `"2.35:1"` for a cinema frame (bars top and bottom), `"4:3"` for side bars. rv draws the bars above the scenes; `check_layout` does not count them as cards and the flicker mutation lands inside the picture. Keep the subject and its labels inside the picture: anything under a bar is hidden. Never draw bars in a scene. `check_quality` also measures only the picture.
 - `"scenes"`: one entry per scene folder, in order, with a `dip` transition between scenes like the example. `extra_s` adds seconds after the last line of a scene.
 - `"lines"`: `{"scene", "text", "keywords"}`. `text` is narrated and shown as captions (`|` splits a caption). `say` overrides what is spoken. `keywords` must be words from that line. The scene highlights them on screen at the moment they're spoken.
 
@@ -47,7 +61,7 @@ Length: narration speed sets the length. About 2.5 English words or 6 to 7 Korea
 
 Numbers: once a project has `sources.json`, a digit or spoken number with no source in it stops the build (narration) or fails `check_numbers` (screen). Without `sources.json` (like `examples/hello`) the number check is off. For a video that states facts or numbers, add `sources.json` with the user's sources (HOWTO section 3, "Numbers and sources"), or leave the numbers out.
 
-Scenes: `scenes/<scene>/module.js` registers `SCENES.<scene> = {duration, init(renderer, THREE, overlay), render(t)}`. `deps.json` lists the shared files it loads. Share the 3D set in `shared/`. Copy `examples/hello/scenes/*/module.js`. Its labels fade in and out with `KIT.win(t, a, b, 0.3)`: a label that switches on in one frame fails `POP_IN` once its elements cover at least 0.2% of the screen (about 64x64 px). The rules that keep checks green:
+Scenes: `scenes/<scene>/module.js` registers `SCENES.<scene> = {duration, init(renderer, THREE, overlay), render(t)}`. `deps.json` lists the shared files it loads. Share the 3D set in `shared/`. Copy `examples/story/scenes/*/module.js (or `examples/hello`'s for the bare API)`. Its labels fade in and out with `KIT.win(t, a, b, 0.3)`: a label that switches on in one frame fails `POP_IN` once its elements cover at least 0.2% of the screen (about 64x64 px). The rules that keep checks green:
 
 - Every pose is a pure function of `t`. Never keep state from the previous frame.
 - Time motion to words: `KIT.wordT(NAME, "keyword")`, not hand-typed seconds. Set `window.HL` to the keyword while it's highlighted.
@@ -55,7 +69,10 @@ Scenes: `scenes/<scene>/module.js` registers `SCENES.<scene> = {duration, init(r
 - Fade or grow things in. Never switch them on in one frame: `KIT.fx.reveal(obj, KIT.win(t, a, b, 0.4))`, `label.place(..., KIT.win(t, a, b, 0.3))`. Otherwise `POP_IN` fails.
 - If a line says something moves ("opens the lid", "turns the valve"), that part must really move then and be named, so `ACTION_MATCH` can find it: `KIT.process.*` (HOWTO 4-1). The part should sit near the frame centre (`SUBJECT_FRAME`).
 - While a card, label or caption is up and the camera holds, keep the part of the picture the text leaves free moving for real (`TEXT_MOTION` fails 2 s or more of stillness there): place the subject clear of the cards with `KIT.shot.free`, and use `KIT.fx.pulse`, `KIT.process.spin` or a flowing `KIT.process.exhaust({path})`. Where motion can't show the meaning, use a rich still picture, `KIT.info.picture`, fully shown for 3 s or more (`PICTURE`). Don't let a card cover part of an explained or moving object (`check_layout` `cut`): move the card with `KIT.info.clear`, or declare background decoration with `KIT.fx.decor` (HOWTO 4-2, `examples/text-motion`).
-- Draw people only with `KIT.fx.human`. Use `KIT.label(overlay, text, {target})` for name tags.
+- Build each scene in its place: `const P = KIT.place(NAME, scene)` gives the ground, buildings or walls at several depths, props, light, haze and things moving in the background (`P.update(t)` in `render`). Put the subject at `P.stage` and use `P.spots` for where things belong (an entrance step, a high shelf, a pile). An empty floor in front of a plain wall gets `QUALITY_EMPTY`.
+- Draw people only with `KIT.fx.human`. Use `KIT.label(overlay, text, {target})` for name tags, or `KIT.sign(parent, text, {at})` for a name plate fixed on an object. Both are always drawn on top. Don't make your own text planes: a pipe or a part in front hides them (`QUALITY_TEXT_HIDDEN`). Show the person who has the problem in `problem` and the same person better off in `after` (`QUALITY_NO_PEOPLE`).
+- Smoke, steam, flames and cutaways come from the kit (`KIT.fx.smoke`, `KIT.fx.steam`, `KIT.fx.flame`, `KIT.fx.section`), not from a flat plate or a see-through panel in front of a part (`QUALITY_FAKE_FX`).
+- Number cards: `KIT.info.numCard(overlay, {id, caption})` is small and sits top right by default. One number per card, one or two cards at a time; cards together may cover at most 6% of the frame (`QUALITY_CARD`). Keep the subject in the middle and moving while a card is up.
 - A labelled part must touch something solid (within 5 mm), or it counts as floating (`CLEARANCE_AUTO_FAIL`). Don't label a part while it hangs in the air (like the probe in `examples/hello` before it lands). Label what it rests on, or show the label only once the part touches something. `KIT.fx.attach` doesn't move anything and doesn't fix this.
 - No caption on screen when a transition starts. The last caption before a transition must be on screen for max(1.5 s, 0.25 s + 0.15 s per character without spaces) before the transition starts (`TEXT_TRANSITION`). A 40-character caption needs 6.25 s, so keep the last line of a scene short. End each scene with a short line and a few seconds of `extra_s`.
 
@@ -81,6 +98,7 @@ Look at your stills and board images (open the PNG/JPG files) before a full buil
 awk '/^## /{h=$0} /MUTATION_NOT_CAUGHT|CHECK_ERROR|PAGE_ERROR/ || (/FAIL/ && h !~ /^## 변이/) {print h " :: " $0}' projects/<name>/out/CHECKS.md
 ```
 
+- `QUALITY_*` lines (`check_quality`) say where the video looks thin: `QUALITY_EMPTY` (bare background), `QUALITY_SPARSE` (too few things on screen), `QUALITY_NO_PEOPLE`, `QUALITY_CARD` (cards too big), `QUALITY_STORY` (beats missing or out of order), `QUALITY_PLACE` (no place), `QUALITY_TEXT_HIDDEN` (3D text behind an object), `QUALITY_FAKE_FX` (flat plate smoke, glass-panel cutaway). Each names the scene, the seconds and what to add. Fix them like any FAIL. Only when a scene really should look that way (a title card, a deliberate close-up on a part), add a reason in `script.json`: `scenes[].quality_ok = {"EMPTY": "why this scene may be empty"}` (or top-level `quality_ok` for `STORY` and the whole-video `NO_PEOPLE`). The reason is printed in `CHECKS.md` for the user to read.
 - Failing lines give the time (`t=`, or `start_s`/`end_s`), the scene, the element and the rule. HOWTO section 5 "Common failures and fixes" explains every rule name (`POP_IN`, `TEXT_TRANSITION`, `CAMERA_UI`, `ACTION_MATCH`, `SUBJECT_FRAME`, `TEXT_MOTION`, `PICTURE`, `LAYOUT`, `THEME_FATIGUE`, ...).
 - `CHECKS.timing.tsv` shows which check took the time.
 
@@ -96,6 +114,7 @@ Never do any of these to get a PASS:
 
 - Remove `"checks": "strict"`, or edit thresholds, rules or mutations in `lib/`, `kit/` or `rv`.
 - Skip a check, delete `CHECKS.md` lines, or report PASS from a run that didn't finish.
+- Add a `quality_ok` reason to get past a `QUALITY_*` line that the scene could fix (add the place, the person, the movement instead).
 - Remove what the user asked for (a scene, a number, the music) just because it fails. Find another way to show it. If there really is none, ask (section 7).
 
 If a failure isn't caused by your project (a checker traceback on a valid scene, `MUTATION_NOT_CAUGHT`, a build crash inside `lib/`), it's a tool bug. Stop and tell the user, with the `CHECKS.md` lines and `VERSION`, so they can file an issue. Don't patch the tool to get past it.
@@ -137,7 +156,8 @@ Don't ask, decide and mention it in your report:
 
 - Scene split, camera framing, colours, layout, label wording and timing.
 - Voice, when the user's language makes it clear.
-- The script, when you only got a topic. Write it yourself, keep claims general (no numbers without a source), and show it in your report.
+- The script, when you only got a topic. Look the facts up (section 1), write it yourself in the four beats, keep claims to what your sources say, and show it in your report.
+- The place, the people and the story, when the user didn't say. Pick the place where the problem really happens.
 - How to fix a FAIL, whether to rerun, and which speed settings to use.
 - Short wording tweaks so captions fit or read in time. Keep the meaning, and list any meaning change in your report.
 

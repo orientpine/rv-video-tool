@@ -24,6 +24,33 @@ Every release is a git tag `vX.Y.Z` (Z for fixes, Y for features). Each tag gets
 
 - 시험(자기 가림): 닫힌 뚜껑이 속 부품을 가린 초점 기기(뒷벽 뒤에 밝은 입자가 있는 방)는 1.000 보임: 자기 부품끼리 가린 것은 기기 자신이지 가림이 아니다. 다른 물체가 대부분을 막으면 여전히 FAIL. 0.3.0 에서는 같은 장면이 입자 때문에 FAIL 했다(#37 고침).
 
+## Unreleased (v0.4.0)
+
+### English
+
+A one- or two-line request now gets a full video by default: a real place, people, a story from problem to result, and small cards. `rv check` reports when a video is thin.
+
+- Places: `KIT.place(NAME, scene)` builds a sidewalk, factory hall, recycling yard, clinic, kitchen or lab around the subject, with foreground, middle and background layers, sky or room light, haze, dust or steam, and things moving in the background (`P.update(t)`). All procedural, no outside assets. `KIT.place.mat(kind)` gives textured materials (concrete, asphalt, painted metal, plastic, wood, tile, fabric, glass). `KIT.place.site(kind)` tells `KIT.fx.human` how to dress people there.
+- Story frame: `script.json` scenes take `"beat"` (`problem`, `inside`, `result`, `after`) and `"place"`. `examples/story` is the new starting project; `AGENTS.md` tells agents to follow the user's guidance first and these defaults otherwise, and to look up facts on the web into `sources.json`.
+- Cards: `KIT.info.numCard` is small (64 px number, at most 440 px wide) and sits top right by default; `size: "l"` gives the old big card, `left`/`top`/`right` place it. `KIT.process.steps` cards follow the same default.
+- New check `check_quality` (strict): per scene, the share of flat 48 px tiles (`QUALITY_EMPTY`, over 45%), distinct things on screen (`QUALITY_SPARSE`, under 10), people (`QUALITY_NO_PEOPLE`), card cover (`QUALITY_CARD`, over 6% of the frame), beats (`QUALITY_STORY`) and place (`QUALITY_PLACE`). The verdict counts them when `script.json` has `"quality": "strict"` (`examples/story`, `examples/hello` and projects copied from them); older projects get them as reference lines and keep their verdict. Exceptions go in `quality_ok` with a reason of at least 15 characters and are printed as `QUALITY_EXEMPT`. Three mutations (a 900x500 card, every mesh hidden, people hidden) check the checker.
+- 3D text and effects: `QUALITY_TEXT_HIDDEN` measures with depth rays whether a 3D text plate is at least 15% behind another solid (a pipe in front of a tank name plate); `KIT.sign` is a name plate always drawn on top. `QUALITY_FAKE_FX` catches smoke drawn as a flat plate and cutaways faked with a see-through panel; `KIT.fx.smoke`, `steam`, `flame` and `section` (a cut with filled faces) replace them.
+- The cinema look's render targets now carry a stencil buffer, so `KIT.fx.section` fills the cut faces under depth of field, bloom and grading (before, a cut object looked hollow).
+- An example's own `quality_ok` reasons (marked `(examples/hello only)`) do not count when copied into another project.
+
+### 한국어
+
+한두 줄 요청에도 기본으로 제대로 된 영상이 나온다: 실제 장소, 사람, 문제에서 결과까지의 이야기, 작은 카드. 앙상한 영상은 `rv check` 가 알린다.
+
+- 장소: `KIT.place(NAME, scene)` 가 주인공 둘레에 도시 보도·공장 홀·재활용장·진료실·부엌·연구실을 짓는다. 앞·중·뒤 층, 하늘·실내 빛, 안개·먼지·증기, 배경에서 움직이는 것(`P.update(t)`)까지. 모두 절차 생성이라 바깥 에셋이 없다. `KIT.place.mat(kind)` 는 결이 있는 재질(콘크리트·아스팔트·도장 금속·플라스틱·나무·타일·천·유리), `KIT.place.site(kind)` 는 그곳 사람 복식.
+- 이야기 틀: `script.json` 장면에 `"beat"`(`problem`·`inside`·`result`·`after`)와 `"place"`. 새 시작 프로젝트는 `examples/story`. `AGENTS.md` 는 사용자 지침을 먼저 따르고 없으면 이 기본값으로, 모르는 사실은 웹에서 찾아 `sources.json` 에 적게 한다.
+- 카드: `KIT.info.numCard` 기본은 작게(숫자 64 px, 너비 440 px 이하) 오른쪽 위. `size: "l"` 은 예전 큰 카드, `left`·`top`·`right` 로 자리. `KIT.process.steps` 카드도 같은 기본값.
+- 새 검사 `check_quality`(strict): 장면마다 결 없는 48 px 칸 비율(`QUALITY_EMPTY`, 45% 초과), 화면의 따로인 물체 수(`QUALITY_SPARSE`, 10 미만), 사람(`QUALITY_NO_PEOPLE`), 카드 면적(`QUALITY_CARD`, 화면 6% 초과), 박자(`QUALITY_STORY`), 장소(`QUALITY_PLACE`). 판정에는 `script.json` 에 `"quality": "strict"` 가 있을 때 들어간다(`examples/story`·`examples/hello` 와 거기서 복사한 프로젝트). 예전 프로젝트는 참고 줄로만 보고 판정은 그대로. 예외는 `quality_ok` 에 15자 이상 이유로 적고 `QUALITY_EXEMPT` 로 찍힌다. 변이 셋(900x500 카드, 모든 물체 숨김, 사람 숨김)이 검사기를 확인한다.
+- 3D 글자와 효과: `QUALITY_TEXT_HIDDEN` 은 3D 글자 판이 다른 실물 뒤에 15% 넘게 가리는지 깊이 광선으로 잰다(탱크 이름판 앞을 지나는 배관). `KIT.sign` 은 늘 위에 그리는 이름판. `QUALITY_FAKE_FX` 는 납작한 판 연기와 반투명 판으로 흉내 낸 단면을 잡고, `KIT.fx.smoke`·`steam`·`flame`·`section`(단면을 채워 자르기)이 대신한다.
+- 시네마 룩의 렌더 타깃에 스텐실 버퍼가 붙어, `KIT.fx.section` 이 피사계 심도·번짐·색 보정 아래에서도 자른 면을 채운다(전에는 잘린 물체가 속이 빈 채로 보였다).
+- 예제 자신의 `quality_ok` 이유(`(examples/hello only)` 표시)는 다른 프로젝트로 복사하면 안 친다.
+
+
 ## v0.3.1
 
 ### English
