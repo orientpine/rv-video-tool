@@ -85,6 +85,16 @@ g commit -q --allow-empty -m "SyntheticForbiddenMarker"
 g update-ref refs/remotes/origin/main "$(g rev-parse HEAD)"
 g commit -q --allow-empty -m "Branch built on stale tracking main"
 check tracking-ahead-update 1 "$old_remote"
+
+# ls-remote's pattern also matches this suffix; the real main must win.
+g push -q origin HEAD^:refs/heads/a/refs/heads/main
+first_ref="$(g ls-remote "$T/remote.git" refs/heads/main | awk 'NR == 1 { print $2 }')"
+if [[ "$first_ref" != refs/heads/a/refs/heads/main ]]; then
+  echo "FAIL fixture did not advertise the decoy first"; exit 1
+fi
+check decoy-remote-main 1 "$old_remote"
+g --git-dir="$T/remote.git" update-ref -d refs/heads/a/refs/heads/main
+
 g update-ref refs/remotes/origin/main "$remote_main"
 g switch -q topic
 
