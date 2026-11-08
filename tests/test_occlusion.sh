@@ -92,12 +92,15 @@ run() {
   shift 2
   "${PW[@]}" "$ROOT/lib/check_layout.py" "$W/$name.html" --at .5 "$@" > "$W/$name${*:+-mutation}.log" 2>&1 || rc=$?
   local log="$W/$name${*:+-mutation}.log"
-  if [[ "$rc" != "$expected" ]]; then
+  local want="$expected"; [[ "$expected" == cut ]] && want=1   # cut: a card over 10..90% of the target (owner 2026-11-08 19:37)
+  if [[ "$rc" != "$want" ]]; then
     printf 'Unexpected exit %s (wanted %s): %s\n' "$rc" "$expected" "$log"
     return 1
   fi
   grep -E 'OCCLUSION |OCCLUSION_CHECK|MUTATION_|LAYOUT_CHECK' "$log"
-  if [[ "$expected" == 1 ]]; then
+  if [[ "$expected" == cut ]]; then
+    grep -q '| cut |' "$log" && ! grep -q '| occlude |' "$log"
+  elif [[ "$expected" == 1 ]]; then
     grep -q '| occlude |' "$log"
   else
     grep -qx 'LAYOUT_CHECK PASS' "$log"
@@ -107,7 +110,7 @@ run normal 0
 run depth75 1
 run depth25 0
 run dom75 1
-run dom25 0
+run dom25 cut
 run own 0
 grep -q 'visible_fraction=1.000' "$W/own.log"
 run fallback 0
@@ -131,7 +134,7 @@ grep -q "text='accent-arc'.*source=accent" "$W/arc86.log"
 run effective516 1
 run effective430 0
 grep -q 'card_coverage=0.000' "$W/effective430.log"
-run card39 0
+run card39 cut
 run focustiny 0
 grep -q 'auto target too small on screen' "$W/focustiny.log"
 run looktiny 0
