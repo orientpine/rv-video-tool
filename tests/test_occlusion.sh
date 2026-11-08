@@ -72,9 +72,10 @@ if(mode==='ownparts'){
 if(mode==='ownsparks'){
   const pos=[]; for(let i=0;i<6;i++) for(let j=0;j<6;j++) pos.push(1.2+.2*i,-.5+.2*j,.05);
   const geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
-  explained.add(new THREE.Points(geo,new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
-    vertexShader:'void main(){gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);gl_PointSize=20.0;}',
-    fragmentShader:'float fall(float r);\\nvoid main(){float r=length(gl_PointCoord-.5)*2.;if(r>1.)discard;gl_FragColor=vec4(.2,.3,.4,fall(r));}\\nfloat fall(float r){return 1.-r*r;}\\n// end'})));
+  geo.setAttribute('color',new THREE.Float32BufferAttribute(pos.map((_,i)=>[.2,.3,.4][i%3]),3));   // per-spark colour
+  explained.add(new THREE.Points(geo,new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,vertexColors:true,
+    vertexShader:'varying vec3 vC;void main(){vC=color;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);gl_PointSize=20.0;}',
+    fragmentShader:'varying vec3 vC;float fall(float r);\\n// void main() is below\\nvoid main(){float r=length(gl_PointCoord-.5)*2.;if(r>1.)discard;gl_FragColor=vec4(vC,fall(r));}\\nfloat fall(float r){return 1.-r*r;}\\n// end'})));
   const wall=new THREE.Mesh(new THREE.PlaneGeometry(14,8),new THREE.MeshBasicMaterial({color:0x2a3a40}));
   wall.position.z=-1; scene.add(wall);
 }
