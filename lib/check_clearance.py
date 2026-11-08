@@ -772,7 +772,9 @@ async def main(a):
             runs.append([i, i, val, w])
     for s_, e_, v_, w in runs[:40]:
         print(f"  {s_ / 30:7.2f} ~ {e_ / 30:7.2f} s (프레임 {s_}~{e_}) {w} · 측정 {v_:.1f} mm")
-    if a.mutate == "detach" and not bad and not errs and not any(ext["mutated"] for _, _, ext in rows):
+    # Nothing was detached in any frame: the self-test had nothing to move, whatever the scene's own findings (those
+    # FAIL the real run, not this one).
+    if a.mutate == "detach" and not errs and not any(ext["mutated"] for _, _, ext in rows):
         trials = {key: sum(ext["detach_trials"][key] for _, _, ext in rows)
                   for key in ("declared_considered", "declared_skipped", "support_in_part", "auto_tried")}
         print("CLEARANCE_MUTATION SKIP no eligible declared attachment or successful auto detachment; frame_trials "
