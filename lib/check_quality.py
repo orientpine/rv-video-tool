@@ -20,8 +20,8 @@ Exceptions with a reason: script.json scenes[].quality_ok = {"EMPTY": "why this 
 or top-level "quality_ok" = {"NO_PEOPLE": "..."} for the whole video. A reason under 15 characters does not count.
 Each exception is printed as QUALITY_EXEMPT so a reader sees it.
 
-Mutations (self-tests, rv runs them): --mutate card (a 900x500 opaque card on every frame) must give QUALITY_CARD;
-Exemptions (quality_ok) are ignored while a mutation runs.
+Mutations (self-tests, rv runs them; exemptions in quality_ok are ignored while one runs):
+--mutate card (a 900x500 opaque card on every frame) must give QUALITY_CARD;
 --mutate empty (every mesh and scene.background hidden) must give QUALITY_EMPTY and QUALITY_SPARSE in every sampled scene;
 --mutate people (every KIT.fx.human hidden) must give QUALITY_NO_PEOPLE (MUTATION_SKIP when the video has no people).
 """
@@ -93,6 +93,7 @@ FRAME = r"""mutate => {
   if(o.userData&&o.userData.rvHuman&&o.visible) realHumans++;
   if(o.visible&&((mutate==='empty'&&o.isMesh)||(mutate==='people'&&o.userData&&o.userData.rvHuman))){o.visible=false;mutHidden.push(o);}
  });
+ try {
  // Only scenes drawn for this frame (renderAt draws the current scene; a transition draws two).
  for(const [scene,cam] of window.__qScenesFrame||[]){
   cam.updateMatrixWorld(true);
@@ -162,7 +163,7 @@ FRAME = r"""mutate => {
    }
   });
  }
- for(const o of mutHidden) o.visible=true;
+ } finally { for(const o of mutHidden) o.visible=true; }
  out.realHumans=realHumans; out.humans=humans.size; out.places=[...places];
  // Cards: opaque panels with text (the definition check_layout OCCLUSION uses), not rv's captions/steps/fade,
  // not the scene badge and not still pictures (KIT.info.picture, data-rv-picture: they are content, sized by check_motion).
