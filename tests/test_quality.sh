@@ -153,6 +153,8 @@ for m in card empty people; do
   check "full-$m" 1 --mutate "$m"
   grep -qx MUTATION_CAUGHT "$W/full-$m.log"
 done
+check "exempt-empty" 1 --mutate empty   # an exemption must not hide the self-test
+grep -qx MUTATION_CAUGHT "$W/exempt-empty.log"
 check "thin-people" 0 --mutate people
 grep -qx MUTATION_SKIP "$W/thin-people.log"
 echo "QUALITY_TESTS PASS"

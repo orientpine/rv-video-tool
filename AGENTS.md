@@ -61,7 +61,7 @@ Length: narration speed sets the length. About 2.5 English words or 6 to 7 Korea
 
 Numbers: once a project has `sources.json`, a digit or spoken number with no source in it stops the build (narration) or fails `check_numbers` (screen). Without `sources.json` (like `examples/hello`) the number check is off. For a video that states facts or numbers, add `sources.json` with the user's sources (HOWTO section 3, "Numbers and sources"), or leave the numbers out.
 
-Scenes: `scenes/<scene>/module.js` registers `SCENES.<scene> = {duration, init(renderer, THREE, overlay), render(t)}`. `deps.json` lists the shared files it loads. Share the 3D set in `shared/`. Copy `examples/story/scenes/*/module.js (or `examples/hello`'s for the bare API)`. Its labels fade in and out with `KIT.win(t, a, b, 0.3)`: a label that switches on in one frame fails `POP_IN` once its elements cover at least 0.2% of the screen (about 64x64 px). The rules that keep checks green:
+Scenes: `scenes/<scene>/module.js` registers `SCENES.<scene> = {duration, init(renderer, THREE, overlay), render(t)}`. `deps.json` lists the shared files it loads. Share the 3D set in `shared/`. Copy `examples/story/scenes/*/module.js` (or `examples/hello`'s for the bare API). Its labels fade in and out with `KIT.win(t, a, b, 0.3)`: a label that switches on in one frame fails `POP_IN` once its elements cover at least 0.2% of the screen (about 64x64 px). The rules that keep checks green:
 
 - Every pose is a pure function of `t`. Never keep state from the previous frame.
 - Time motion to words: `KIT.wordT(NAME, "keyword")`, not hand-typed seconds. Set `window.HL` to the keyword while it's highlighted.
@@ -131,7 +131,7 @@ If a failure isn't caused by your project (a checker traceback on a valid scene,
 
 You're done when all of these are true:
 
-1. The last line of `projects/<name>/out/CHECKS.md` is `RV_CHECKS PASS`, from a full `./rv make` (or `./rv check` after it) on the final files, with `"checks": "strict"` in `script.json`.
+1. The last line of `projects/<name>/out/CHECKS.md` is `RV_CHECKS PASS`, from a full `./rv make` (or `./rv check` after it) on the final files, with `"checks": "strict"` and `"quality": "strict"` in `script.json`.
 2. You opened and looked at the board images and a few stills or `out/sheets/*.jpg` yourself, and they show what the user asked for.
 3. You tell the user:
    - where the video is (`out/<name>.mp4`, plus `out/<name>.srt`, `out/<name>_thumb.jpg`)
