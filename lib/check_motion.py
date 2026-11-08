@@ -1641,7 +1641,8 @@ async def main(a):
         return 0
     if not objects_seen and not spans and not ui_events:
         print("PROBE_ERROR no trackable objects observed")
-    skip = a.mutate == "actreverse" and not act_linked
+    # A part declared with KIT.process.part can follow a handle on another, unnamed part; a catch through it counts.
+    skip = a.mutate == "actreverse" and not act_linked and not caught
     if a.mutate:
         if skip:
             mutation["linked"] = 0
