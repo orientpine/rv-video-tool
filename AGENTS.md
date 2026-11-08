@@ -53,6 +53,7 @@ Scenes: `scenes/<scene>/module.js` registers `SCENES.<scene> = {duration, init(r
 - Keep the camera still while captions, labels or cards change. Move it for an action, with `KIT.shot.action(...)` (one push-in or orbit, 3 s at most, after the transition). Keep it still during transitions and put it in place at scene `t = 0` (HOWTO 4-0).
 - Fade or grow things in. Never switch them on in one frame: `KIT.fx.reveal(obj, KIT.win(t, a, b, 0.4))`, `label.place(..., KIT.win(t, a, b, 0.3))`. Otherwise `POP_IN` fails.
 - If a line says something moves ("opens the lid", "turns the valve"), that part must really move then and be named, so `ACTION_MATCH` can find it: `KIT.process.*` (HOWTO 4-1). The part should sit near the frame centre (`SUBJECT_FRAME`).
+- While a card, label or caption is up and the camera holds, keep the part of the picture the text leaves free moving for real (`TEXT_MOTION` fails 2 s or more of stillness there): place the subject clear of the cards with `KIT.shot.free`, and use `KIT.fx.pulse`, `KIT.process.spin` or a flowing `KIT.process.exhaust({path})`. Where motion can't show the meaning, use a rich still picture, `KIT.info.picture`, fully shown for 3 s or more (`PICTURE`). Don't let a card cover part of an explained or moving object (`check_layout` `cut`): move the card with `KIT.info.clear`, or declare background decoration with `KIT.fx.decor` (HOWTO 4-2, `examples/text-motion`).
 - Draw people only with `KIT.fx.human`. Use `KIT.label(overlay, text, {target})` for name tags.
 - A labelled part must touch something solid (within 5 mm), or it counts as floating (`CLEARANCE_AUTO_FAIL`). Don't label a part while it hangs in the air (like the probe in `examples/hello` before it lands). Label what it rests on, or show the label only once the part touches something. `KIT.fx.attach` doesn't move anything and doesn't fix this.
 - No caption on screen when a transition starts. The last caption before a transition must be on screen for max(1.5 s, 0.25 s + 0.15 s per character without spaces) before the transition starts (`TEXT_TRANSITION`). A 40-character caption needs 6.25 s, so keep the last line of a scene short. End each scene with a short line and a few seconds of `extra_s`.
@@ -79,7 +80,7 @@ Look at your stills and board images (open the PNG/JPG files) before a full buil
 awk '/^## /{h=$0} /MUTATION_NOT_CAUGHT|CHECK_ERROR|PAGE_ERROR/ || (/FAIL/ && h !~ /^## 변이/) {print h " :: " $0}' projects/<name>/out/CHECKS.md
 ```
 
-- Failing lines give the time (`t=`, or `start_s`/`end_s`), the scene, the element and the rule. HOWTO section 5 "Common failures and fixes" explains every rule name (`POP_IN`, `TEXT_TRANSITION`, `CAMERA_UI`, `ACTION_MATCH`, `SUBJECT_FRAME`, `LAYOUT`, `THEME_FATIGUE`, ...).
+- Failing lines give the time (`t=`, or `start_s`/`end_s`), the scene, the element and the rule. HOWTO section 5 "Common failures and fixes" explains every rule name (`POP_IN`, `TEXT_TRANSITION`, `CAMERA_UI`, `ACTION_MATCH`, `SUBJECT_FRAME`, `TEXT_MOTION`, `PICTURE`, `LAYOUT`, `THEME_FATIGUE`, ...).
 - `CHECKS.timing.tsv` shows which check took the time.
 
 ## 4. Fixing failures
