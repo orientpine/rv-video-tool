@@ -168,7 +168,7 @@ grep -q "visible_fraction=1.000000 .*card='none'" "$W/pillarbox.log"
 run letterboxcard 1
 grep -q "card='real-card'" "$W/letterboxcard.log"
 run letterboxpanel 1
-! grep -q 'LAYOUT_PICTURE' "$W/letterboxpanel.log"
+if grep -q 'LAYOUT_PICTURE' "$W/letterboxpanel.log"; then echo 'letterboxpanel: a lone panel read as a frame bar'; exit 1; fi
 # A black strip that appears only from 0.5 s is not a frame bar: it covers the target like any card.
 rc=0
 "${PW[@]}" "$ROOT/lib/check_layout.py" "$W/letterboxlate.html" --from .25 --to .76 --every .25 > "$W/letterboxlate.log" 2>&1 || rc=$?
