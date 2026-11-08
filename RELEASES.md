@@ -11,10 +11,16 @@ Every release is a git tag `vX.Y.Z` (Z for fixes, Y for features). Each tag gets
 ### English
 
 - Fix: the `check_layout` occlusion check no longer fails a target because of weather around it. Its two ID passes used to turn only meshes into masks and draw points, lines and sprites with their own material, so big additive lamp halos, mist particles and rain streaks counted as target pixels in the target-only pass and as covered in the scene pass (a night scene: 50139 target pixels for one worker, visible 34%). Points, lines and sprites outside the target are now left out of both passes; those inside the target's group (sparks, wires) are drawn as target, custom particle shaders with their own size and shape. A real object or card in front still fails as before.
+- People (issue #36): a seated `KIT.fx.human` no longer sinks into seats built for the old figure. `pose("sit")` puts the soles 0.39 m below the seat contact and the palms where the old figure's were; `KIT.fx.seat(person, {seat, floor, back})` also fits the person: out of the seat back, seat contact on the seat top, knees raised or lowered until the soles reach the floor. The seat contact is under the pelvis centre, not the crotch. `check_human`'s seated contract is a range (knees 45..150°, thighs -15..45° from level).
+- People: `act(t, {grip, place, sit})`. `grip: {target, t0, touch, release, t1, avoid}` puts the palm on the target's nearest surface; `place: {hold, on, t0, touch, t1}` carries a held object onto a shelf top and lets go; `sit` makes the act seated (wheelchair hands on the push rims). The way there is lifted over `avoid` boxes and the elbow swings away from them. One line instead of hand-tuned arm angles.
+- `check_clearance` human penetration: on an open mesh (cab panels with openings) a point is inside only where seven rays agree, as for machines; a limb through one open panel is measured on the shallower side. The seated operator scene that read 476.5 mm (old figure) and 662.0 mm (new body) read false depths from single rays; with this rule the old figure reads 86.3 mm there.
 
 ### 한국어
 
 - 고침: `check_layout` 가림 검사가 대상 둘레의 날씨 효과 때문에 대상을 FAIL 하지 않는다. 두 ID 패스가 메시만 마스크로 바꾸고 점·선·스프라이트는 제 재질로 그려서, 큰 가산 가로등 빛무리·물안개 입자·빗줄기가 '대상만' 패스에서 대상 화소로 세지고 장면 패스에서는 가린 것으로 세졌다(밤 장면 작업자 대상 화소 50139, 보임 34%). 이제 대상 밖 점·선·스프라이트는 두 패스에서 다 빼고, 대상 묶음 안의 것(불꽃·전선)은 대상으로 그린다(사용자 입자 셰이더는 제 크기·모양 그대로). 진짜 물체나 카드가 앞을 막으면 전처럼 FAIL.
+- 사람(이슈 #36): 앉은 `KIT.fx.human` 이 예전 사람에 맞춘 좌석에 박히지 않는다. `pose("sit")` 은 발바닥을 좌석 접촉점 0.39 m 아래, 손바닥을 예전 사람 자리에 둔다. `KIT.fx.seat(person, {seat, floor, back})` 는 사람도 맞춘다: 등받이 밖으로, 접촉점을 좌석 윗면에, 발바닥이 바닥에 닿게 무릎을 올리고 내림. 좌석 접촉점은 사타구니가 아니라 골반 가운데 아래. `check_human` 앉은 계약은 범위(무릎 45~150°, 허벅지 수평에서 -15~45°).
+- 사람: `act(t, {grip, place, sit})`. `grip: {target, t0, touch, release, t1, avoid}` 는 손바닥을 대상의 가장 가까운 겉면에, `place: {hold, on, t0, touch, t1}` 는 손에 든 물체를 선반 윗면에 내려놓고 손을 뺀다. `sit` 이면 앉은 채로(휠체어 푸시림 잡기). 가는 길은 `avoid` 상자 위로 들리고 팔꿈치는 장애물을 비켜 돈다. 팔 각도 손맞춤 대신 한 줄.
+- `check_clearance` 사람 관통: 열린 메시(문·창이 뚫린 운전실 판넬)에서는 일곱 광선이 모두 '안'일 때만 안으로 본다(기계 규칙과 같음). 열린 판 한 장을 뚫은 팔다리는 판 양쪽 중 얕은 쪽 깊이로 잰다. 앉은 운전자 장면의 476.5 mm(옛 사람)·662.0 mm(새 몸)는 광선 하나의 착시였고, 이 규칙으로 옛 사람은 86.3 mm.
 
 ## v0.3.0
 

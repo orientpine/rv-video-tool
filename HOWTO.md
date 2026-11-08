@@ -99,7 +99,8 @@ my-project/
 | 이름표가 가리키는 설명 대상(가림 검사용) | `KIT.label(overlay, "Sensor", {target: sensorMesh})`. 생략하면 이름표 점에 있는 가장 작은 메시 |
 | "이 부품은 저 지지대에 붙어 있다" | render 마다 `KIT.fx.attach(sensor, mount, {tol_mm: 2})` |
 | (자동) 이름표가 가리키는 부품이 떠 있지 않게 | 선언 없이도 검사: 보이는 `KIT.label` 대상이 다른 실물 메시와 5 mm 안에 안 닿으면 FAIL(지지대나 로봇 손에 닿으면 통과). 개념 이름표가 엉뚱한 부품을 가리키면 `opts.target` 으로 실제 대상을 준다 |
-| 앉은 운전자 | `KIT.fx.seat(person, {seat, floor, levers: [leftLever, rightLever]})` (Z-up 장면은 `up: [0,0,1]`) |
+| 앉은 운전자·휠체어 | `person.pose("sit")` 뒤 `KIT.fx.seat(person, {seat, floor, back, levers: [leftLever, rightLever]})` (Z-up 장면은 `up: [0,0,1]`). 선언이 곧 맞춤이다: 등이 `back` 상자 밖으로 나오고, `contacts.seat` 가 `seat` 윗면에 앉고, 발바닥이 `floor` 윗면에 닿게 무릎이 오르내린다(높은 발판이면 무릎이 올라감). 선언 없이 `pose("sit")` 만 쓰면 발바닥은 좌석 접촉점 0.39 m 아래, 손바닥은 예전 사람과 같은 자리(옛 장면의 좌석·레버 그대로) |
+| 손으로 잡기·놓기(한 줄) | `man.act(t, {grip: {target: 손잡이, t0, touch, release, t1, avoid: [장]}})`: 손바닥이 대상의 가장 가까운 겉면에 닿아 쥔다. `man.act(t, {place: {hold: 병, on: 선반, t0, touch, t1}})`: 손에 든 병을 선반 윗면(사람 쪽 가까운 자리, `at` 으로 지정 가능)에 내려놓고 손을 뺀다. 가는 길은 `avoid`(놓기는 기본 `[on]`) 상자 위로 들리고 팔꿈치는 장애물을 비켜 돈다. 걷기와 함께: `{walk, look, grip}`. 휠체어에 앉아 푸시림 잡기: `rider.act(t, {sit: {seat, floor, back, levers: rims}, grip: [{hand: "l", target: rimL, t0, touch}, {hand: "r", target: rimR, t0, touch}]})`. 닿는 거리 밖이면 손이 못 닿으니 `walk` 로 다가간다. 결과 손바닥 오차는 `man.userData.reach.r.palm_mm` |
 | 공정 단계 동작(밸브·계기 바늘·뚜껑·부품 옮기기·배기) | `KIT.process.valve/gauge/hatch/move/exhaust` + `KIT.process.steps(NAME, [...])` (4-1) |
 | 주인공(초점) 지정 | `KIT.fx.focus(물체)` 또는 `scene.userData.subject = 물체` |
 | 요소를 서서히 등장(기본 전환) | 3D: `KIT.fx.reveal(물체, KIT.win(t, a, b, 0.4))` (0 이면 숨김, 0→1 동안 원점에서 자람). 이름표·카드: `L.place(cam, p, dx, dy, KIT.win(t, a, b, 0.3))`, `el.style.opacity = KIT.win(t, a, b, 0.3)`. `obj.visible = t >= a`, `t >= a && t < b ? 1 : 0` 처럼 한 프레임에 켜면 `POP_IN` FAIL(5절). 페이드 중인 글자는 대비·격침 검사에서 빠지므로(`LAYOUT_FADE`) 페이드를 끄지 않는다 |
@@ -213,6 +214,7 @@ pic.show(KIT.win(t, c, d, 0.5));                               // 정지 그림:
   - 기계 규칙은 삼각형 격자 색인으로 빠르게 잰다(결과는 전체 순회와 같음). 비교하려면 페이지에서 `window.__rvClearanceNoGrid = true` 로 옛 경로.
   - 기계끼리(버킷·붐 ↔ 트럭 적재함, 로봇 ↔ 로봇·받침): 장면 바로 아래 묶음 중 단단한 메시 3개 이상·가장 긴 변 0.8 m 이상·15 m 이하인 몸체끼리 처음 잰 깊이보다 20 mm 넘게 더 파고들면 `machine penetration` FAIL. 처음부터 꽂혀 있던 것(받침에 꽂힌 헤드)은 안 센다. 흙·짐(이름 soil·load·grain·dirt·흙·모래)은 몸체 부품에서 뺀다. 들고 다니는 0.8 m 미만 공구·헤드는 attach 로 선언해 부착 규칙이 본다. 기계를 서로 붙여 세울 때는 몸체 폭만큼 띄운다.
   - 사람 관통은 `KIT.fx.human` 뿐 아니라 계약 없는 사람 모양(이름 operator·driver·person·worker·운전자·사람, 또는 구 머리+캡슐·상자 몸)도 잰다. 머리는 온전한 구만 사람 머리로 보고, 흙·짐·더미 이름 묶음은 사람이 아니다.
+  - 열린 메시(문·창이 뚫린 운전실 판넬처럼 가장자리가 닫히지 않은 모델): 몸의 점은 일곱 방향 광선이 모두 '안'이라고 할 때만 그 안에 있다고 본다(기계 규칙과 같음). 판 한 장을 손·발이 뚫으면 판 양쪽으로 나간 깊이 중 얕은 쪽을 재고 줄 끝에 `(열린 면을 뚫음)` 을 단다(판에 손바닥을 얹으면 ~0).
 - `check_human` → 사람 부품의 부위 이름·자세·접촉점 계약(검사기들이 읽는 것)이 깨지면 FAIL.
   - `HUMAN_HOMEMADE t=… scene=… object=… via=shape|name`: KIT.fx.human 이 아닌 사람. 둥근 머리 아래 몸·팔다리가 있는 0.3~2.5 m 모양(머리와 막대 하나로 이어진, 머리 지름 절반 넘는 공이 또 있으면 공·막대로 엮은 분자 모델이라 사람이 아님. 손·관절 공은 팔다리에 붙어 괜찮음) 또는 사람 이름(operator·driver·person·human·worker·man·운전자·사람). 고치는 법: 그 물체를 지우고 `KIT.fx.human(scene, 1.75, {site})`.
   - `HUMAN_SITE … outfit=<입은 현장> expected=<장면 현장>` 또는 `undeclared`: 복식 현장이 `scenes[].site`(없으면 script.json `site`)와 다르거나 어디에도 안 적힘(안 적으면 KIT.fx.human 이 construction 을 입힘). `HUMAN_COUNT rvHuman=N homemade=M` 은 찾은 수. 변이 `homemade`·`site` 는 사람이 없는 프로젝트에서도 늘 돈다.
