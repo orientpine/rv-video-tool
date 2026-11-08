@@ -44,15 +44,15 @@ fi
 
 g() { grep -rInP --exclude-dir=.git "$@" "$DIR" | sed "s|^$DIR/||" ; }
 if [[ "$MODE" == "--git" ]]; then
-  git -C "$DIR" log --all -p --format='%x1ecommit %H%n%an <%ae>%n%cn <%ce>%n%B' > "$TMP/raw"
+  git -C "$DIR" log --all -p --format='%x1ecommit %H%x1e%n%an <%ae>%n%cn <%ce>%n%B' > "$TMP/raw" || { echo "history read failed: git log" >&2; exit 2; }
   # allowed identity lines are blanked only in the two header lines of a commit, never elsewhere
   awk -v allowf="$ALLOW" -v identf="$TMP/ident" '
     BEGIN { ok["rv maintainers <rv@users.noreply.github.com>"] = 1
             while ((getline l < allowf) > 0) if (l != "" && substr(l, 1, 1) != "#") ok[l] = 1 }
-    /^\036commit / { i = 0; print; next }
+    /^\036commit [0-9a-f]+\036$/ && length($0) == 49 { i = 0; print; next }
     { i++ }
     i == 1 || i == 2 { if ($0 in ok) { print ""; next } print "git-log-identity:" NR ":" $0 > identf }
-    { print }' "$TMP/raw" > "$TMP/log"
+    { print }' "$TMP/raw" > "$TMP/log" || { echo "history read failed: identity filter" >&2; exit 2; }
 fi
 gl() { [[ -f "$TMP/log" ]] && grep -nP "$@" "$TMP/log" | sed 's/^/git-log:/' ; true; }
 IP='\b(?:10|172\.(?:1[6-9]|2\d|3[01])|192\.168|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7]))\.\d{1,3}\.\d{1,3}(?:\.\d{1,3})?\b'
