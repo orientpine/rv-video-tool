@@ -26,9 +26,9 @@ window.SHELF = function (THREE) {
     const pivot = new THREE.Group(); pivot.position.set(s * 0.37, 0.52, 0.12); root.add(pivot);
     const arm = box(0.025, 0.04, 1, steel, 0, 0, 0.5); pivot.add(arm); return pivot;
   });
-  root.add(box(0.08, 0.08, 0.1, steel, -0.34, 0.52, 0.06, "motor"));
+  root.add(box(0.08, 0.08, 0.1, steel, -0.34, 0.52, 0.32, "motor"));
   const gear = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.015, 12), mat("metal", 0xf2a33a));
-  gear.rotation.z = Math.PI / 2; gear.position.set(-0.2925, 0.52, 0.06); gear.name = "gear"; root.add(gear);
+  gear.rotation.z = Math.PI / 2; gear.position.set(-0.2925, 0.52, 0.32); gear.name = "gear"; root.add(gear);
   const path = [[0, 0.32, 0.17], [0, 0.12, 0.42], [0, -0.38, 0.4]];   // up inside the cabinet -> out -> down at chest height
   const up = new THREE.Vector3(...path[0]), end = new THREE.Vector3(), z = new THREE.Vector3(0, 0, 1);
   function follow() {

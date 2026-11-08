@@ -13,6 +13,7 @@ window.KITCHEN = function (NAME, THREE, renderer) {
   cap.rotation.x = Math.PI / 2; cap.position.z = 0.02; button.add(cap); button.name = "button";
   button.position.set(...wall.at).addScaledVector(side, 0.62).addScaledVector(n, 0.015); button.position.y = 1.25;
   button.rotation.y = shelf.root.rotation.y; scene.add(button);
+  const hob = P.spots.hob, steam = KIT.fx.steam(scene, {at: [hob[0] - 0.15, 1.13, hob[2] - 0.12], seed: 7});
   const mina = KIT.fx.human(scene, 1.62, {site: KIT.place.site("kitchen"), color: 0x6f8fa6});
   mina.name = "mina";
   const stand = new THREE.Vector3(...P.spots.stand);
@@ -24,5 +25,5 @@ window.KITCHEN = function (NAME, THREE, renderer) {
     const p = look.clone().addScaledVector(n, back).addScaledVector(side, dx); p.y = dy;
     return {p: p.toArray(), l: look.toArray(), fov};
   }
-  return {scene, P, shelf, button, mina, place, view, side, n};
+  return {scene, P, shelf, button, mina, steam, place, view, side, n};
 };
