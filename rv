@@ -247,7 +247,7 @@ PYEOF
       if [ -f "$DPJ" ]; then local k=0; while read -r f s; do k=$((k + 1)); sub "sharpd$k" eval 'run "주인공 선명도 디스코드판 '"$f"' (check_sharp --mp4)" "${SH[@]}" --mp4 "$O/'"$f"'" --offset "'"$s"'" --ref "$MP4" || strict_fail'
         done < <(python3 -c "import json,sys;[print(p['file'],p['start']) for p in json.load(open(sys.argv[1]))]" "$DPJ")
       elif [ -f "$DC" ]; then sub sharpd eval 'run "주인공 선명도 디스코드판 (check_sharp --mp4)" "${SH[@]}" --mp4 "$DC" --ref "$MP4" || strict_fail'; fi
-      sub sharp2 mut "변이: 원본을 0.3 Mb/s 로" "${SH[@]}" --mutate bitrate --ref "$MP4"
+      sub sharp2 mut "변이: 원본을 0.3 Mb/s 로(안 상하면 해상도 낮춤)" "${SH[@]}" --mutate bitrate --ref "$MP4"
     fi; sub_join; }
   g_srt() { run "SRT" bash -c "grep -c -- '-->' '$O/$NAME.srt' | sed 's/^/큐 /'" || fail=1; }
   g_sheet() { rm -rf "$O/sheets"; run "접촉 시트 (박자 +0.3 s · 장면 경계 0.2 s 훑기)" "${UVPW[@]}" "$L/sheet.py" "$MP4" --build "$B" --out "$O/sheets" || fail=1; }
