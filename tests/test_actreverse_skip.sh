@@ -24,7 +24,7 @@ save("scenes/proc/deps.json", {"data": {"proc.fixture": "fixture.json"}})
 PY
 cat <<'JS' > "$W/project/scenes/proc/module.js"
 (function(){
-  let r,scene,cam,mode,pivot,lid,vent;
+  let r,scene,cam,mode,pivot,lid,vent,drive;
   const u=(t,a,b)=>KIT.clamp((t-a)/(b-a),0,1);
   SCENES.proc={duration:5,init(renderer){
     r=renderer;mode=DATA["proc.fixture"].mode;
@@ -38,11 +38,15 @@ cat <<'JS' > "$W/project/scenes/proc/module.js"
     // vent: the only linked handle is an exhaust, which looks the same run backwards.
     else if(mode==="vent")vent=KIT.process.exhaust(scene,{name:"뚜껑"});
     else KIT.process.part(pivot,{name:"뚜껑",state:()=>pivot.rotation.y/1.75});
+    // driven: the named lid follows a handle on a part the script never names, so reversing that handle reverses the lid.
+    if(mode==="driven"){drive=KIT.process.valve(scene,{name:"밸브"});drive.root.position.set(1.6,1.2,0);}
     // spare: a handle exists, but on a part the script never names.
     if(mode==="spare"){const v=KIT.process.valve(scene,{name:"밸브"});v.root.position.set(1.6,1.2,0);v.set(0);}
     cam=new THREE.PerspectiveCamera(45,16/9,.1,100);cam.position.set(0,1.6,6);cam.lookAt(0,1.2,0);
   },render(t){
-    if(lid)lid.set(u(t,2.1,3.0));else pivot.rotation.y=1.75*u(t,2.1,3.0);
+    if(lid)lid.set(u(t,2.1,3.0));
+    else if(drive){drive.set(u(t,2.1,3.0));pivot.rotation.y=1.75*KIT.clamp(drive.wheel.rotation.z/(Math.PI*2),0,1);}
+    else pivot.rotation.y=1.75*u(t,2.1,3.0);
     if(vent)vent.set(u(t,2.1,3.0));
     r.render(scene,cam);
   }};
@@ -68,7 +72,10 @@ run_case spare_mut spare --mutate actreverse
 run_case vent_mut vent --mutate actreverse
 { [ $rc = 0 ] && grep -qx MUTATION_SKIP "$W/vent_mut.log" && grep -q "^ACTION_MATCH proc '뚜껑 열기' PASS target=exhaust" "$W/vent_mut.log" &&
   ! grep -q MUTATION_NOT_CAUGHT "$W/vent_mut.log"; } || fail "vent: exhaust-only linked handle is not MUTATION_SKIP (rc=$rc)" vent_mut
+run_case driven_mut driven --mutate actreverse
+{ [ $rc != 0 ] && grep -qx MUTATION_CAUGHT "$W/driven_mut.log" && ! grep -qx MUTATION_SKIP "$W/driven_mut.log"; } ||
+  fail "driven: lid reversed through an unnamed handle is not MUTATION_CAUGHT (rc=$rc)" driven_mut
 run_case hatch_mut hatch --mutate actreverse
 { [ $rc != 0 ] && grep -qx MUTATION_CAUGHT "$W/hatch_mut.log"; } || fail "hatch: reversed linked handle not caught (rc=$rc)" hatch_mut
-grep -h -E "^(ACTION_MATCH|ACTION_MUTATION|mutation=|MUTATION_)" "$W"/{part,part_mut,spare_mut,vent_mut,hatch_mut}.log
+grep -h -E "^(ACTION_MATCH|ACTION_MUTATION|mutation=|MUTATION_)" "$W"/{part,part_mut,spare_mut,vent_mut,driven_mut,hatch_mut}.log
 [ "$ok" = 1 ] && echo "ACTREVERSE_SKIP_TESTS PASS" || { echo "ACTREVERSE_SKIP_TESTS FAIL"; exit 1; }
