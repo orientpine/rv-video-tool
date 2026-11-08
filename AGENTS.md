@@ -54,7 +54,8 @@ Scenes: `scenes/<scene>/module.js` registers `SCENES.<scene> = {duration, init(r
 - Fade or grow things in. Never switch them on in one frame: `KIT.fx.reveal(obj, KIT.win(t, a, b, 0.4))`, `label.place(..., KIT.win(t, a, b, 0.3))`. Otherwise `POP_IN` fails.
 - If a line says something moves ("opens the lid", "turns the valve"), that part must really move then and be named, so `ACTION_MATCH` can find it: `KIT.process.*` (HOWTO 4-1). The part should sit near the frame centre (`SUBJECT_FRAME`).
 - Draw people only with `KIT.fx.human`. Use `KIT.label(overlay, text, {target})` for name tags.
-- No caption on screen when a transition starts. End each scene with a short line and a few seconds of `extra_s`.
+- A labelled part must touch something solid (within 5 mm), or it counts as floating (`CLEARANCE_AUTO_FAIL`). Don't label a part while it hangs in the air (like the probe in `examples/hello` before it lands): label what it rests on, show the label only once it touches, or mount it with `KIT.fx.attach(part, mount)`.
+- No caption on screen when a transition starts. The last caption before a transition must be on screen for max(1.5 s, 0.25 s + 0.15 s per character without spaces) before the transition starts (`TEXT_TRANSITION`). A 40-character caption needs 6.25 s, so keep the last line of a scene short. End each scene with a short line and a few seconds of `extra_s`.
 
 ## 2. The work loop (fast to slow)
 
