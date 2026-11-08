@@ -194,8 +194,9 @@ def main(source, out):
             tip = hand[np.argmin(hand[:, 1])]
             markers["tip_" + side] = tip.tolist()
         pelvis = p[dominant == PIVOTS.index("pelvis")]
-        low = pelvis[pelvis[:, 1] <= pelvis[:, 1].min() + .004]
-        markers["seat"] = [0.0, float(low[:, 1].mean()), float(low[:, 2].mean())]
+        under = pelvis[(np.abs(pelvis[:, 0]) < .07) & (np.abs(pelvis[:, 2] - pivots["pelvis"][2]) < .03)]   # under the pelvis centre (sit bones), not the crotch
+        seat = under[np.argmin(under[:, 1])]
+        markers["seat"] = [0.0, float(seat[1]), float(seat[2])]
         headv = p[dominant == PIVOTS.index("head")]
         markers["head_min"], markers["head_max"] = headv.min(0).tolist(), headv.max(0).tolist()
         torso = p[dominant == PIVOTS.index("spine")]
