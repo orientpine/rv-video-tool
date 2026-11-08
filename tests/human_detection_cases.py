@@ -96,6 +96,60 @@ part(new THREE.BoxGeometry(1,.4,1),0,.2);
 for(const [x,z,w,d] of [[-.45,0,.1,1],[.45,0,.1,1],[0,-.45,1,.1]])part(new THREE.BoxGeometry(w,.5,d),x,.65).position.z=z;
 part(new THREE.SphereGeometry(.3,16,8,0,Math.PI*2,0,Math.PI/2),0,.4);
 """, {}, 0, "HUMAN_CHECK", "homemade=0"),
+    # Ball-and-stick models: a ball on a ball or on a stick is not a head on a torso.
+    ("ball_and_stick_models", r"""
+const up=new THREE.Vector3(0,1,0);
+const model=(kind,x,y,z,rx,ry,rz)=>{
+ const g=new THREE.Group();g.position.set(x,y,z);g.rotation.set(rx,ry,rz);scene.add(g);
+ const atom=(p,r)=>{const m=new THREE.Mesh(new THREE.SphereGeometry(r,12,10),material);m.position.set(...p);g.add(m);};
+ const bond=(a,b,r)=>{const A=new THREE.Vector3(...a),B=new THREE.Vector3(...b),d=B.clone().sub(A);
+  const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,d.length(),8),material);
+  m.position.copy(A).add(B).multiplyScalar(.5);m.quaternion.setFromUnitVectors(up,d.normalize());g.add(m);};
+ if(kind===0){for(const s of [-1,1]){const c=[s*.14,0,0];atom(c,.085);
+   for(const t of [-1,1]){const p=[s*.24,t*.16,0];atom(p,.05);bond(c,p,.017);}}
+  for(const t of [-.03,.03])bond([-.14,t,0],[.14,t,0],.018);}
+ else if(kind===1){const c=[0,0,0];atom(c,.09);
+  for(const p of [[0,.27,0],[.25,-.09,0],[-.13,-.09,.22],[-.13,-.09,-.22]]){atom(p,.055);bond(c,p,.018);}}
+ else{for(let i=0;i<6;i++){const a=i*Math.PI/3,b=a+Math.PI/3,p=[Math.cos(a)*.26,Math.sin(a)*.26,0],q=[Math.cos(b)*.26,Math.sin(b)*.26,0];
+   atom(p,.07);bond(p,q,.02);const o=[p[0]*1.6,p[1]*1.6,0];bond(p,o,.016);atom(o,.045);}}
+};
+let k=0;for(let kind=0;kind<3;kind++)for(let i=0;i<16;i++){const a=i*0.83+kind,b=i*1.37,c=i*0.51;
+ model(kind,-3+(k%12)*.55,.5+Math.floor(k/12)*.7,-2,a,b,c);k++;}
+""", {}, 0, "HUMAN_CHECK", "homemade=0"),
+    ("box_torso_figure", r"""
+part(new THREE.SphereGeometry(.11,12,8),0,1.62);
+part(new THREE.BoxGeometry(.38,.6,.22),0,1.2);
+for(const x of [-.26,.26])part(new THREE.CylinderGeometry(.04,.04,.55,12),x,1.15);
+for(const x of [-.1,.1])part(new THREE.CylinderGeometry(.06,.06,.8,12),x,.45);
+""", {}, 1, "HUMAN_HOMEMADE", "via=shape"),
+    # Stout, cube and stick torsos are torsos: only a second ball of about the head's size makes a model.
+    ("stout_cylinder_torso", r"""
+part(new THREE.SphereGeometry(.11,12,8),0,1.62);
+part(new THREE.CylinderGeometry(.2,.2,.5,16),0,1.2);
+for(const x of [-.26,.26])part(new THREE.CylinderGeometry(.04,.04,.55,12),x,1.15);
+for(const x of [-.1,.1])part(new THREE.CylinderGeometry(.06,.06,.8,12),x,.45);
+""", {}, 1, "HUMAN_HOMEMADE", "via=shape"),
+    ("cube_torso", r"""
+part(new THREE.SphereGeometry(.11,12,8),0,1.62);
+part(new THREE.BoxGeometry(.4,.5,.4),0,1.2);
+for(const x of [-.26,.26])part(new THREE.CylinderGeometry(.04,.04,.55,12),x,1.15);
+for(const x of [-.1,.1])part(new THREE.CylinderGeometry(.06,.06,.8,12),x,.45);
+""", {}, 1, "HUMAN_HOMEMADE", "via=shape"),
+    ("stick_figure", r"""
+part(new THREE.SphereGeometry(.12,12,8),0,1.6);
+part(new THREE.CylinderGeometry(.02,.02,.55,8),0,1.2);
+for(const x of [-.2,.2])part(new THREE.CylinderGeometry(.015,.015,.5,8),x,1.15);
+for(const x of [-.1,.1])part(new THREE.CylinderGeometry(.015,.015,.8,8),x,.45);
+""", {}, 1, "HUMAN_HOMEMADE", "via=shape"),
+    # Sphere hands and ball joints of about half the head hang off limbs, not off the head; a snowman has no stick.
+    ("sphere_hands_joints", r"""
+part(new THREE.SphereGeometry(.11,12,8),0,1.62);
+part(new THREE.BoxGeometry(.38,.6,.22),0,1.2);
+for(const x of [-.26,.26]){part(new THREE.CylinderGeometry(.04,.04,.55,12),x,1.15);part(new THREE.SphereGeometry(.065,12,8),x,.84);}
+for(const x of [-.1,.1]){part(new THREE.CylinderGeometry(.06,.06,.8,12),x,.45);part(new THREE.SphereGeometry(.06,12,8),x,.5);}
+""", {}, 1, "HUMAN_HOMEMADE", "via=shape"),
+    ("lying_figure", FIGURE.replace("HEAD", "new THREE.IcosahedronGeometry(.13,1)") + "figure.rotation.x=Math.PI/2;",
+     {}, 1, "HUMAN_HOMEMADE", "via=shape"),
     ("browser_error_verdict", "throw new TypeError('broken scene fixture');",
      {}, 1, "HUMAN_CHECK FAIL", "HUMAN_COUNT rvHuman=0 homemade=0"),
 ]
