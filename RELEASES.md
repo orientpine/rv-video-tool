@@ -11,10 +11,12 @@ Every release is a git tag `vX.Y.Z` (Z for fixes, Y for features). Each tag gets
 ### English
 
 - Fix: `check_motion` `ACTION_SPAN` measures a span by the part its line names. When `ACTION_MATCH` links a `KIT.process` part, the span reads that part's own state (its meshes) and the pixels of the screen box it covers during the span (`part=`, `region=` on the line), with the same thresholds. A small cup lifted in a wide kitchen changed 0.0002 of the frame and failed as `action_static` although `ACTION_MATCH` saw it rise; it now reads 0.107 of its own box and passes. A cup that holds while a big box beside it slides is no longer passed by the box. Spans with no linked part measure the whole frame as before.
+- Maintenance: `scripts/gh-safe.sh pr-create|pr-edit|pr-comment|issue-comment|release-notes|release-edit <file> [gh args]` posts a pull request body, a comment or release notes only after `scripts/scan-public.sh` prints 0 for the text and every other argument (the title too). GitHub keeps every revision of a body or comment and its API cannot delete one, so a scan after posting came too late twice. On a hit nothing is posted, and only the check name and line numbers are printed, never the matched text (exit 1); a missing pattern file or a `--body`/`--notes`/`--web` style argument is refused too. `tests/test_gh_safe.sh` runs it with a synthetic pattern and a fake `gh`.
 
 ### 한국어
 
 - 고침: `check_motion` `ACTION_SPAN` 이 구간을 그 말이 가리키는 부품으로 잰다. `ACTION_MATCH` 가 `KIT.process` 부품을 찾으면 그 부품(및 그 아래 메시)의 상태와, 구간 동안 그 부품이 지난 화면 상자 안의 화소로 재고(줄의 `part=`, `region=`), 문턱은 그대로다. 넓은 부엌에서 작은 컵을 올리면 화면의 0.0002 만 바뀌어 `ACTION_MATCH` 는 올라감을 보고도 `action_static` FAIL 이었는데, 이제 컵 상자의 0.107 이 바뀌어 PASS. 컵은 가만히 있고 옆 큰 상자만 미끄러지면 더는 동작으로 치지 않는다. 찾은 부품이 없는 구간은 전처럼 화면 전체.
+- 관리: `scripts/gh-safe.sh pr-create|pr-edit|pr-comment|issue-comment|release-notes|release-edit <파일> [gh 인자]` 는 PR 본문·댓글·릴리스 노트를 그 글과 나머지 인자(제목 포함)에 `scripts/scan-public.sh` 가 0을 낸 뒤에만 올린다. GitHub는 본문·댓글의 모든 판을 남기고 API로 지울 수 없어, 올린 뒤 검사는 두 번 늦었다. 걸리면 아무것도 안 올리고 검사 이름과 줄 번호만 찍으며 걸린 낱말은 찍지 않는다(exit 1). 패턴 파일이 없거나 `--body`/`--notes`/`--web` 같은 인자도 거절. `tests/test_gh_safe.sh` 가 합성 패턴과 가짜 `gh` 로 돌린다.
 
 ## v0.3.1
 
