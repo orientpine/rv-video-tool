@@ -116,7 +116,12 @@ def picture_fatigue(luminances: list[float], duration: float) -> Fatigue:
         active = smoothed > 80 or (active and smoothed >= 64)
         states.append(active)
     bright = picture_runs(states, duration, majority=False)
-    for run in bright[1:-1]:
+    # A dark gap under 2 s inside joins the bright runs; a fade under 2 s at either end joins
+    # the bright run next to it only when that run is not itself a flash under 2 s.
+    for i, run in enumerate(bright if len(bright) > 1 else []):
+        near = bright[1] if i == 0 else bright[-2] if i == len(bright) - 1 else None
+        if near and near["end"] - near["start"] < 2:
+            continue
         if run["look"] == "real" and run["end"] - run["start"] < 2:
             first, end = int(run["start"] * 4), math.ceil(run["end"] * 4)
             states[first:end] = [True] * (end - first)
@@ -134,7 +139,29 @@ def picture_fatigue(luminances: list[float], duration: float) -> Fatigue:
                    bright_intervals=intervals, flashes=flashes, errors=tuple(errors))
 
 
-def inspect_picture(video, evidence=None):
+def merge_dips(runs, jumps, limit):
+    """A real run under 2 s whose edges stay within the luma-jump limit is a fade
+    through dark (a scene dip, or the fade in/out at either end), not a theme."""
+    merged, dips = [], []
+    for i, run in enumerate(runs):
+        edges = [jumps[r["start"]] for r in (run, runs[i + 1] if i + 1 < len(runs) else None)
+                 if r is not None and r["start"] in jumps]
+        if (len(runs) > 1 and run["look"] == "real" and run["end"] - run["start"] < 2
+                and edges and max(e["max_luma_jump"] for e in edges) <= limit):
+            dips.append({"start": run["start"], "end": run["end"],
+                         "max_luma_jump": max(e["max_luma_jump"] for e in edges)})
+            run = {**run, "look": "white", "scenes": []}
+        if merged and merged[-1]["look"] == run["look"]:
+            merged[-1]["end"] = run["end"]
+            merged[-1]["scenes"] += run["scenes"]
+        else:
+            merged.append({**run, "scenes": list(run["scenes"])})
+    for run in merged:
+        run["scenes"] = run["scenes"] or [f"{run['look']}@{run['start']:.2f}"]
+    return merged, dips
+
+
+def inspect_picture(video, evidence=None, limit=12.0):
     from fractions import Fraction
     from build import theme_violations
     info = json.loads(subprocess.check_output([
@@ -153,9 +180,8 @@ def inspect_picture(video, evidence=None):
     if not ratios:
         raise RuntimeError("no decoded picture samples")
     runs = picture_runs(ratios, duration)
-    errors = theme_violations(runs)
     switches = [r["start"] for r in runs[1:]]
-    measurements = []
+    measurements, dips = [], []
     if switches:
         # Do not apply a per-frame limit to 0.25 s sample differences: that would
         # reject a valid slow dissolve. Decode native-rate mean luma separately.
@@ -166,10 +192,14 @@ def inspect_picture(video, evidence=None):
             end = min(len(luma), int((boundary + 2) * fps) + 1)
             peak, at = max((abs(luma[i] - luma[i - 1]), i / fps) for i in range(first, end))
             measurements.append({"boundary": boundary, "max_luma_jump": peak, "at": at})
+        runs, dips = merge_dips(runs, {m["boundary"]: m for m in measurements}, limit)
+        kept = {r["start"] for r in runs[1:]}
+        measurements = [m for m in measurements if m["boundary"] in kept]
+    errors = theme_violations(runs)
     result = {"mode": "picture", "video": str(video), "duration": duration, "fps": fps,
               "sample_fps": 4, "min_rgb": 170, "max_rgb_spread": 30, "sample_size": "96x54",
               "white_ratio_threshold": 0.25, "smoothing": "3-sample majority",
-              "ratios": ratios, "luminances": luminances, "runs": runs,
+              "ratios": ratios, "luminances": luminances, "runs": runs, "dips": dips,
               "measurements": measurements, "errors": errors}
     from dataclasses import asdict
     result["fatigue"] = asdict(picture_fatigue(luminances, duration))
@@ -188,7 +218,7 @@ def inspect_picture(video, evidence=None):
 def check_picture(a):
     source = Path(a.mp4 or a.video).resolve()
     try:
-        original = inspect_picture(source, a.evidence if not a.mutate else None)
+        original = inspect_picture(source, a.evidence if not a.mutate else None, a.limit)
         result, injected = original, []
         if a.mutate == "fatigue":
             duration = original["duration"]
@@ -202,7 +232,8 @@ def check_picture(a):
                     if (run["look"] == "white" and start <= run["end"] and
                             start + 16 * scale >= run["start"]):
                         start = run["end"] + 2
-                if start + 16 * scale <= duration:
+                # Two planned blocks pushed past the same white run land on one spot: count it once.
+                if start + 16 * scale <= duration and not (injected and start < injected[-1][1] + 4 * scale):
                     injected.append((start, start + 12 * scale))
             if len(injected) < 2:
                 raise FatiguePlacementError(len(injected))
@@ -224,7 +255,7 @@ def check_picture(a):
                                 "-map", previous,
                                 "-an", "-c:v", "libx264", "-threads", "2",
                                 "-preset", "ultrafast", "-crf", "18", str(mutant)], check=True)
-                result = inspect_picture(mutant, a.evidence)
+                result = inspect_picture(mutant, a.evidence, a.limit)
             white_before = sum(r["look"] == "white" for r in original["runs"])
             white_after = sum(r["look"] == "white" for r in result["runs"])
             result["mutation"] = {"color": color, "median_luminance": median_luminance,
@@ -252,7 +283,7 @@ def check_picture(a):
                 subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-y", "-i", str(source),
                                 "-an", "-vf", filters, "-c:v", "libx264", "-threads", "2",
                                 "-preset", "ultrafast", "-crf", "18", str(mutant)], check=True)
-                result = inspect_picture(mutant, a.evidence)
+                result = inspect_picture(mutant, a.evidence, a.limit)
             print(f"THEME_MUTATION blocks={len(injected)} color={color}")
         for measurement in result["measurements"]:
             if measurement["max_luma_jump"] > a.limit:
@@ -262,6 +293,9 @@ def check_picture(a):
         for run in result["runs"]:
             if run["look"] == "white":
                 print(f"THEME_WHITE {run['start']:.2f}-{run['end']:.2f}s hold={run['end'] - run['start']:.2f}s")
+        for dip in result["dips"]:
+            print(f"THEME_DIP {dip['start']:.2f}-{dip['end']:.2f}s max_luma_jump={dip['max_luma_jump']:.3f}/255"
+                  f" (fade under 2 s, not a switch)")
         print(f"THEME_PICTURE_PLAN switches={len(result['runs']) - 1} min_hold=12s max=2/60s")
         for row in result["measurements"]:
             print(f"THEME_PICTURE_BLEND t={row['boundary']:.2f} max_luma_jump={row['max_luma_jump']:.3f}/255"

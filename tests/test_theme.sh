@@ -190,6 +190,27 @@ cat "$W/picture-greywhite.log"
 n_white=$(grep -c '^THEME_WHITE' "$W/picture-greywhite.log" || true)
 [[ "$gw_rc" == 1 && "$n_white" == 4 ]] || { echo "FAIL grey-white blocks: rc=$gw_rc white_runs=$n_white (want 1, 4)"; exit 1; }
 echo "PASS grey-white (RGB 188) blocks counted as white, orange accent block not"
+# A bright picture that fades through black between scenes (1.6 s dips) and at both
+# ends keeps one theme: the dips are not white->real->white switches. The same dips
+# as hard cuts are still short real runs with a luma jump.
+dur=120; soft="max(0,1-T)+max(0,1-($dur-T))"; hard="lt(T,1)+gt(T,$dur-1)"
+for c in 20 40 60 80 100; do soft+="+max(0,1-abs(T-$c)/0.8)"; hard+="+between(T,$c-0.8,$c+0.8)"; done
+for kind in soft hard; do
+  [[ "$kind" == soft ]] && a="min(1,$soft)" || a="min(1,$hard)"
+  ffmpeg -nostdin -v error -y -f lavfi -i "color=c=0xe6e2dc:s=160x90:r=30:d=$dur" -f lavfi -i "color=c=black:s=160x90:r=30:d=$dur" \
+    -filter_complex "[0:v][1:v]blend=all_expr='A*(1-($a))+B*($a)'" -c:v libx264 -threads 2 -preset ultrafast -pix_fmt yuv420p "$W/dip-$kind.mp4"
+  set +e; python3 "$TOOL/lib/check_cuts.py" --theme --mp4 "$W/dip-$kind.mp4" > "$W/picture-dip-$kind.log"; rc=$?; set -e
+  cat "$W/picture-dip-$kind.log"
+  if [[ "$kind" == soft ]]; then
+    [[ "$rc" == 0 && "$(grep -c '^THEME_DIP ' "$W/picture-dip-$kind.log")" == 7 && "$(grep -c '^THEME_WHITE ' "$W/picture-dip-$kind.log")" == 1 ]] \
+      || { echo "FAIL soft dips: rc=$rc (want 0, 7 dips, one white run)"; exit 1; }
+    grep -qx 'THEME_FATIGUE PASS' "$W/picture-dip-$kind.log"
+  else
+    [[ "$rc" == 1 && "$(grep -c '^THEME_DIP ' "$W/picture-dip-$kind.log")" == 0 ]] && grep -q '^THEME_VIOLATION hold <12s' "$W/picture-dip-$kind.log" \
+      || { echo "FAIL hard dips: rc=$rc (want 1, no dip, hold violation)"; exit 1; }
+  fi
+done
+echo "PASS 1.6 s fades through black keep one theme; the same dips as hard cuts fail"
 if [[ -n "${THEME_EVIDENCE:-}" ]]; then
   mkdir -p "$THEME_EVIDENCE"
   cp -a "$W"/{calm.mp4,alternation.mp4,real.png,white.png,calibration.json,picture-calm.log,picture-alternation.log,picture-mutation.log,calm-evidence,alternation-evidence,picture-mutation} "$THEME_EVIDENCE/"
@@ -207,6 +228,9 @@ for name, intervals, runs, flashes, failed in [
     ("threshold dip and short gap", [(20,40,100), (25,28,77.5), (32,33.5,60)], 1, 0, False),
     ("real alternation", [(20,25,100), (35,40,100), (50,55,100)], 3, 0, True),
     ("sub-two-second flash", [(20,21,100)], 0, 1, False),
+    # A short dark start does not join a flash under 2 s into a bright run.
+    ("flash after a short dark start", [(.75,2.25,100)], 0, 1, False),
+    ("flash before a short dark end", [(77.75,79.25,100)], 0, 1, False),
 ]:
     luminances = [35.] * 320
     for start, end, luminance in intervals:
@@ -275,6 +299,16 @@ for seconds, base, want in ((60, "203040", "MUTATION_CAUGHT fatigue\n"), (80, "2
     assert want in result.stdout, (seconds, result.stdout)
     assert result.returncode == (0 if want == "MUTATION_SKIP\n" else 1), (seconds, result.stdout)
     print(f"PASS fatigue mutation on a {seconds} s video: {want.strip()}")
+# A bright video with one grey stretch: the 10 s and 70 s blocks both move past the first
+# white run to the same spot. That is one block, not two, so the mutation is skipped.
+video = w / "fatigue-one-gap.mp4"
+subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=0xe6e2dc:s=160x90:r=10:d=180",
+                "-vf", "drawbox=x=0:y=0:w=iw:h=ih:color=0x9a9a9a:t=fill:enable='between(t,80,110)'", "-c:v", "libx264",
+                "-threads", "2", "-preset", "ultrafast", "-pix_fmt", "yuv420p", str(video)], check=True)
+result = subprocess.run(["python3", str(checker), "--theme", "--mp4", str(video), "--mutate", "fatigue"], capture_output=True, text=True)
+(w / "fatigue-mutation-one-gap.log").write_text(result.stdout + result.stderr)
+assert result.returncode == 0 and "found 1" in result.stdout and "MUTATION_SKIP\n" in result.stdout, result.stdout
+print("PASS fatigue mutation counts blocks moved to one spot once: MUTATION_SKIP")
 PY
 if [[ -n "${THEME_EVIDENCE:-}" ]]; then
   cp "$W"/fatigue-*.log "$THEME_EVIDENCE/"
