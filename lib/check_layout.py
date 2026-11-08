@@ -326,6 +326,17 @@ OCCLUSION = r"""([mutate, now]) => {
 # A card covering part of an explained or moving object (owner 2026-11-08 19:37 KST: the object must not look covered;
 # fixed before measuring): CUT_MIN..CUT_MAX of its depth-visible pixels under one card is a cut at the card's edge.
 CUT_MIN, CUT_MAX = .10, .90
+# An object is moving when its own local matrix differs from MOVE_DT seconds earlier (rendered on the same page).
+MOVE_DT = .5
+MOVE_PRIME = r"""async t => {
+  window.__LAYOUT_VIEWS.clear(); await window.renderAt(t);
+  const prev = window.__layoutPrev = new Map();
+  for (const v of window.__LAYOUT_VIEWS.values()) v.scene.traverseVisible(o => {
+    if (o === v.scene || o.isCamera || o.isLight) return;
+    if (o.matrixAutoUpdate) o.updateMatrix();
+    prev.set(o.uuid, {t, m: o.matrix.elements.slice()});
+  });
+}"""
 
 
 def luminance(rgb):
@@ -398,6 +409,8 @@ async def measure(pw, a, shard, shards):
     results = []
     for index, t in list(enumerate(times))[shard::shards]:
         lines, failures, caught, skips, occluded = [], [], False, set(), 0
+        # Moving objects are judged against this same page MOVE_DT before t, whatever the shard split.
+        await p.evaluate(MOVE_PRIME, max(0, t - MOVE_DT))
         await p.evaluate("""async t => {window.__LAYOUT_VIEWS.clear(); await window.renderAt(t);
             await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))}""", t)
         rows = await p.evaluate(COLLECT)

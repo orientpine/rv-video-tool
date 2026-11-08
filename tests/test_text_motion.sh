@@ -61,15 +61,17 @@ sed -i 's|^    init(r, THREE, overlay) {$|&\n      KIT.shot.declare(NAME, [{t: 0
 run_case hold still; need hold "^TEXT_MOTION device .* EXEMPT declared_hold"; need hold "^TEXT_MOTION_CHECK PASS "
 # A card over part of a moving part looks like it covers it (check_layout cut); declared decoration is left out.
 layout_case() {
-  local name="$1"
+  local name="$1" shards="${2:-1}"
   printf '{"mode":"kit"}\n' > "$W/project/scenes/device/mode.json"
   VIDEO_HTML="$W/$name.html" python3 "$ROOT/lib/build.py" "$W/project" > "$W/$name.build.log"
-  "${PW[@]}" "$ROOT/lib/check_layout.py" "$W/$name.html" --from 9 --to 12.5 --every .5 --shards 1 > "$W/$name.log" 2>&1 || true
+  "${PW[@]}" "$ROOT/lib/check_layout.py" "$W/$name.html" --from 9 --to 12.5 --every .5 --shards "$shards" > "$W/$name.log" 2>&1 || true
   ! grep -q Traceback "$W/$name.log"
 }
 cp "$W/module.orig.js" "$M"; layout_case layoutkit; need layoutkit "^LAYOUT_CHECK PASS"; none layoutkit "\| cut \|"
 sed -i 's|cardB = card(overlay, "Spinning sends the sample into every well", 80);|&\n      cardB.style.left = "620px"; cardB.style.top = "560px";|' "$M"
 layout_case cutcard; need cutcard "\| cut \| .*source=moving"; need cutcard "^LAYOUT_CHECK FAIL"
+# Moving is judged 0.5 s back on the same page, so the browser split does not change it.
+layout_case cutcard6 6; need cutcard6 "\| cut \| .*source=moving"
 sed -i 's|^      cardB.style.left = "620px"; cardB.style.top = "560px";$|&\n      KIT.fx.decor(disk);|' "$M"
 layout_case decor; none decor "\| cut \| .*source=moving"
 cp "$W/module.orig.js" "$M"

@@ -166,7 +166,7 @@ SCENES.probe = (() => {
 | 갑자기 등장 (`POP_IN`): 카드·이름표·부품이 서서히 나타나기·밀려 들어오기·카메라가 비춰 드러내기 없이 한두 프레임에 나타나는지 | `check_motion` | `check_motion` 시간 안 |
 | 설명 대상 화면 가운데 (`SUBJECT_FRAME`): 동작을 말하는 동안 그 말이 가리키는 부품이 화면 가운데 30% 안에 오는지 | `check_motion` | `check_motion` 시간 안 (예시에 동작 낱말 없음) |
 | 글자 옆 움직임 (`TEXT_MOTION`): 카드·이름표·자막이 떠 있고 카메라가 서 있는 동안 글자가 가리지 않은 3D 화면이 2 s 이상 멈춰 있지 않은지. 선언한 `ui-only` 멈춤과 풍부한 정지 그림은 의도로 봄 | `check_motion` | `check_motion` 시간 안 |
-| 정지 그림 (`PICTURE`): `KIT.info.picture` 가 3 s 이상 다 보이고, 화면 8% 이상이고, 풍부한지(빈 판·글자만 아님) | `check_motion` | `check_motion` 시간 안 (예시에 그림 없음) |
+| 정지 그림 (`PICTURE`): `KIT.info.picture` 가 3 s 이상 다 보이고, 화면 8% 이상이고, 풍부한지(빈 판·글자만 아님) | `check_motion` | `check_motion` 시간 안 (`examples/hello` 에 그림 없음) |
 | 부품이 지지대에 파묻히거나 떨어짐, 이름표 단 부품이 떠 있음, 기계끼리 충돌, 앉은 자세 접촉 | `check_clearance` | 34.5 s |
 | 사람: `KIT.fx.human` 만, 몸 부위, 접촉점, 복식이 현장과 맞는지 | `check_human` | 16.1 s (건너뜀, 변이는 돎) |
 | `sources.json` 에 출처 없는 화면·나레이션 숫자 | `check_numbers` | 14.3 s (건너뜀, `sources.json` 없음) |

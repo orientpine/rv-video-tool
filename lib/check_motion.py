@@ -232,10 +232,14 @@ PICTURE_SNAPSHOT = r"""async () => {
     if (img && (!m || m.src !== img.src)) {
       try { await img.decode(); } catch (e) {}
       let fill = 0, colors = 0;
-      if (img.naturalWidth) {
+      let d = null;
+      if (img.naturalWidth) try {   // a cross-origin file taints the canvas: unreadable counts as poor (use deps.json assets)
         const c = document.createElement('canvas'); c.width = 96; c.height = 64;
         const x = c.getContext('2d', {willReadFrequently: true}); x.drawImage(img, 0, 0, 96, 64);
-        const d = x.getImageData(0, 0, 96, 64).data, n = 96 * 64, bins = new Map();
+        d = x.getImageData(0, 0, 96, 64).data;
+      } catch (e) { d = null; }
+      if (d) {
+        const n = 96 * 64, bins = new Map();
         for (let i = 0; i < d.length; i += 4) { const k = (d[i] >> 4) << 8 | (d[i + 1] >> 4) << 4 | d[i + 2] >> 4; bins.set(k, (bins.get(k) || 0) + 1); }
         let top = 0, key = 0; for (const [k, v] of bins) if (v > top) { top = v; key = k; }
         const br = (key >> 8) * 16 + 8, bg = ((key >> 4) & 15) * 16 + 8, bb = (key & 15) * 16 + 8;
@@ -244,7 +248,7 @@ PICTURE_SNAPSHOT = r"""async () => {
       }
       m = {src: img.src, fill, colors}; cache.set(img, m);
     }
-    out.push({id: box.dataset.rvPicture || 'picture', alpha: +alpha.toFixed(3), area: +area.toFixed(4),
+    out.push({id: box.dataset.rvPictureId || box.dataset.rvPicture || 'picture', name: box.dataset.rvPicture || 'picture', alpha: +alpha.toFixed(3), area: +area.toFixed(4),
       fill: m ? +m.fill.toFixed(3) : 0, colors: m ? m.colors : 0});
   }
   return out;
@@ -452,7 +456,7 @@ TEXT_PROBE = r"""async ([times, boxes, share, rich]) => {
   const moved = [], shares = [], pictured = [];
   for (const t of times) {
     q.scene = null; await window.renderAt(t);
-    pictured.push((await q.pictureSnapshot()).some(p => p.alpha >= .5 && p.area >= rich[0] && p.fill >= rich[1] && p.colors >= rich[2]));
+    pictured.push((await q.pictureSnapshot()).some(p => p.alpha >= .5 && p.area >= rich[0] && p.fill >= rich[1] && p.colors >= rich[2] && !rich[3].includes(p.id)));
     if (!q.scene || !q.camera) { moved.push(null); shares.push(null); continue; }
     if (!cam) {
       cam = q.camera.clone();
@@ -1706,6 +1710,19 @@ async def main(a):
             match_caught = offcenter_caught
         if a.mutate == "popin":
             match_caught = any(abs(f[0] - pop_mutation) <= 1 and f[2] == "pop_in" for f in pop_failures)
+        picture_bad, bad_pictures, picture_rows = 0, [], []
+        for pid, rec in pictures.items():
+            pic, shown = rec["pic"], max(0, rec["best"] - 1) * step / a.fps   # n samples span n-1 steps
+            scene_ = next(s_ for s_ in reversed(tl["order"]) if rec["first"] + 1e-7 >= tl["modules"][s_]["start"])
+            why = [w for w, bad in (("short", shown < PICTURE_MIN_S), ("small", pic["area"] < PICTURE_MIN_AREA),
+                                    ("poor", pic["fill"] < PICTURE_FILL or pic["colors"] < PICTURE_COLORS)) if bad]
+            pd = (f"picture={pic['name']!r} t={rec['first']:.2f}s shown={shown:.2f}s need>={PICTURE_MIN_S}s area={pic['area']:.3f} "
+                  f"need>={PICTURE_MIN_AREA} fill={pic['fill']:.2f} need>={PICTURE_FILL} colors={pic['colors']} need>={PICTURE_COLORS}")
+            picture_rows.append(f"PICTURE {scene_} {pd} {'FAIL ' + ','.join(why) if why else 'PASS'}")
+            if why:
+                picture_bad += 1
+                bad_pictures.append(pid)
+                action_failures.append((round(rec["first"] * a.fps), scene_, "picture_" + why[0], pd))
         # Meaningful motion beside the text (TEXT_MOTION).
         text_motion_rows, text_still = [], 0
         edges = transition_spans(tl, transitions, looks, blend_s)
@@ -1714,7 +1731,7 @@ async def main(a):
                 break
             n = max(2, math.ceil((end - begin) / TEXT_STEP_S))
             times = [begin + (end - begin) * i / n for i in range(n + 1)]
-            rich = [PICTURE_MIN_AREA, PICTURE_FILL, PICTURE_COLORS]
+            rich = [PICTURE_MIN_AREA, PICTURE_FILL, PICTURE_COLORS, bad_pictures]   # a picture failing PICTURE is no stand-in
             v = await p.evaluate(TEXT_PROBE, [times, list(boxes), TEXT_MOVE_SHARE, rich])
             scene_lo, shots = tl["modules"][scene]["start"], kinds.get(scene, [])
             # A declared ui-only shot is an intended hold on the text: its samples restart the still clock.
@@ -1757,19 +1774,7 @@ async def main(a):
                 fs = still_stretch(times, [True if h or pc else m for m, h, pc in zip(frozen["moved"], in_hold, frozen["pictured"])])[0]
                 mutation = {"kind": "textstill", "scene": scene, "window": [round(begin, 3), round(end, 3)], "still_s": round(fs, 2)}
                 match_caught = fs >= TEXT_STILL_S
-        action_rows.extend(text_motion_rows)
-        picture_bad = 0
-        for pid, rec in pictures.items():
-            pic, shown = rec["pic"], rec["best"] * step / a.fps
-            scene_ = next(s_ for s_ in reversed(tl["order"]) if rec["first"] + 1e-7 >= tl["modules"][s_]["start"])
-            why = [w for w, bad in (("short", shown < PICTURE_MIN_S), ("small", pic["area"] < PICTURE_MIN_AREA),
-                                    ("poor", pic["fill"] < PICTURE_FILL or pic["colors"] < PICTURE_COLORS)) if bad]
-            pd = (f"picture={pid!r} t={rec['first']:.2f}s shown={shown:.2f}s need>={PICTURE_MIN_S}s area={pic['area']:.3f} "
-                  f"need>={PICTURE_MIN_AREA} fill={pic['fill']:.2f} need>={PICTURE_FILL} colors={pic['colors']} need>={PICTURE_COLORS}")
-            action_rows.append(f"PICTURE {scene_} {pd} {'FAIL ' + ','.join(why) if why else 'PASS'}")
-            if why:
-                picture_bad += 1
-                action_failures.append((round(rec["first"] * a.fps), scene_, "picture_" + why[0], pd))
+        action_rows.extend(text_motion_rows + picture_rows)
         text_summary = (f"TEXT_MOTION_CHECK {'FAIL' if text_still or picture_bad else 'PASS' if text_motion_rows or pictures else '실제 SKIP'} "
                         f"windows={len(text_motion_rows)} still={text_still} "
                         f"exempt={sum(' EXEMPT ' in r for r in text_motion_rows)} pictures={len(pictures)} "
