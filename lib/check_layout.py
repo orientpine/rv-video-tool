@@ -9,6 +9,7 @@ import argparse
 import asyncio
 import io
 import math
+import os
 import sys
 import time
 from pathlib import Path
@@ -339,102 +340,121 @@ def contrast(row, image):
     return ratios[int((len(ratios) - 1) * .1)]
 
 
+async def measure(pw, a, shard, shards):
+    """One browser measures every shards-th sample time from shard; returns per-sample results and page errors."""
+    browser = await pw.chromium.launch(executable_path=CHROME, headless=True, args=CHROME_ARGS)
+    p = await browser.new_page(viewport={"width": 1920, "height": 1080})
+    await p.add_init_script(OCCLUSION_INIT)
+    errors = []
+    p.on("pageerror", lambda e: errors.append(str(e)))
+    await p.goto(Path(a.html).resolve().as_uri(), wait_until="load")
+    await p.evaluate("Promise.resolve(window.renderReady)")
+    total = await p.evaluate("window.DATA.timeline.total_s")
+    await warm_canvas(p, await p.context.new_cdp_session(p), min(1, total / 2))
+    if a.mutate:
+        await p.evaluate(MUTATE, a.mutate)
+    begin, end = a.start, min(total, a.end if a.end is not None else total)
+    times = a.at if a.at is not None else [
+        begin + i * a.every for i in range(math.ceil(max(0, end - begin) / a.every))
+        if begin + i * a.every < end]
+    results = []
+    for index, t in list(enumerate(times))[shard::shards]:
+        lines, failures, caught, skips, occluded = [], [], False, set(), 0
+        await p.evaluate("""async t => {window.__LAYOUT_VIEWS.clear(); await window.renderAt(t);
+            await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))}""", t)
+        rows = await p.evaluate(COLLECT)
+        occlusion = await p.evaluate(OCCLUSION, a.mutate)
+        skips.update(occlusion["skipped"])
+        for target in occlusion["results"]:
+            occluded += 1
+            values = (f"visible_fraction={target['fraction']:.6f} required>=0.500 "
+                      f"pixels={target['visible']}/{target['total']} "
+                      f"depth_visible={target['depth']} "
+                      f"card_coverage={target['cardFraction']:.6f} required<0.400 "
+                      f"card_pixels={target['covered']}/{target['depth']} "
+                      f"card={target['card']!r} source={target['source']}")
+            lines.append(f"OCCLUSION t={t:.3f} text={target['text']!r} {values}")
+            if target["fraction"] < .5 or target["cardFraction"] >= .4:
+                failures.append((t, target["text"], "occlude", values))
+                caught |= target["mutation"]
+        fading = set()
+        if any(.05 < row["opacity"] < 1 - FADE_DELTA for row in rows):
+            around = []
+            for dt in (-FADE_S, FADE_S):
+                await p.evaluate("async t => {window.__LAYOUT_VIEWS.clear(); await window.renderAt(t);}", max(0, t + dt))
+                around.append(await p.evaluate(OPACITY))
+            await p.evaluate("""async t => {window.__LAYOUT_VIEWS.clear(); await window.renderAt(t);
+                await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))}""", t)
+            # Scene content only: rv's own step chips and captions open with a clip reveal and keep full contrast.
+            fading = {row["id"] for row in rows if row["scene"] and row["opacity"] < 1 - FADE_DELTA and
+                      any(abs(o.get(row["path"], 0) - row["opacity"]) > FADE_DELTA for o in around)}
+            for row in rows:
+                if row["id"] in fading:
+                    lines.append(f"LAYOUT_FADE t={t:.3f} text={row['text'][:60]!r} opacity={row['opacity']:.3f} "
+                          f"(mid-fade: contrast/overlap judged on resting frames)")
+        image = None
+        if any(row["opacity"] < 1 or not any(c[3] >= 1 for c in row["layers"]) for row in rows):
+            # Hide DOM while preserving canvas and layout, so foreground glyphs
+            # cannot pollute background samples. Keep renderAt at this exact t.
+            hidden_style = await p.add_style_tag(content="body *:not(#stage):not(canvas){visibility:hidden!important}")
+            image = Image.open(io.BytesIO(await p.screenshot())).convert("RGB")
+            await hidden_style.evaluate("e=>e.remove()")
+        for j, row in enumerate(rows):
+            def bad(rule, values):
+                nonlocal caught
+                failures.append((t, row["text"], rule, values))
+                if row["text"].startswith("MUTATION " + str(a.mutate)) and rule == a.mutate:
+                    caught = True
+            left, top, r, b = row["r"]
+            if left < 0 or top < 0 or r > 1920 or b > 1080 or row["overflow"]:
+                bad("clip", f"rect={row['r']} scroll/client={row['sw']}/{row['cw']}")
+            if not row["chrome"]:
+                for box in [row["r"], *row["cards"]]:
+                    if box[0] < 40 or box[1] < 130 or box[2] > 1880 or box[3] > 870:
+                        bad("safe", f"rect={box}; required x=40..1880 y=130..870")
+                        break
+            if row["id"] in fading:
+                continue
+            ratio = contrast(row, image)
+            threshold = 3 if row["size"] >= 24 and row["bold"] else 4.5
+            if ratio < threshold:
+                bad("contrast", f"ratio={ratio:.3f} required={threshold} size={row['size']} bold={row['bold']}")
+            for other in rows[j + 1:]:
+                if other["id"] in fading:
+                    continue
+                if (row["index"] in other["ancestors"]
+                        or other["index"] in row["ancestors"]):
+                    continue
+                q = other["r"]
+                area = max(0, min(r, q[2]) - max(left, q[0])) * max(0, min(b, q[3]) - max(top, q[1]))
+                if area > 4:
+                    w, h = round(q[2] - q[0]), round(q[3] - q[1])
+                    bad("overlap", f"with={other['text']!r} ({other['id']} {other['tag']} {w}x{h}) area={area:.2f}px^2")
+        results.append((index, lines, failures, caught, skips, occluded, len(rows)))
+        if a.mutate and caught:   # a mutation only has to be caught once; the real check samples every time
+            break
+    await browser.close()
+    return results, errors
+
+
 async def main(a):
     start = time.monotonic()
     failures, samples, text_count, mutation_caught = [], 0, 0, False
     occlusion_count, occlusion_skips = 0, set()
+    # The real check deals sample times round-robin to --shards browsers; a mutation stays on one page.
+    shards = 1 if a.mutate else max(1, min(a.shards, len(a.at)) if a.at is not None else a.shards)
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(executable_path=CHROME, headless=True, args=CHROME_ARGS)
-        p = await browser.new_page(viewport={"width": 1920, "height": 1080})
-        await p.add_init_script(OCCLUSION_INIT)
-        errors = []
-        p.on("pageerror", lambda e: errors.append(str(e)))
-        await p.goto(Path(a.html).resolve().as_uri(), wait_until="load")
-        await p.evaluate("Promise.resolve(window.renderReady)")
-        total = await p.evaluate("window.DATA.timeline.total_s")
-        await warm_canvas(p, await p.context.new_cdp_session(p), min(1, total / 2))
-        if a.mutate:
-            await p.evaluate(MUTATE, a.mutate)
-        begin, end = a.start, min(total, a.end if a.end is not None else total)
-        times = a.at if a.at is not None else [
-            begin + i * a.every for i in range(math.ceil(max(0, end - begin) / a.every))
-            if begin + i * a.every < end]
-        for t in times:
-            await p.evaluate("""async t => {window.__LAYOUT_VIEWS.clear(); await window.renderAt(t);
-                await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))}""", t)
-            rows = await p.evaluate(COLLECT)
-            occlusion = await p.evaluate(OCCLUSION, a.mutate)
-            occlusion_skips.update(occlusion["skipped"])
-            for target in occlusion["results"]:
-                occlusion_count += 1
-                values = (f"visible_fraction={target['fraction']:.6f} required>=0.500 "
-                          f"pixels={target['visible']}/{target['total']} "
-                          f"depth_visible={target['depth']} "
-                          f"card_coverage={target['cardFraction']:.6f} required<0.400 "
-                          f"card_pixels={target['covered']}/{target['depth']} "
-                          f"card={target['card']!r} source={target['source']}")
-                print(f"OCCLUSION t={t:.3f} text={target['text']!r} {values}")
-                if target["fraction"] < .5 or target["cardFraction"] >= .4:
-                    failures.append((t, target["text"], "occlude", values))
-                    mutation_caught |= target["mutation"]
-            fading = set()
-            if any(.05 < row["opacity"] < 1 - FADE_DELTA for row in rows):
-                around = []
-                for dt in (-FADE_S, FADE_S):
-                    await p.evaluate("async t => {window.__LAYOUT_VIEWS.clear(); await window.renderAt(t);}", max(0, t + dt))
-                    around.append(await p.evaluate(OPACITY))
-                await p.evaluate("""async t => {window.__LAYOUT_VIEWS.clear(); await window.renderAt(t);
-                    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))}""", t)
-                # Scene content only: rv's own step chips and captions open with a clip reveal and keep full contrast.
-                fading = {row["id"] for row in rows if row["scene"] and row["opacity"] < 1 - FADE_DELTA and
-                          any(abs(o.get(row["path"], 0) - row["opacity"]) > FADE_DELTA for o in around)}
-                for row in rows:
-                    if row["id"] in fading:
-                        print(f"LAYOUT_FADE t={t:.3f} text={row['text'][:60]!r} opacity={row['opacity']:.3f} "
-                              f"(mid-fade: contrast/overlap judged on resting frames)")
-            image = None
-            if any(row["opacity"] < 1 or not any(c[3] >= 1 for c in row["layers"]) for row in rows):
-                # Hide DOM while preserving canvas and layout, so foreground glyphs
-                # cannot pollute background samples. Keep renderAt at this exact t.
-                hidden_style = await p.add_style_tag(content="body *:not(#stage):not(canvas){visibility:hidden!important}")
-                image = Image.open(io.BytesIO(await p.screenshot())).convert("RGB")
-                await hidden_style.evaluate("e=>e.remove()")
-            for j, row in enumerate(rows):
-                def bad(rule, values):
-                    nonlocal mutation_caught
-                    failures.append((t, row["text"], rule, values))
-                    if row["text"].startswith("MUTATION " + str(a.mutate)) and rule == a.mutate:
-                        mutation_caught = True
-                left, top, r, b = row["r"]
-                if left < 0 or top < 0 or r > 1920 or b > 1080 or row["overflow"]:
-                    bad("clip", f"rect={row['r']} scroll/client={row['sw']}/{row['cw']}")
-                if not row["chrome"]:
-                    for box in [row["r"], *row["cards"]]:
-                        if box[0] < 40 or box[1] < 130 or box[2] > 1880 or box[3] > 870:
-                            bad("safe", f"rect={box}; required x=40..1880 y=130..870")
-                            break
-                if row["id"] in fading:
-                    continue
-                ratio = contrast(row, image)
-                threshold = 3 if row["size"] >= 24 and row["bold"] else 4.5
-                if ratio < threshold:
-                    bad("contrast", f"ratio={ratio:.3f} required={threshold} size={row['size']} bold={row['bold']}")
-                for other in rows[j + 1:]:
-                    if other["id"] in fading:
-                        continue
-                    if (row["index"] in other["ancestors"]
-                            or other["index"] in row["ancestors"]):
-                        continue
-                    q = other["r"]
-                    area = max(0, min(r, q[2]) - max(left, q[0])) * max(0, min(b, q[3]) - max(top, q[1]))
-                    if area > 4:
-                        w, h = round(q[2] - q[0]), round(q[3] - q[1])
-                        bad("overlap", f"with={other['text']!r} ({other['id']} {other['tag']} {w}x{h}) area={area:.2f}px^2")
-            samples += 1
-            text_count += len(rows)
-            if a.mutate and mutation_caught:   # a mutation only has to be caught once; the real check samples every time
-                break
-        await browser.close()
+        parts = await asyncio.gather(*(measure(pw, a, k, shards) for k in range(shards)))
+    errors = [e for part in parts for e in part[1]]
+    for _, lines, fails, caught, skips, occluded, texts in sorted((r for part in parts for r in part[0]), key=lambda r: r[0]):
+        for line in lines:
+            print(line)
+        failures += fails
+        mutation_caught |= caught
+        occlusion_skips |= skips
+        occlusion_count += occluded
+        samples += 1
+        text_count += texts
     print("| t (s) | text | rule | values |")
     print("|---:|---|---|---|")
     for t, text, rule, values in failures:
@@ -463,6 +483,8 @@ if __name__ == "__main__":
                     help="sample until this second (exclusive)")
     ap.add_argument("--at", type=float, nargs="+", help="이 시각들만 잰(초). 없으면 --every 간격으로 전체")
     ap.add_argument("--mutate", choices=["overlap", "clip", "contrast", "safe", "occlude"])
+    ap.add_argument("--shards", type=int, default=int(os.environ.get("RV_CHECK_SHARDS", "4")),
+                    help="browsers that share the real check's samples (env RV_CHECK_SHARDS, default 4); mutations use one")
     a = ap.parse_args()
     if not math.isfinite(a.every) or a.every <= 0:
         ap.error("--every must be finite and positive")

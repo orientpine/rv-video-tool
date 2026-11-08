@@ -6,7 +6,7 @@
 FAIL: 어느 프레임이든 부품 간극 < 0 mm (파묻힘) · 센서 끝 < 4.9 mm · 붙잡는 중인데 5.00 ± 0.1 mm 밖.
 --mutate gap: 목표 간극을 −5 mm 로 바꾼 사본(센서가 축 안으로) → FAIL 이어야 정상.
 """
-import argparse, asyncio, json, math, sys
+import argparse, asyncio, json, math, os, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from capture import CHROME, CHROME_ARGS  # noqa: E402
@@ -21,7 +21,10 @@ from human_detection import LEGACY_HUMAN, PERSON_NAME  # noqa: E402
 # vertices inside. This is a sampled penetration estimate, not an AABB verdict.
 MESH_CHECK = "() => {\n" + LEGACY_HUMAN + "\nconst PERSON_NAME=" + PERSON_NAME + ";\n" + r"""
   const scenes = new Set(), cameras = new Map(), cache = new WeakMap(), pairs = new WeakMap();
-  const machineBase = new Map(), machineCross = new Map();   // 기계 짝마다 처음 잰 깊이(꽂아 둔 자리·받침은 처음부터 겹침 — 그만큼은 의도)
+  const seenApart = new Set(), seenKey = new Set();   // 기계 짝이 떨어져 보인 것을 이 페이지에서 처음 한 번만 알림(처음 깊이는 machine_findings 가 프레임 순서로 정함)
+  // 짝을 이 페이지에서 처음 본 때 두 몸체의 세계 상자를 함께 보냄: 다른 페이지가 같은 프레임을 그려 같은 키의 상자가 같은지 대조(same_bodies)
+  const boxOf = b => [b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z].map(v => Math.round(v * 1e6) / 1e6);
+  const firstBoxes = (key, A, B) => { if (seenKey.has(key)) return undefined; seenKey.add(key); return [boxOf(A.b), boxOf(B.b)]; };
   let frameHumans = null;
   const previous = THREE.Scene.prototype.onBeforeRender;
   THREE.Scene.prototype.onBeforeRender = function(...args) {
@@ -406,6 +409,7 @@ MESH_CHECK = "() => {\n" + LEGACY_HUMAN + "\nconst PERSON_NAME=" + PERSON_NAME +
   window.__rvClearance = {
     begin() { scenes.clear(); cameras.clear(); frameTargets=null; frameHumans=null; },
     drawn() { return scenes.size; },
+    boxes(ids) { return ids.map(id => { for (const s of scenes) { const o = s.getObjectById(id); if (o) return boxOf(bounds(o)); } return null; }); },
     mutate(kind) {
       if (kind === 'detach') {
         const d = declarations().attachments.find(d => visible(d.part) && visible(d.support));
@@ -424,7 +428,7 @@ MESH_CHECK = "() => {\n" + LEGACY_HUMAN + "\nconst PERSON_NAME=" + PERSON_NAME +
       return null;
     },
     check() {
-      const findings = [], measurements = [], targets = {attach:0,human:0,seat:0,auto:0,machine:0}; let count = 0;
+      const findings = [], measurements = [], machines = [], targets = {attach:0,human:0,seat:0,auto:0,machine:0}; let count = 0;
       const add = (rule, name, mm, tolerance, target_id = null) => {
         const row={rule,name,mm,target_id}; measurements.push(row);
         if (!Number.isFinite(mm) || mm > tolerance + 1e-5) findings.push(row);
@@ -497,8 +501,9 @@ MESH_CHECK = "() => {\n" + LEGACY_HUMAN + "\nconst PERSON_NAME=" + PERSON_NAME +
           bodies.push({top, parts, b});
         }
         for (let i = 0; i < bodies.length; i++) for (let j = i + 1; j < bodies.length; j++) {
-          const A = bodies[i], B = bodies[j], key = A.top.uuid + '|' + B.top.uuid;
-          if (!A.b.intersectsBox(B.b)) { if (!machineBase.has(key)) { machineBase.set(key, 0); machineCross.set(key, false); } continue; }   // 떨어져서 처음 보인 짝은 처음 깊이 0
+          const A = bodies[i], B = bodies[j], key = A.top.id + '|' + B.top.id;   // Object3D.id counts creation order, the same in every page (uuid is random per page)
+          if (!A.b.intersectsBox(B.b)) { if (!seenApart.has(key)) { seenApart.add(key);
+            machines.push({key, apart: true, boxes: firstBoxes(key, A, B)}); } continue; }   // 떨어져서 처음 보인 짝은 처음 깊이 0
           count++; targets.machine++; let depth = 0, worst = '', cross = '';
           const overlap = A.b.clone().intersect(B.b), near = list => list.filter(o => bounds(o).intersectsBox(overlap));
           const nearB = near(B.parts);
@@ -512,16 +517,12 @@ MESH_CHECK = "() => {\n" + LEGACY_HUMAN + "\nconst PERSON_NAME=" + PERSON_NAME +
             }
           }
           // 새로 파고든 깊이만 셈: 처음부터 겹친 것(기계 받침에 꽂힌 헤드 30 mm)은 의도, 움직여 들어간 것(팔이 적재함 벽을 뚫음)은 FAIL
-          if (!machineBase.has(key)) machineBase.set(key, depth);
-          if (!machineCross.has(key)) machineCross.set(key, !!cross);
-          const base = machineBase.get(key), newCross = cross && !machineCross.get(key);
+          // (처음 깊이 빼기·면 교차 판정은 machine_findings 가 프레임 순서로 함 — 페이지 여럿이 프레임을 나눠 재도 같은 줄)
           const head = (A.top.name || label(A.top)) + ' <-> ' + (B.top.name || label(B.top));
-          if (newCross && depth - base <= .02) add('machine penetration', head + ' : ' + cross + ' (면 교차: 열린 껍데기 메시라 깊이 못 잼)', null, 20, A.top.uuid);
-          else add('machine penetration', head + (worst ? ' : ' + worst : '') +
-            ' (depth ' + (depth * 1000).toFixed(0) + ' mm, first ' + (base * 1000).toFixed(0) + ' mm)', Math.max(0, depth - base) * 1000, 20, A.top.uuid);
+          machines.push({key, head, worst, cross, depth, depth_text: (depth * 1000).toFixed(0), uuid: A.top.uuid, boxes: firstBoxes(key, A, B)});
         }
       }
-      return {count,findings,measurements,targets};
+      return {count,findings,measurements,targets,machines};
     }
   };
 }"""
@@ -539,27 +540,82 @@ def moved_caught(mutate, rows):
         for _, _, ext in rows)
 
 
-async def main(a):
-    html = Path(a.html).resolve()
-    line = next(l for l in html.read_text(encoding="utf-8").split("\n") if l.startswith("window.DATA="))
-    total = json.loads(line[len("window.DATA="):-1])["timeline"]["total_s"]
-    t0, t1 = a.a, a.b if a.b is not None else total
-    async with async_playwright() as pw:
-        b = await pw.chromium.launch(executable_path=CHROME, headless=True, args=CHROME_ARGS)
-        p = await b.new_page(viewport={"width": 1920, "height": 1080})
-        errs = []
-        p.on("pageerror", lambda e: errs.append(str(e)))
-        await p.goto(html.as_uri(), wait_until="load")
-        await p.evaluate("Promise.resolve(window.renderReady).then(() => 0)")
-        await p.evaluate(MESH_CHECK)
-        if a.mutate in ("detach", "sink"):
-            await p.evaluate("window.__rvClearanceNoMachine = true")
-        if a.mutate == "gap":
-            await p.evaluate("window.RIG && (RIG.P.GAP = -0.005)")
-        # Frames go to the page in batches of 30 so a mutation run can stop at the first frame that catches it
-        # (a mutation only has to be caught once, see moved_caught); the real check measures every frame as before.
-        rows, f1 = [], math.floor(t1 * 30 + .5)
-        for f0 in range(math.floor(t0 * 30 + .5), f1, 30):
+def machine_findings(rows):
+    """Machine pairs count only the depth added since the pair was first seen (its first measured depth, or 0 when
+    first seen apart). Pages measure interleaved frame batches, so the first sighting is resolved here in frame order."""
+    first = {}
+    for _, _, ext in rows:
+        for m in ext.pop("machines", ()):
+            base, base_text, base_cross = first.setdefault(
+                m["key"], (m.get("depth", 0), m.get("depth_text", "0"), bool(m.get("cross"))))
+            if m.get("apart"):
+                continue
+            depth, cross = m["depth"], m["cross"]
+            if cross and not base_cross and depth - base <= .02:
+                row = {"rule": "machine penetration", "name": f"{m['head']} : {cross} (면 교차: 열린 껍데기 메시라 깊이 못 잼)",
+                       "mm": None, "target_id": m["uuid"]}
+            else:
+                row = {"rule": "machine penetration",
+                       "name": m["head"] + (" : " + m["worst"] if m["worst"] else "")
+                       + f" (depth {m['depth_text']} mm, first {base_text} mm)",
+                       "mm": (depth - base) * 1000 if math.isnan(depth - base) else max(0.0, depth - base) * 1000,
+                       "target_id": m["uuid"]}
+            ext["measurements"].append(row)
+            if row["mm"] is None or not math.isfinite(row["mm"]) or row["mm"] > 20 + 1e-5:
+                ext["findings"].append(row)
+
+
+def identity_checks(parts):
+    """Machine pairs are keyed by Object3D.id, a creation counter: the same body in every page only when the pages built
+    their objects in the same order. A pair's first depth comes from the page that saw it first (frame f). Every other
+    page that measured the pair must, at frame f, find the same world boxes for those two ids. Returns
+    (expected {(f, id): box}, wanted {page: {f: [ids]}})."""
+    first, seen = {}, {}
+    for page, (rows, *_) in enumerate(parts):
+        for i, _, ext in rows:
+            for m in ext.get("machines", ()):
+                if m.get("boxes") is None:
+                    continue
+                seen.setdefault(m["key"], set()).add(page)
+                if m["key"] not in first or i < first[m["key"]][0]:
+                    first[m["key"]] = (i, page, m["boxes"])
+    expected, wanted = {}, {}
+    for key, (f, page, boxes) in first.items():
+        ids = [int(x) for x in key.split("|")]
+        for id_, box in zip(ids, boxes):
+            expected[(f, id_)] = box
+        for other in seen[key] - {page}:
+            wanted.setdefault(other, {}).setdefault(f, set()).update(ids)
+    return expected, wanted
+
+
+async def same_bodies(pages, expected, wanted):
+    """Each page draws the frames it was asked about and reports the world box of each id; all must match."""
+    for page, frames in wanted.items():
+        for f, ids in sorted(frames.items()):
+            ids = sorted(ids)
+            got = await pages[page].evaluate("""async ([f, ids]) => { __rvClearance.begin(); await window.renderAt(f / 30);
+              return __rvClearance.boxes(ids); }""", [f, ids])
+            if any(box != expected[(f, id_)] for id_, box in zip(ids, got)):
+                return False
+    return True
+
+
+async def measure(pw, html, a, batches):
+    """One browser measures its frame batches; returns rows, page errors, WebGL lost, canvas count, browser, page."""
+    b = await pw.chromium.launch(executable_path=CHROME, headless=True, args=CHROME_ARGS)
+    p = await b.new_page(viewport={"width": 1920, "height": 1080})
+    errs = []
+    p.on("pageerror", lambda e: errs.append(str(e)))
+    await p.goto(html.as_uri(), wait_until="load")
+    await p.evaluate("Promise.resolve(window.renderReady).then(() => 0)")
+    await p.evaluate(MESH_CHECK)
+    if a.mutate in ("detach", "sink"):
+        await p.evaluate("window.__rvClearanceNoMachine = true")
+    if a.mutate == "gap":
+        await p.evaluate("window.RIG && (RIG.P.GAP = -0.005)")
+    rows = []
+    for f0, f1 in batches:
           batch = await p.evaluate("""async ([a, b, mutation, rules]) => { const out = [];
           for (let i = a; i < b; i++) {
             window.CLEAR = null; __rvClearance.begin(); await window.renderAt(i / 30);
@@ -573,13 +629,39 @@ async def main(a):
               const world = moved.getWorldPosition(new THREE.Vector3()).addScaledVector(up,-d);
               moved.position.copy(moved.parent ? moved.parent.worldToLocal(world) : world); moved.updateWorldMatrix(false,true); }
             out.push([i, rules === 'mesh' ? null : window.CLEAR, ext]); }
-          return out; }""", [f0, min(f0 + 30, f1), a.mutate, a.rules])
+          return out; }""", [f0, f1, a.mutate, a.rules])
           rows += batch
           if a.mutate in ("detach", "sink") and moved_caught(a.mutate, batch):
             break
-        lost, canvases = await p.evaluate("""() => { const cs = [...document.querySelectorAll('canvas')];
-          return [cs.some(c => { const g = c.getContext('webgl2') || c.getContext('webgl'); return !!g && g.isContextLost(); }), cs.length]; }""")
-        await b.close()
+    lost, canvases = await p.evaluate("""() => { const cs = [...document.querySelectorAll('canvas')];
+      return [cs.some(c => { const g = c.getContext('webgl2') || c.getContext('webgl'); return !!g && g.isContextLost(); }), cs.length]; }""")
+    return rows, errs, lost, canvases, b, p
+
+
+async def main(a):
+    html = Path(a.html).resolve()
+    line = next(l for l in html.read_text(encoding="utf-8").split("\n") if l.startswith("window.DATA="))
+    total = json.loads(line[len("window.DATA="):-1])["timeline"]["total_s"]
+    t0, t1 = a.a, a.b if a.b is not None else total
+    # Frames go out in batches of 30. The real check deals the batches round-robin to --shards browsers so a heavy
+    # stretch (a fleet of machines) is shared; a mutation stays on one page and stops at the batch that catches it.
+    last = math.floor(t1 * 30 + .5)
+    batches = [(f, min(f + 30, last)) for f in range(math.floor(t0 * 30 + .5), last, 30)]
+    n = 1 if a.mutate else max(1, min(a.shards, len(batches)))
+    async with async_playwright() as pw:
+        parts = await asyncio.gather(*(measure(pw, html, a, batches[k::n]) for k in range(n)))
+        expected, wanted = identity_checks(parts)
+        agree = await same_bodies([part[5] for part in parts], expected, wanted)
+        for part in parts:
+            await part[4].close()
+        if not agree:   # objects built in a different order per page: measure on one page instead
+            print("CLEARANCE_SHARDS machine pair keys differ between pages; measured again on one page")
+            parts = [await measure(pw, html, a, batches)]
+            await parts[0][4].close()
+    rows = sorted((row for part in parts for row in part[0]), key=lambda row: row[0])
+    errs = [e for part in parts for e in part[1]]
+    lost, canvases = any(part[2] for part in parts), max(part[3] for part in parts)
+    machine_findings(rows)
     if lost:
         errs.append("WebGL context lost: scenes were never drawn, nothing was measured")
     elif rows and canvases and not any(ext.get("drawn") for _, _, ext in rows):
@@ -683,4 +765,6 @@ if __name__ == "__main__":
                     help="legacy keeps the existing mandatory rotor verdict; mesh is strict-mode opt-in")
     ap.add_argument("--from", dest="a", type=float, default=0.0)
     ap.add_argument("--to", dest="b", type=float, default=None)
+    ap.add_argument("--shards", type=int, default=int(os.environ.get("RV_CHECK_SHARDS", "4")),
+                    help="browsers that share the real check's frames (env RV_CHECK_SHARDS, default 4); mutations use one")
     asyncio.run(main(ap.parse_args()))
