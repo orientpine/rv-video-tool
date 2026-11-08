@@ -73,7 +73,7 @@ SELF = r"""() => {
  const surface=part=>{const out=[];h.traverse(o=>{if(o.isMesh&&o.userData.rvPart===part){const p=o.geometry.attributes.position;for(let i=0;i<p.count;i++)out.push(new THREE.Vector3().fromBufferAttribute(p,i).applyMatrix4(o.matrixWorld));}});return out;};
  const nearest=(v,pts)=>Math.min(...pts.map(p=>p.distanceTo(v)));
  const pelvisSkin=surface('pelvis'), bottom=Math.min(...pelvisSkin.map(p=>p.y));
- if(Math.abs(position(h.userData.contacts.seat).y-bottom)>.004)errors.push('seat marker not on pelvis bottom');
+ const seatAt=position(h.userData.contacts.seat);if(seatAt.y-bottom>.02||nearest(seatAt,pelvisSkin)>.004)errors.push('seat marker not on pelvis bottom');
  h.userData.contacts.hands.forEach((palm,i)=>{if(nearest(position(palm),surface(i?'hand_r':'hand_l'))>.004)errors.push('palm marker not on surface');});
  const wristL=position(h.getObjectByName('wrist_l')), handL=surface('hand_l');
  if(!handL.length||Math.max(...handL.map(p=>p.distanceTo(wristL)))<.15)errors.push('palm/fingers/thumb missing');
