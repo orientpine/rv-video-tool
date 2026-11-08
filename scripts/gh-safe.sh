@@ -4,6 +4,7 @@
 #   scripts/gh-safe.sh pr-edit       <file> <pr> [--title T] [-R o/r]   (gh api PATCH: gh pr edit fails here
 #                                                                        on the classic-projects GraphQL error)
 #   scripts/gh-safe.sh pr-comment    <file> [<pr>] [-R o/r]
+#   scripts/gh-safe.sh issue-create  <file> --title T [-R o/r] [-l label] [-a assignee] [-m milestone]
 #   scripts/gh-safe.sh issue-comment <file> [<issue>] [-R o/r]
 #   scripts/gh-safe.sh release-notes <file> <tag> [--title T] [--target ref] [--verify-tag] [-d] [-p] [-R o/r]
 #   scripts/gh-safe.sh release-edit  <file> <tag> [--title T] [--tag new] [--draft=false] [-R o/r]
@@ -17,7 +18,7 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-usage() { echo "usage: gh-safe.sh pr-create|pr-edit|pr-comment|issue-comment|release-notes|release-edit <file> [args]" >&2; exit 2; }
+usage() { echo "usage: gh-safe.sh pr-create|pr-edit|pr-comment|issue-create|issue-comment|release-notes|release-edit <file> [args]" >&2; exit 2; }
 refuse() { echo "gh-safe: $1; nothing posted" >&2; exit 1; }
 [[ $# -ge 2 ]] || usage
 cmd="$1"; file="$2"; shift 2
@@ -27,6 +28,7 @@ case "$cmd" in
   pr-create)     spec=("-t --title -B --base -H --head -R --repo -l --label -a --assignee -r --reviewer -m --milestone" "-d --draft --no-maintainer-edit" 0 0) ;;
   pr-edit)       spec=("-t --title -R --repo" "" 1 1) ;;
   pr-comment|issue-comment) spec=("-R --repo" "" 0 1) ;;
+  issue-create)  spec=("-t --title -R --repo -l --label -a --assignee -m --milestone" "" 0 0) ;;
   release-notes) spec=("-t --title --target -R --repo --discussion-category" "-d --draft -p --prerelease --verify-tag --latest" 1 1) ;;
   release-edit)  spec=("-t --title --tag --target -R --repo --discussion-category" "--draft --prerelease --verify-tag --latest" 1 1) ;;
   *) usage ;;
@@ -56,7 +58,7 @@ if [[ ${#positional[@]} -lt ${spec[2]} || ${#positional[@]} -gt ${spec[3]} ]]; t
   refuse "$cmd takes ${spec[2]} to ${spec[3]} positional arguments, got ${#positional[@]}"
 fi
 repo="${val[--repo]:-${val[-R]:-}}"
-if [[ "$cmd" == pr-create && -z "${val[--title]:-${val[-t]:-}}" ]]; then refuse "pr-create needs --title (gh would ask for one and post it unscanned)"; fi
+if [[ "$cmd" == pr-create || "$cmd" == issue-create ]] && [[ -z "${val[--title]:-${val[-t]:-}}" ]]; then refuse "$cmd needs --title (gh would ask for one and post it unscanned)"; fi
 if [[ "$cmd" == pr-edit && ! "${positional[0]}" =~ ^[0-9]+$ ]]; then refuse "pr-edit needs a pull request number"; fi
 
 if [[ ! -f "$file" || ! -r "$file" ]]; then refuse "cannot read <file>"; fi
@@ -106,6 +108,7 @@ fi
 case "$cmd" in
   pr-create)     gh pr create --body-file "$work/scan/text.txt" "$@" ;;
   pr-comment)    gh pr comment --body-file "$work/scan/text.txt" "$@" ;;
+  issue-create)  gh issue create --body-file "$work/scan/text.txt" "$@" ;;
   issue-comment) gh issue comment --body-file "$work/scan/text.txt" "$@" ;;
   release-notes) gh release create --notes-file "$work/scan/text.txt" "$@" ;;
   release-edit)  gh release edit --notes-file "$work/scan/text.txt" "$@" ;;
