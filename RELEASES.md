@@ -6,6 +6,16 @@ Every release is a git tag `vX.Y.Z` (Z for fixes, Y for features). Each tag gets
 
 릴리스는 git 태그 `vX.Y.Z` 하나다(고침 = Z, 기능 = Y). 태그마다 이 파일과 GitHub 릴리스 페이지에 한국어·영어 노트를 쓴다. 설치는 `scripts/install.sh`, 확인은 `scripts/verify.sh`.
 
+## Unreleased
+
+### English
+
+- Fix: `check_motion` `ACTION_SPAN` measures a span by the part its line names. When `ACTION_MATCH` links a `KIT.process` part, the span reads that part's own state (its meshes) and the pixels of the screen box it covers during the span (`part=`, `region=` on the line), with the same thresholds. A small cup lifted in a wide kitchen changed 0.0002 of the frame and failed as `action_static` although `ACTION_MATCH` saw it rise; it now reads 0.107 of its own box and passes. A cup that holds while a big box beside it slides is no longer passed by the box. Spans with no linked part measure the whole frame as before.
+
+### 한국어
+
+- 고침: `check_motion` `ACTION_SPAN` 이 구간을 그 말이 가리키는 부품으로 잔다. `ACTION_MATCH` 가 `KIT.process` 부품을 찾으면 그 부품(및 그 아래 메시)의 상태와, 구간 동안 그 부품이 지난 화면 상자 안의 화소로 재고(줄의 `part=`, `region=`), 문턱은 그대로다. 넓은 부엌에서 작은 컵을 올리면 화면의 0.0002 만 바뀌어 `ACTION_MATCH` 는 올라감을 보고도 `action_static` FAIL 이었는데, 이제 컵 상자의 0.107 이 바뀌어 PASS. 컵은 가만히 있고 옆 큰 상자만 미끄러지면 더는 동작으로 치지 않는다. 찾은 부품이 없는 구간은 전처럼 화면 전체.
+
 ## v0.3.1
 
 ### English

@@ -756,7 +756,7 @@ ACTION_PROBE = r"""async ([times,freeze,lockCamera,linked,said]) => {
   // The span's own subject is never background: the parts its line names (KIT.process, by registry index), a
   // KIT.label whose text the line says, what they are attached to, and what carries them or hangs off them.
   // A spinning wheel that carries the named wire is the action, not a rotor in the back.
-  const own=new Set(), seen=new Set(), mark=o=>{
+  const own=new Set(), seen=new Set(), mine=[], mark=o=>{
     if(!o||seen.has(o))return;
     seen.add(o);
     for(let a=o;a&&!a.isScene;a=a.parent)own.add(a);
@@ -769,6 +769,10 @@ ACTION_PROBE = r"""async ([times,freeze,lockCamera,linked,said]) => {
     await window.renderAt(Math.max(0,times[0]-.8));
     const reg=window.__rvProcess||[], subjects=[];
     for(const i of linked||[])if(reg[i])subjects.push(reg[i].obj);
+    // The span reads the state and the screen region of the parts ACTION_MATCH links (their subtrees), not the
+    // whole picture: a small cup lifted in a big kitchen changes few pixels of the frame but most of its own region.
+    // A userData mark survives scene.clone (the freeze mutation), so a frozen copy reads the same parts.
+    for(const i of linked||[])if(reg[i])reg[i].obj.traverse(c=>{if(!c.userData.__rvActionPart){c.userData.__rvActionPart=1;mine.push(c);}});
     for(const l of window.__KIT_LABELS||[]){const w=(l.box&&l.box.textContent||'').trim();if(l.target&&w&&said&&said.includes(w))subjects.push(l.target);}
     const att=(window.KIT&&KIT.fx&&KIT.fx.clearance&&KIT.fx.clearance.attachments)||[];
     for(const o of subjects.slice())for(const d of att)if(d.part===o)subjects.push(d.support);
@@ -784,7 +788,8 @@ ACTION_PROBE = r"""async ([times,freeze,lockCamera,linked,said]) => {
       if(m && !o.isCamera && !own.has(o) && m.some((v,i)=>Math.abs(v-o.matrix.elements[i])>1e-4))ambient.push(o);
     });
   }
-  let ambientPose;
+  let ambientPose, rx0=Infinity, ry0=Infinity, rx1=-Infinity, ry1=-Infinity, far=false;
+  const box=new THREE.Box3(), corner=new THREE.Vector3();
   for(const t of times) {
     q.scene=null;
     await window.renderAt(t);
@@ -820,11 +825,22 @@ ACTION_PROBE = r"""async ([times,freeze,lockCamera,linked,said]) => {
       scene=frozen;
     }
     scene.updateMatrixWorld(true);
-    const pose={};
+    const pose={}, view=lockCamera ? cam : q.camera;
+    view.updateMatrixWorld(true);
     scene.traverse(o=>{
       if(!o.isMesh && !o.isPoints && !o.isLine)return;
+      if(mine.length && !o.userData.__rvActionPart)return;
       for(let a=o;a;a=a.parent)if(!a.visible||a.isCamera)return;
       pose[o.uuid]=o.matrixWorld.elements.slice();
+      if(!mine.length || !o.geometry)return;
+      if(!o.geometry.boundingBox)o.geometry.computeBoundingBox();
+      box.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld);
+      for(let k=0;k<8;k++) {
+        corner.set(k&1?box.max.x:box.min.x,k&2?box.max.y:box.min.y,k&4?box.max.z:box.min.z).project(view);
+        if(!(Math.abs(corner.z)<=1)) {far=true;continue;}   // behind the camera or past its far plane
+        const x=(corner.x+1)/2*160, y=(1-corner.y)/2*90;
+        rx0=Math.min(rx0,x);rx1=Math.max(rx1,x);ry0=Math.min(ry0,y);ry1=Math.max(ry1,y);
+      }
     });
     poses.push(pose);
     // Direct renderer canvas only: DOM cards, captions, fades and CSS are absent.
@@ -838,21 +854,33 @@ ACTION_PROBE = r"""async ([times,freeze,lockCamera,linked,said]) => {
     ctx.drawImage(q.renderer.domElement,0,0,160,90);
     frames.push(ctx.getImageData(0,0,160,90).data);
   }
+  for(const c of mine)delete c.userData.__rvActionPart;
+  // The linked parts' screen box over all samples (where they were and where they went), 1 px of margin. A part
+  // that crosses the camera plane, or no linked part shown, measures the whole frame as before.
+  let x0=0,y0=0,x1=160,y1=90;
+  if(!far && rx1>=rx0) {
+    x0=Math.max(0,Math.floor(rx0)-1);x1=Math.min(160,Math.ceil(rx1)+1);
+    y0=Math.max(0,Math.floor(ry0)-1);y1=Math.min(90,Math.ceil(ry1)+1);
+    if(x1<=x0||y1<=y0) {x0=0;y0=0;x1=160;y1=90;}
+  }
+  const area=(x1-x0)*(y1-y0);
   let rgb=0,pixels=0,state=0;
   for(let i=1;i<frames.length;i++) {
     let sum=0,n=0;
-    for(let j=0;j<frames[i].length;j+=4) {
+    for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++) {
+      const j=(y*160+x)*4;
       const d=Math.abs(frames[i][j]-frames[0][j])+Math.abs(frames[i][j+1]-frames[0][j+1])+Math.abs(frames[i][j+2]-frames[0][j+2]);
       sum+=d;if(d/3>12)n++;
     }
-    rgb=Math.max(rgb,sum/(160*90*3));pixels=Math.max(pixels,n/(160*90));
+    rgb=Math.max(rgb,sum/(area*3));pixels=Math.max(pixels,n/area);
     for(const [id,m] of Object.entries(poses[i])) {
       if(!poses[0][id]) {state=Math.max(state,1);continue;}
       for(let j=0;j<16;j++)state=Math.max(state,Math.abs(m[j]-poses[0][id][j]));
     }
     if(Object.keys(poses[0]).some(id=>!poses[i][id]))state=Math.max(state,1);
   }
-  return {rgb,pixels,state,samples:frames.length,ambient:ambient.length,own:own.size};
+  return {rgb,pixels,state,samples:frames.length,ambient:ambient.length,own:own.size,
+          region:area/(160*90),part:mine.filter(o=>o.isMesh||o.isPoints||o.isLine).length};
 }"""
 
 PROCESS_PROBE = r"""async (times) => {
@@ -1722,6 +1750,7 @@ async def main(a):
                       values["rgb"] >= ACTION_RGB_DELTA and values["state"] > 1e-4)
             detail = (f"span={begin:.3f}..{end:.3f}s source={origin} rgb={values['rgb']:.6f} "
                       f"changed={values['pixels']:.6f} state={values['state']:.6f} ambient={values['ambient']} own={values['own']} "
+                      f"part={values['part']} region={values['region']:.4f} "
                       f"threshold_rgb={ACTION_RGB_DELTA} threshold_changed={ACTION_PIXEL_FRACTION}")
             action_rows.append(f"ACTION_SPAN {scene} {text!r} {'PASS' if moving else 'FAIL'} {detail}")
             cls = match_class(text)

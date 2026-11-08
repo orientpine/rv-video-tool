@@ -167,4 +167,69 @@ spin_want good PASS
 spin_want pullonly PASS
 spin_want spinonly PASS
 spin_want bg FAIL
+# A small part lifted in a big room: ACTION_SPAN reads the linked part's own state and its screen region, not the
+# whole frame. The cup is built by a shared ROOMFIX() factory (like a shared HOME set) and named with KIT.process.part;
+# it also slides just before '올리기도' (so it moved in the background window) and covers a few pixels of the frame.
+# lift: the cup rises in the first third of the span, then rests -> PASS (before: changed < 0.001 of the frame, FAIL)
+# still: the cup only slid before the span and holds in it; a fan behind spins -> FAIL
+# bgmove: the cup holds; a big unrelated box starts sliding in the span -> FAIL (before: the box passed for the cup)
+HM="$W/room"; mkdir -p "$HM/build" "$HM/scenes/room" "$HM/shared"
+python3 - "$HM" <<'PY'
+import json, sys
+from pathlib import Path
+p = Path(sys.argv[1])
+def save(name, data): (p/name).write_text(json.dumps(data, ensure_ascii=False))
+W = [("근육이", .8), ("약해지면", 1.4), ("컵", 2.0), ("하나", 2.4), ("선반에", 2.8), ("올리기도", 3.2), ("힘듭니다", 4.6)]
+text = "근육이 약해지면 컵 하나 선반에 올리기도 힘듭니다"
+save("script.json", {"scenes": [{"name": "room"}]})
+save("build/timeline.json", {"fps": 30, "total_s": 7, "fade_in_s": 0, "fade_out_s": 0,
+    "order": ["room"], "modules": {"room": {"start": 0, "duration": 7}},
+    "lines": [{"scene": "room", "start": .8, "end": 5.6, "text": text}]})
+save("build/word_times.json", {"lines": [{"scene": "room", "speech_start": .8, "speech_end": 5.6, "text": text,
+    "words": [{"word": w, "t": t, "t_scene": t} for w, t in W]}]})
+save("scenes/room/deps.json", {"scripts": ["../../shared/room.js"], "data": {"room.fixture": "fixture.json"}})
+PY
+cat <<'JS' > "$HM/shared/room.js"
+window.ROOMFIX=()=>{
+  const scene=new THREE.Scene();scene.background=new THREE.Color(0x172B38);
+  scene.add(new THREE.HemisphereLight(0xffffff,0x607080,2));
+  const m=c=>new THREE.MeshStandardMaterial({color:c});
+  const wall=new THREE.Mesh(new THREE.BoxGeometry(9,4,.1),m(0x52606a));wall.position.set(0,2,-1.2);scene.add(wall);
+  const shelf=new THREE.Mesh(new THREE.BoxGeometry(1.6,.04,.4),m(0x8a6d4c));shelf.position.set(0,1.75,-.6);scene.add(shelf);
+  const fan=new THREE.Group();fan.position.set(-3,2.6,-1.1);scene.add(fan);
+  for(let i=0;i<3;i++){const b=new THREE.Mesh(new THREE.BoxGeometry(.7,.1,.02),m(0x6BD8EE));b.rotation.z=i*Math.PI/3;fan.add(b);}
+  const crate=new THREE.Mesh(new THREE.BoxGeometry(1.2,1.2,.6),m(0xF2A33A));crate.position.set(2.6,.6,-.5);scene.add(crate);
+  const cup=new THREE.Group();cup.name="컵";scene.add(cup);
+  cup.add(new THREE.Mesh(new THREE.CylinderGeometry(.03,.025,.07,16),new THREE.MeshBasicMaterial({color:0xffffff})));
+  const st={v:0};KIT.process.part(cup,{name:"컵",state:()=>st.v});
+  return {scene,cup,fan,crate,st};
+};
+JS
+cat <<'JS' > "$HM/scenes/room/module.js"
+(function(){
+  let r,W,cam,mode;
+  const u=(t,a,b)=>KIT.clamp((t-a)/(b-a),0,1);
+  SCENES.room={duration:7,init(renderer){
+    r=renderer;mode=DATA["room.fixture"].mode;W=ROOMFIX();
+    cam=new THREE.PerspectiveCamera(40,16/9,.1,100);cam.position.set(0,1.6,6);cam.lookAt(0,1.5,0);
+  },render(t){
+    W.fan.rotation.z=t*2.0;
+    const lift=mode==="lift"?u(t,3.2,3.65):0;
+    W.st.v=lift;
+    W.cup.position.set(-.1+.08*u(t,2.2,2.9),1.2+.15*lift,-.5);
+    W.crate.position.x=2.6-(mode==="bgmove"?1.2*u(t,3.3,4.4):0);
+    r.render(W.scene,cam);
+  }};
+})();
+JS
+room_want() { local case="$1" verdict="$2"
+  printf '{"mode":"%s"}\n' "$case" > "$HM/scenes/room/fixture.json"
+  VIDEO_HTML="$W/room_$case.html" python3 "$ROOT/lib/build.py" "$HM" > "$W/room_$case.build.log"
+  "${PW[@]}" "$ROOT/lib/check_motion.py" "$W/room_$case.html" > "$W/room_$case.log" 2>&1 || true
+  if grep -q Traceback "$W/room_$case.log" || ! grep -q "^ACTION_SPAN room '올리기도' $verdict " "$W/room_$case.log"; then
+    echo "FAIL room $case: '올리기도' span is not $verdict"; grep -E "^ACTION_SPAN|Traceback" "$W/room_$case.log" || true; ok=0; fi
+  grep -h -E "^ACTION_(SPAN|MATCH) room '올리기도'" "$W/room_$case.log" || true; }
+room_want lift PASS
+room_want still FAIL
+room_want bgmove FAIL
 [ "$ok" = 1 ] && echo "ACTION_MATCH_TESTS PASS" || { echo "ACTION_MATCH_TESTS FAIL"; exit 1; }
