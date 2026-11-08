@@ -6,6 +6,16 @@ Every release is a git tag `vX.Y.Z` (Z for fixes, Y for features). Each tag gets
 
 릴리스는 git 태그 `vX.Y.Z` 하나다(고침 = Z, 기능 = Y). 태그마다 이 파일과 GitHub 릴리스 페이지에 한국어·영어 노트를 쓴다. 설치는 `scripts/install.sh`, 확인은 `scripts/verify.sh`.
 
+## v0.1.1
+
+### English
+
+- `check_clearance` decides whether a mesh is closed once per geometry instead of once per moving part and pose. A scene with many moving open meshes spent most of its machine-collision time recounting the same edges; one measured 4 s window went from 185 s to 167 s. The lines it reports are byte-identical.
+
+### 한국어
+
+- `check_clearance` 는 메시가 닫혔는지를 움직이는 부품·자세마다가 아니라 기하(geometry)마다 한 번만 판정한다. 움직이는 열린 메시가 많은 장면에서 기계 충돌 시간 대부분이 같은 변을 다시 세는 데 들었고, 잰 4 s 구간 하나가 185 s 에서 167 s 로 줄었다. 적는 줄은 바이트까지 같다.
+
 ## v0.1.0
 
 First public release.

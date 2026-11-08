@@ -210,15 +210,21 @@ MESH_CHECK = "() => {\n" + LEGACY_HUMAN + "\nconst PERSON_NAME=" + PERSON_NAME +
     }
     return depth > 1e-7 ? -depth : penetrationOnly ? 0 : gap;
   }
+  const closedByGeometry = new Map();
   function closed(s) {
     if (s.closed !== undefined) return s.closed;
+    const gid = s.key.split(':')[0];
+    if (closedByGeometry.has(gid)) return s.closed = closedByGeometry.get(gid);
+    return s.closed = closedByGeometry.set(gid, closedOnce(s)).get(gid);
+  }
+  function closedOnce(s) {
     const k = p => p.x.toFixed(5) + ',' + p.y.toFixed(5) + ',' + p.z.toFixed(5), edges = new Map();
     for (const t of s.triangles) {
       const v = [k(t.a), k(t.b), k(t.c)];
       for (let i = 0; i < 3; i++) { const p = v[i], q = v[(i + 1) % 3]; if (p === q) continue; const e = p < q ? p + '|' + q : q + '|' + p; edges.set(e, (edges.get(e) || 0) + 1); }
     }
-    for (const n of edges.values()) if (n % 2) return s.closed = false;
-    return s.closed = true;
+    for (const n of edges.values()) if (n % 2) return false;
+    return true;
   }
   function crosses(a, b, eps) {
     const plane = new THREE.Plane(), r = V();
