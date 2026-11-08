@@ -1,5 +1,5 @@
 #!/bin/bash
-# 같은 해상도로 2패스 → LIMIT MiB 이하(기본 20, 여유 4%). 넘으면 비트레이트를 줄여 한 번 더.
+# 원본이 들어가면 복사(lib/discord_copy.py), 아니면 같은 해상도로 2패스 → LIMIT MiB 이하(기본 20, 여유 4%). 넘으면 비트레이트를 줄여 한 번 더.
 #   lib/discord.sh in.mp4 out.mp4 [LIMIT_MIB] [--min-kbps 1200] [--timeline build/timeline.json]
 # 화질 바닥(--min-kbps, 1080p30 영상 비트레이트): 한 파일로 넣으면 바닥 아래가 되는 긴 영상은 바닥 위가 되도록
 # N 조각으로 나눈다 → out_part1.mp4 … out_partN.mp4 + out_parts.json(조각마다 시작·길이·크기). 조각 경계는

@@ -91,7 +91,10 @@ def main():
         if cuts is None:
             break
         parts, ok = [], True
-        copy_split(a.src, base, cuts[1:-1])
+        try:
+            copy_split(a.src, base, cuts[1:-1])
+        except subprocess.CalledProcessError:
+            ok = False
         if not os.path.exists(f"{base}_part{n}.mp4") or os.path.exists(f"{base}_part{n + 1}.mp4"):
             ok = False
         for k in range(n if ok else 0):
@@ -112,7 +115,7 @@ def main():
                 print(f"DISCORD part {p['file']} {p['start']}~{p['start'] + p['dur']:.4f} s copy {p['kbps']}k → {p['bytes']} B (≤ {a.limit_mib:g} MiB)")
             print(f"DISCORD_COPY_SPLIT {n} 조각, 다시 인코딩 없음 → {base}_parts.json")
             return 0
-        for p in range(1, n + 2):
+        for p in range(1, MAX_PARTS + 2):
             f = f"{base}_part{p}.mp4"
             if os.path.exists(f):
                 os.remove(f)
