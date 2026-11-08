@@ -42,6 +42,25 @@ The outputs land in `my-first/out/`:
 
 Working files (speech cache, `timeline.json`, `video.html`, frames) go to `my-first/build/`.
 
+## Hand it to your coding agent
+
+You can give the whole job to a coding agent (Claude Code, Codex, ...) the way you'd brief a colleague. Clone this repo, open the agent in the clone, and paste one line. The agent reads [AGENTS.md](AGENTS.md): how to set up, start from `examples/hello`, build, read `CHECKS.md`, fix scenes (never the checks) and when to stop and ask you. It works until `RV_CHECKS PASS` and then tells you where the video is.
+
+```
+Make a 3-minute explainer video from script.md and the notes in notes/. Keep going until rv check passes.
+```
+```
+Make a short video from examples/hello that explains how a thermometer works. Finish when rv check passes.
+```
+```
+In projects/demo, the lid at about 1:20 pops in. Make it open smoothly, and rebuild until rv check passes.
+```
+```
+The checks on projects/demo are slow. Make them faster without lowering any check.
+```
+
+The agent finishes with `RV_CHECKS PASS` (strict mode) and points you to `out/<name>.mp4`, the subtitles and the thumbnail. Watch the video yourself; the checks catch defects, not taste. It asks you only for what it can't decide: a number without a source, conflicting wishes, a tool bug, or anything that leaves your machine.
+
 ## Commands
 
 ```
