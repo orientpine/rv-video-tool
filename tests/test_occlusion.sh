@@ -13,7 +13,8 @@ kit = (root / "kit/scene_kit.js").read_text()
 for case in ("normal", "depth75", "depth25", "dom75", "dom25", "own", "fallback",
              "group", "orthographic", "legacy", "accent45", "focus45", "look45",
              "lookoff", "arc86", "effective516", "effective430", "card39", "late",
-             "accenthidden", "capcover", "fadecover", "focustiny", "looktiny"):
+             "accenthidden", "capcover", "fadecover", "focustiny", "looktiny",
+             "letterbox", "letterboxcard", "letterboxlate", "pillarbox"):
     html = """<!doctype html><meta charset="utf-8"><style>
 html,body{margin:0;width:1920px;height:1080px;--ui:sans-serif}
 #stage,.overlay{position:absolute;inset:0}
@@ -33,6 +34,9 @@ target.name=mode==='arc86'?'accent-arc':'Explained target';
 const explained=mode==='group'?new THREE.Group():target;
 if(explained!==target) explained.add(target);
 scene.add(explained);
+// Target partly behind a frame bar: low edge under a 2.35:1 letterbox bar, left edge under a 4:3 pillarbox bar.
+if(mode.startsWith('letterbox')) explained.position.y=-1.5;
+if(mode==='pillarbox') explained.position.x=-3;
 if(mode.startsWith('depth')){
   const width=mode==='depth75'?1.5:.5;
   const block=new THREE.Mesh(new THREE.PlaneGeometry(width,2.5),new THREE.MeshBasicMaterial({color:0x16323c}));
@@ -45,6 +49,17 @@ if(mode==='accenthidden'||mode==='focustiny'||mode==='looktiny'){   // accent pa
   block.position.set(0,0,.2); scene.add(block);
 }
 const overlay=document.querySelector('.overlay');
+const bars=[];
+if(mode.startsWith('letterbox')||mode==='pillarbox')   // fixed black frame bars over the stage, outside the picture
+  for(const css of mode==='pillarbox'?['left:0;top:0;width:240px;height:1080px','right:0;top:0;width:240px;height:1080px']
+      :['left:0;top:0;width:1920px;height:131px','left:0;bottom:0;width:1920px;height:131px']) {
+    const bar=document.createElement('div'); bar.style.cssText='position:absolute;background:#000;z-index:4;'+css;
+    document.body.append(bar); bars.push(bar);
+  }
+if(mode==='letterboxcard'){   // a real card over the target inside the picture still covers it
+  const card=document.createElement('div'); card.id='real-card'; overlay.append(card);
+  card.style.cssText='position:absolute;left:700px;top:600px;width:520px;height:349px;background:rgba(10,22,30,.86)';
+}
 const label=KIT.label(overlay,'Explained target',mode==='fallback'?{}:{target:explained});
 if(mode==='legacy'||automatic||mode==='accenthidden'||mode==='focustiny'||mode==='looktiny') delete window.__KIT_LABELS;
 if(mode==='capcover'||mode==='fadecover'){   // rv's own caption box / scene fade over the target: not explanation cards
@@ -79,6 +94,7 @@ window.renderAt=async t=>{
   KIT.fx.reset();
   if(['focus45','effective516','effective430','card39','late','focustiny','looktiny'].includes(mode)) KIT.fx.focus(target);
   if(mode==='late') card.style.opacity=t>=.5?'1':'0';
+  if(mode==='letterboxlate') bars[1].style.opacity=t>=.5?'1':'0';   // a black strip that is not there all the time is a card
   window.HL='Explained target';
   label.place(camera,new THREE.Vector3(),mode==='own'?0:500,mode==='own'?0:-170,1);
   renderer.render(scene,camera);
@@ -142,6 +158,20 @@ grep -q 'auto target too small on screen' "$W/looktiny.log"
 # Overlap lines name the other element (id, tag, size), not only its text.
 rc=0; "${PW[@]}" "$ROOT/lib/check_layout.py" "$W/normal.html" --at .5 --mutate overlap > "$W/overlap-name.log" 2>&1 || rc=$?
 [[ "$rc" == 1 ]] && grep -Eq "overlap \| with='MUTATION overlap [AB]' \([^ ]+ div [0-9]+x[0-9]+\)" "$W/overlap-name.log"
+# Fixed letterbox/pillarbox bars are outside the picture: the target part under them is off-picture, not covered.
+run letterbox 0
+grep -q "visible_fraction=1.000000 .*card='none'" "$W/letterbox.log"
+grep -q 'LAYOUT_PICTURE bars=2 ' "$W/letterbox.log"
+run pillarbox 0
+grep -q "visible_fraction=1.000000 .*card='none'" "$W/pillarbox.log"
+run letterboxcard 1
+grep -q "card='real-card'" "$W/letterboxcard.log"
+# A black strip that appears only from 0.5 s is not a frame bar: it covers the target like any card.
+rc=0
+"${PW[@]}" "$ROOT/lib/check_layout.py" "$W/letterboxlate.html" --from .25 --to .76 --every .25 > "$W/letterboxlate.log" 2>&1 || rc=$?
+[[ "$rc" == 1 ]]
+grep -q 'LAYOUT_PICTURE bars=1 ' "$W/letterboxlate.log"
+grep -Eq '\| 0.500 \| Explained target \| (occlude|cut) \|' "$W/letterboxlate.log"
 run accenthidden 0
 grep -q 'accent part hidden by the scene itself' "$W/accenthidden.log"
 run capcover 0
