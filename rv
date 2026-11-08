@@ -249,15 +249,25 @@ PYEOF
       elif [ -f "$DC" ]; then sub sharpd eval 'run "주인공 선명도 디스코드판 (check_sharp --mp4)" "${SH[@]}" --mp4 "$DC" --ref "$MP4" || strict_fail'; fi
       sub sharp2 mut "변이: 원본을 0.3 Mb/s 로(안 상하면 해상도 낮춤)" "${SH[@]}" --mutate bitrate --ref "$MP4"
     fi; sub_join; }
+  # 품질 신호(빈 배경·장면 밀도·사람·카드 면적·이야기 박자·장소): 다 맞게 그려도 텅 빈 영상이면 잡는다. 이유 있는 예외는 script.json quality_ok
+  local QPW=(uv run -q --no-project --with playwright --with pillow --with numpy python)
+  # 판정에는 script.json "quality": "strict" 일 때만 넣는다(examples/story·hello 와 새 프로젝트). 예전 프로젝트는 참고로 줄만 남김 = 판정 그대로
+  QSTRICT=$(python3 -c "import json;print(1 if json.load(open('$P/script.json')).get('quality')=='strict' else 0)")
+  quality_fail() { if [ "$QSTRICT" = 1 ]; then fail=1; else echo '참고: quality=strict 아님 → 판정에 안 넣음 (script.json "quality": "strict")' >> "$R"; fi; }
+  g_quality() { run "장소·이야기·사람·밀도·카드 크기 (check_quality)" "${QPW[@]}" "$L/check_quality.py" "$B/video.html" --project "$P" || quality_fail
+    sub quality1 mut "변이: 900x500 카드를 모든 프레임에" "${QPW[@]}" "$L/check_quality.py" "$B/video.html" --project "$P" --every 1000 --mutate card
+    sub quality2 mut "변이: 모든 물체 숨김 (빈 화면)" "${QPW[@]}" "$L/check_quality.py" "$B/video.html" --project "$P" --every 1000 --mutate empty
+    sub quality3 mut "변이: 사람 숨김" "${QPW[@]}" "$L/check_quality.py" "$B/video.html" --project "$P" --every 1000 --mutate people
+    sub_join; }
   g_srt() { run "SRT" bash -c "grep -c -- '-->' '$O/$NAME.srt' | sed 's/^/큐 /'" || fail=1; }
   g_sheet() { rm -rf "$O/sheets"; run "접촉 시트 (박자 +0.3 s · 장면 경계 0.2 s 훑기)" "${UVPW[@]}" "$L/sheet.py" "$MP4" --build "$B" --out "$O/sheets" || fail=1; }
   sub 01 g_cuts; sub 02 g_sync; sub 03 g_black; sub 04 g_flicker; sub 05 g_discord; sub 06 g_flickmut; sub 07 g_legacy; sub 08 g_captions
   sub 09 g_layout; sub 10 g_theme; sub 11 g_audio; sub 12 g_mesh; sub 13 g_human; sub 14 g_motion; sub 15 g_numbers; sub 16 g_sharp
-  sub 17 g_srt; sub 18 g_sheet
+  sub 17 g_srt; sub 18 g_sheet; sub 19 g_quality
   sub_join
   rm -f "$B/discord_joined.mp4"; rm -rf "$SEC"
   echo "## 판정" >> "$R"
-  local REF; REF=$(grep -c "^참고: checks=strict 아님" "$R" || true)   # strict 가 아니면 새 검사 FAIL 이 참고로만 남아 놓치기 쉬움 → 끝에 건수를 모아 보여 줌
+  local REF; REF=$(grep -c "^참고: \(checks\|quality\)=strict 아님" "$R" || true)   # strict 가 아니면 새 검사 FAIL 이 참고로만 남아 놓치기 쉬움 → 끝에 건수를 모아 보여 줌
   [ "$REF" -gt 0 ] && echo "RV_CHECKS_REFERENCE_FAILS $REF (checks: strict 가 아니라 판정에 안 넣은 검사 FAIL — 새 프로젝트는 script.json \"checks\": \"strict\")" >> "$R"
   [ $fail = 0 ] && echo "RV_CHECKS PASS" >> "$R" || echo "RV_CHECKS FAIL" >> "$R"
   tail -1 "$R"; echo "→ $R"

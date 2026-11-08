@@ -8,7 +8,7 @@ T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 fail=0
 mk_tool() {   # mk_tool <dir> <rv file>
   mkdir -p "$1/lib"; cp "$2" "$1/rv"; cp "$TOOL/lib/mix.py" "$TOOL/lib/check_audio.py" "$1/lib/"
-  for f in check_cuts check_flicker sync_check check_clearance check_captions sheet check_layout check_numbers cutlist check_sharp check_human; do
+  for f in check_cuts check_flicker sync_check check_clearance check_captions sheet check_layout check_numbers cutlist check_sharp check_human check_quality; do
     printf 'import sys\nm = any(x == "--mutate" or "/mut_" in x for x in sys.argv)\nprint("MUTATION_CAUGHT" if m else "STUB PASS")\nsys.exit(1 if m else 0)\n' > "$1/lib/$f.py"
   done
   printf 'import sys\nif any(x == "--mutate" for x in sys.argv):\n    print("MUTATION_CAUGHT"); sys.exit(1)\nraise TypeError("Cannot read properties of undefined (reading rotation)")\n' > "$1/lib/check_motion.py"
