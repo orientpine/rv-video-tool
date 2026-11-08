@@ -55,7 +55,7 @@ PROBE = r"""() => {
 async def main(a):
     source = "<style>body{margin:0}canvas{display:block}</style><script>"
     source += (TOOL / "vendor/three-0.147.0.min.js").read_text() + "</script><script>window.DATA={};"
-    source += (TOOL / "kit/scene_kit.js").read_text() + "</script>"
+    source += (TOOL / "kit/human_body.js").read_text() + (TOOL / "kit/scene_kit.js").read_text() + "</script>"
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(executable_path=CHROME, args=CHROME_ARGS, headless=True)
         page = await browser.new_page(viewport={"width": 1280, "height": 720})

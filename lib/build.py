@@ -124,6 +124,7 @@ def main():
 
     kit = ROOT / "kit/scene_kit.js"
     portions = [
+        "// kit/human_body.js\n" + (ROOT / "kit/human_body.js").read_text(encoding="utf-8"),
         "// kit/scene_kit.js\n" + kit.read_text(encoding="utf-8"),
         "// kit/process.js\n" + (ROOT / "kit/process.js").read_text(encoding="utf-8"),
     ]
