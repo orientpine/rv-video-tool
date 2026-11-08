@@ -186,6 +186,9 @@ checks() {   # mp4 하나에 모든 검사. 하나라도 FAIL 이면 종료 코�
     if grep -q "^POP_IN_CHECK " "$R"; then sub motion6 mut "변이: 화면 요소를 한 프레임에 켬" "${UVPW[@]}" "$L/check_motion.py" "$B/video.html" --mutate popin; fi
     if grep -q "^SUBJECT_FRAME .* PASS " "$R"; then   # 설명 대상 화면 가운데: 설명 구간에 카메라를 25° 돌리면 잡아야
       sub motion7 mut "변이: 설명 구간 카메라 25° 돌림 (설명 대상 가운데)" "${UVPW[@]}" "$L/check_motion.py" "$B/video.html" --mutate offcenter
+    fi
+    if grep -q "^TEXT_MOTION .* PASS$" "$R"; then   # 글자 구간 가려지지 않은 영역 움직임: 통과한 구간을 멈추면 잡아야
+      sub motion8 mut "변이: 글자 구간 화면 멈춤 (글자 옆 움직임)" "${UVPW[@]}" "$L/check_motion.py" "$B/video.html" --mutate textstill
     fi; sub_join; }
   g_numbers() { run "출처 없는 숫자 (check_numbers)" "${UVPW[@]}" "$L/check_numbers.py" "$P" --html "$B/video.html" || strict_fail
     if ! grep -q "NUMBERS_CHECK 실제 SKIP" "$R"; then mut "변이: 출처 없는 숫자 넣기" "${UVPW[@]}" "$L/check_numbers.py" "$P" --html "$B/video.html" --every 5 --mutate screen; fi; }

@@ -89,21 +89,42 @@
       part.position.set(...path[i].map((p, j) => p + (path[i + 1][j] - p) * v));
     }});
   }
-  function exhaust(parent, {seed = 7, count = 12, length = 1, color = 0x6BD8EE, name} = {}) {
+  // Turning part (a disk, rotor, fan): set(u) turns obj u * turns full turns about its own axis from the pose it has
+  // when spin is made, linearly (a steady run, not eased). Registered for ACTION_MATCH (돌리기 = 10°) under its name.
+  function spin(obj, {axis = "y", turns = 1, name} = {}) {
+    const rest = obj.quaternion.clone(), turn = new THREE.Vector3(+(axis === "x"), +(axis === "y"), +(axis === "z")), q = new THREE.Quaternion();
+    let at = 0;
+    return register("spin", obj, names(name, [obj.name, "회전"]), () => at, {set(u) {
+      at = unit(u); obj.quaternion.copy(rest).multiply(q.setFromAxisAngle(turn, at * turns * Math.PI * 2));
+    }});
+  }
+  // Arrows rising from the origin (air, gas), or with path: [[x,y,z], ...] (parent coordinates) flowing along that
+  // polyline and pointing along it (a sample running into a well, coolant in a pipe).
+  function exhaust(parent, {seed = 7, count = 12, length = 1, color = 0x6BD8EE, name, path} = {}) {
     const root = new THREE.Group(), random = KIT.rng(seed), arrows = [];
+    const pts = path && path.map(p => new THREE.Vector3(...p)), up = new THREE.Vector3(0, 1, 0), dir = new THREE.Vector3();
+    const lens = pts ? pts.slice(1).map((p, i) => p.distanceTo(pts[i])) : [], total = lens.reduce((s, x) => s + x, 0);
+    if (pts && !(total > 0)) throw new Error("KIT.process.exhaust path needs at least two different points");
+    const along = (v, out) => {   // point at arc fraction v, direction of its segment in dir
+      let d = v * total, i = 0;
+      while (i < lens.length - 1 && d > lens[i]) d -= lens[i++];
+      dir.subVectors(pts[i + 1], pts[i]).normalize();
+      return out.copy(pts[i]).addScaledVector(dir, Math.min(d, lens[i]));
+    };
     const geo = new THREE.ConeGeometry(.055, .16, 6), m = material(color);
     for (let i = 0; i < count; i++) {
       const a = new THREE.Mesh(geo, m), phase = random(), x = (random() - .5) * .3, z = (random() - .5) * .3;
       arrows.push({a, phase, x, z}); root.add(a);
     }
     parent.add(root);
-    return register("exhaust", root, names(name, ["공기", "가스", "배기"]), () => +root.visible, {root, set(u) {
+    return register("exhaust", root, names(name, pts ? ["흐름", "공기", "가스"] : ["공기", "가스", "배기"]), () => +root.visible, {root, set(u) {
       root.visible = u > 0 && u < 1;
       // Flow grows in over the first 15% and out over the last 15% of u, never all arrows in one frame (POP_IN).
       const flow = ease(u / .15) * ease((1 - u) / .15);
       for (const {a, phase, x, z} of arrows) {
         const v = (unit(u) * 2 + phase) % 1;
-        a.position.set(x * (1 + v), v * length, z * (1 + v));
+        if (pts) { along(v, a.position); a.position.x += x * .1; a.position.z += z * .1; a.quaternion.setFromUnitVectors(up, dir); }
+        else a.position.set(x * (1 + v), v * length, z * (1 + v));
         a.scale.setScalar(Math.max(1e-3, flow * (.5 + .5 * Math.sin(v * Math.PI))));
       }
     }});
@@ -144,5 +165,5 @@
       }
     }};
   }
-  KIT.process = {valve, gauge, hatch, move, exhaust, steps, part};
+  KIT.process = {valve, gauge, hatch, move, exhaust, spin, steps, part};
 })();

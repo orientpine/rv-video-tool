@@ -1,0 +1,50 @@
+{
+  "name": "text-motion",
+  "voice": "en-US-AriaNeural",
+  "checks": "strict",
+  "site": "lab",
+  "lead_s": 0.5,
+  "tail_s": 1,
+  "intro_s": 0.5,
+  "thumb_t": 6,
+  "scenes": [
+    {
+      "name": "device",
+      "extra_s": 3
+    }
+  ],
+  "lines": [
+    {
+      "scene": "device",
+      "text": "This is a palm-sized test device."
+    },
+    {
+      "scene": "device",
+      "text": "Open the lid, and a disk goes in.",
+      "keywords": [
+        "Open"
+      ]
+    },
+    {
+      "scene": "device",
+      "text": "It is light enough to carry in one hand.",
+      "keywords": [
+        "light"
+      ]
+    },
+    {
+      "scene": "device",
+      "text": "Then the disk spins, and the sample runs into every well.",
+      "keywords": [
+        "spins"
+      ]
+    },
+    {
+      "scene": "device",
+      "text": "Results go to a phone, so the whole clinic can see them.",
+      "keywords": [
+        "phone"
+      ]
+    }
+  ]
+}

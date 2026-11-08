@@ -124,8 +124,9 @@ OCCLUSION_INIT = r"""(() => {
   }});
 })()"""
 
-OCCLUSION = r"""mutate => {
+OCCLUSION = r"""([mutate, now]) => {
   const labels=window.__KIT_LABELS || [], results=[], skipped=[], subjects=[];
+  const prev=window.__layoutPrev || (window.__layoutPrev=new Map()), seen=new Map();
   const views=window.__LAYOUT_VIEWS, caches=new Map();
   const belongs=(o,target)=>{for(let p=o;p;p=p.parent) if(p===target)return true;return false};
   const meshesOf=view=>{
@@ -193,7 +194,28 @@ OCCLUSION = r"""mutate => {
     }
     if(window.LOOK?.on) for(const target of [].concat(window.LOOK.subject||[]))
       if(meshes.some(o=>belongs(o,target))) add(target,'LOOK.subject',target.name||target.type,view);
+    // Moving objects (owner 2026-11-08 19:37 KST: text with moving and still elements must not look covered): an object
+    // whose own local matrix changed since this page's previous sample (<= 2.5 s before), outermost only, not the whole
+    // world, not declared decoration (KIT.fx.decor / userData.rvDecor).
+    const movers=[];
+    view.scene.traverseVisible(o=>{
+      if(o===view.scene||o.isCamera||o.isLight) return;
+      if(o.matrixAutoUpdate) o.updateMatrix();
+      const m=o.matrix.elements, p=prev.get(o.uuid);
+      seen.set(o.uuid,{t:now,m:m.slice()});
+      if(p && now>p.t && now-p.t<=2.5 && m.some((v,i)=>Math.abs(v-p.m[i])>1e-4)) movers.push(o);
+    });
+    const decor=o=>{for(let a=o;a;a=a.parent) if(a.userData&&a.userData.rvDecor) return true; return false;};
+    const world=new THREE.Box3(); meshes.forEach(x=>world.expandByObject(x));
+    const span=world.isEmpty()?0:world.getSize(new THREE.Vector3()).length();
+    for(const o of movers) {
+      if(movers.some(q=>q!==o&&belongs(o,q))||decor(o)) continue;
+      const b=new THREE.Box3().setFromObject(o);
+      if(b.isEmpty()||b.getSize(new THREE.Vector3()).length()>.5*span) continue;   // the world (or half of it) moving is a camera rig, not a subject
+      if(meshes.some(x=>belongs(x,o))) add(o,'moving',o.name||o.type,view);
+    }
   }
+  for(const [k,v] of seen) prev.set(k,v);
   // A subject discovered through focus/accent can also have a KIT.label.
   // Exempt only labels attached to this subject (or its parent/child group).
   const labelledSubjects=subjects.filter(s=>s.owns.size).map(s=>({...s,owns:[...s.owns]}));
@@ -286,8 +308,24 @@ OCCLUSION = r"""mutate => {
       card:covered?covering[cardIndex].name:'none',cardFraction:depth?covered/depth:0,
       fraction:visible/total, mutation:mutate==='occlude'&&covered>0});
   }
-  return {results,skipped};
+  // Still pictures (KIT.info.picture) must not sit under a card either.
+  const pictures=[];
+  for(const pic of document.querySelectorAll('[data-rv-picture]')) {
+    if(!shown(pic)) continue;
+    const p=pic.getBoundingClientRect(), area=p.width*p.height;
+    for(const {e,r,name} of cards) {
+      if(e===pic||pic.contains(e)||e.contains(pic)) continue;
+      const o=Math.max(0,Math.min(p.right,r.right)-Math.max(p.left,r.left))*Math.max(0,Math.min(p.bottom,r.bottom)-Math.max(p.top,r.top));
+      if(area&&o/area>=.02) pictures.push({picture:pic.dataset.rvPicture,card:name,fraction:o/area});
+    }
+  }
+  return {results,skipped,pictures};
 }"""
+
+
+# A card covering part of an explained or moving object (owner 2026-11-08 19:37 KST: the object must not look covered;
+# fixed before measuring): CUT_MIN..CUT_MAX of its depth-visible pixels under one card is a cut at the card's edge.
+CUT_MIN, CUT_MAX = .10, .90
 
 
 def luminance(rgb):
@@ -363,20 +401,29 @@ async def measure(pw, a, shard, shards):
         await p.evaluate("""async t => {window.__LAYOUT_VIEWS.clear(); await window.renderAt(t);
             await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))}""", t)
         rows = await p.evaluate(COLLECT)
-        occlusion = await p.evaluate(OCCLUSION, a.mutate)
+        occlusion = await p.evaluate(OCCLUSION, [a.mutate, t])
         skips.update(occlusion["skipped"])
         for target in occlusion["results"]:
             occluded += 1
             values = (f"visible_fraction={target['fraction']:.6f} required>=0.500 "
                       f"pixels={target['visible']}/{target['total']} "
                       f"depth_visible={target['depth']} "
-                      f"card_coverage={target['cardFraction']:.6f} required<0.400 "
+                      f"card_coverage={target['cardFraction']:.6f} required<0.400 and not {CUT_MIN}..{CUT_MAX} "
                       f"card_pixels={target['covered']}/{target['depth']} "
                       f"card={target['card']!r} source={target['source']}")
             lines.append(f"OCCLUSION t={t:.3f} text={target['text']!r} {values}")
-            if target["fraction"] < .5 or target["cardFraction"] >= .4:
+            moving_only = target["source"] == "moving"   # 3D objects passing behind each other are fine
+            if not moving_only and (target["fraction"] < .5 or target["cardFraction"] >= .4):
                 failures.append((t, target["text"], "occlude", values))
                 caught |= target["mutation"]
+            elif CUT_MIN <= target["cardFraction"] <= CUT_MAX:
+                failures.append((t, target["text"], "cut", values + " (part of it under the card: move the card "
+                                 "(KIT.info.clear) or the subject (KIT.shot.free), or declare decoration KIT.fx.decor)"))
+                caught |= target["mutation"]
+        for pic in occlusion["pictures"]:
+            values = f"picture={pic['picture']!r} card={pic['card']!r} covered={pic['fraction']:.3f} required<0.02"
+            lines.append(f"OCCLUSION_PICTURE t={t:.3f} {values}")
+            failures.append((t, pic["picture"], "cut", values))
         fading = set()
         if any(.05 < row["opacity"] < 1 - FADE_DELTA for row in rows):
             around = []

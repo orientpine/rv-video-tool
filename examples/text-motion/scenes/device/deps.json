@@ -1,0 +1,8 @@
+{
+  "assets": {
+    "clinic": "clinic.svg"
+  },
+  "data": {
+    "device.mode": "mode.json"
+  }
+}
