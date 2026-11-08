@@ -62,6 +62,17 @@ printf 'Summary\0\nfixes the SyntheticForbiddenMarker scene\n' > "$T/nul.md"
 run nul-byte-body 1 'is not plain UTF-8 text' pr-comment "$T/nul.md" 41
 printf '# only a comment\n' > "$T/comments-only"
 RV_SCAN_PATTERNS="$T/comments-only" run pattern-file-without-patterns 1 'no private pattern was checked' pr-comment "$T/clean.md" 41
+printf 'Unclosed(\n' > "$T/bad-pattern"
+RV_SCAN_PATTERNS="$T/bad-pattern" run invalid-pattern-is-an-error 1 'scan-errors count' pr-comment "$T/clean.md" 41
+mkdir "$T/fault-bin"
+GH_SAFE_TEST_REAL_GREP="$(command -v grep)"; export GH_SAFE_TEST_REAL_GREP
+cat > "$T/fault-bin/grep" <<'EOF'
+#!/usr/bin/env bash
+for a; do [[ "$a" == -rInP ]] && { echo "synthetic grep failure" >&2; exit 2; }; done
+exec "$GH_SAFE_TEST_REAL_GREP" "$@"
+EOF
+chmod +x "$T/fault-bin/grep"
+PATH="$T/fault-bin:$PATH" run grep-that-cannot-run 1 'scan-errors count' pr-create "$T/leak.md" --title ok
 run repo-path-escape 1 'owner/name' pr-edit "$T/clean.md" 41 -R o/r/../../x
 run repo-overridden-by-later-flag 1 'argument 4: --repo must be owner/name' pr-comment "$T/clean.md" 41 --repo o/r -R ghe.example.org/o/r
 printf 'caf\xe9 SyntheticForbiddenMarker\n' > "$T/latin1.md"
