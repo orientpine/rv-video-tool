@@ -750,14 +750,29 @@ CARD_TEXT = r"""pattern => {
   return out.join(' | ');
 }"""
 
-ACTION_PROBE = r"""async ([times,freeze,lockCamera]) => {
+ACTION_PROBE = r"""async ([times,freeze,lockCamera,linked,said]) => {
   const q=window.__motion, frames=[], poses=[];
   let cam, frozen, ambient=[];
+  // The span's own subject is never background: the parts its line names (KIT.process, by registry index), a
+  // KIT.label whose text the line says, what they are attached to, and what carries them or hangs off them.
+  // A spinning wheel that carries the named wire is the action, not a rotor in the back.
+  const own=new Set(), seen=new Set(), mark=o=>{
+    if(!o||seen.has(o))return;
+    seen.add(o);
+    for(let a=o;a&&!a.isScene;a=a.parent)own.add(a);
+    o.traverse(c=>own.add(c));
+  };
   if(lockCamera && times.length>2) {
     // Remove already-running background motion (e.g. a continuously spinning
     // rotor). Otherwise a rotor would "prove" that a stationary lid opened.
     const before=new Map();
     await window.renderAt(Math.max(0,times[0]-.8));
+    const reg=window.__rvProcess||[], subjects=[];
+    for(const i of linked||[])if(reg[i])subjects.push(reg[i].obj);
+    for(const l of window.__KIT_LABELS||[]){const w=(l.box&&l.box.textContent||'').trim();if(l.target&&w&&said&&said.includes(w))subjects.push(l.target);}
+    const att=(window.KIT&&KIT.fx&&KIT.fx.clearance&&KIT.fx.clearance.attachments)||[];
+    for(const o of subjects.slice())for(const d of att)if(d.part===o)subjects.push(d.support);
+    subjects.forEach(mark);
     if(q.scene)q.scene.traverse(o=>{
       if(!o.matrixAutoUpdate)return;
       o.updateMatrix();before.set(o.uuid,o.matrix.elements.slice());
@@ -766,7 +781,7 @@ ACTION_PROBE = r"""async ([times,freeze,lockCamera]) => {
     if(q.scene)q.scene.traverse(o=>{
       if(!o.matrixAutoUpdate)return;
       o.updateMatrix();const m=before.get(o.uuid);
-      if(m && !o.isCamera && m.some((v,i)=>Math.abs(v-o.matrix.elements[i])>1e-4))ambient.push(o);
+      if(m && !o.isCamera && !own.has(o) && m.some((v,i)=>Math.abs(v-o.matrix.elements[i])>1e-4))ambient.push(o);
     });
   }
   let ambientPose;
@@ -837,7 +852,7 @@ ACTION_PROBE = r"""async ([times,freeze,lockCamera]) => {
     }
     if(Object.keys(poses[0]).some(id=>!poses[i][id]))state=Math.max(state,1);
   }
-  return {rgb,pixels,state,samples:frames.length,ambient:ambient.length};
+  return {rgb,pixels,state,samples:frames.length,ambient:ambient.length,own:own.size};
 }"""
 
 PROCESS_PROBE = r"""async (times) => {
@@ -1684,15 +1699,6 @@ async def main(a):
                 continue
             times = [begin + (end - begin) * i / max(8, math.ceil((end - begin) * 8))
                      for i in range(max(8, math.ceil((end - begin) * 8)) + 1)]
-            # Freeze one real scene span, never the card. Subsequent spans stay normal.
-            freeze = a.mutate == "freeze" and not freeze_caught
-            values = await p.evaluate(ACTION_PROBE, [times, freeze, True])
-            moving = (values["pixels"] >= ACTION_PIXEL_FRACTION and
-                      values["rgb"] >= ACTION_RGB_DELTA and values["state"] > 1e-4)
-            detail = (f"span={begin:.3f}..{end:.3f}s source={origin} rgb={values['rgb']:.6f} "
-                      f"changed={values['pixels']:.6f} state={values['state']:.6f} ambient={values['ambient']} "
-                      f"threshold_rgb={ACTION_RGB_DELTA} threshold_changed={ACTION_PIXEL_FRACTION}")
-            action_rows.append(f"ACTION_SPAN {scene} {text!r} {'PASS' if moving else 'FAIL'} {detail}")
             scene_lo = tl["modules"][scene]["start"]
             head = max(scene_lo, begin - MATCH_HEAD_S)
             tail = min(scene_lo + tl["modules"][scene]["duration"] - 1 / a.fps, end + MATCH_TAIL_S)
@@ -1707,6 +1713,17 @@ async def main(a):
             context = next((ln.get("text", "") for ln in words.get("lines", []) if ln["scene"] == scene and
                             ln["speech_start"] - .05 <= begin <= ln["speech_end"] + .05), "")
             targets = [live[i] for i in match_targets(parts, text, context)]
+            # Freeze one real scene span, never the card. Subsequent spans stay normal.
+            freeze = a.mutate == "freeze" and not freeze_caught
+            at = context.find(text)
+            said = context[max(0, at - MATCH_NOUN_CHARS):at + len(text)] if at >= 0 else text
+            values = await p.evaluate(ACTION_PROBE, [times, freeze, True, targets, said])
+            moving = (values["pixels"] >= ACTION_PIXEL_FRACTION and
+                      values["rgb"] >= ACTION_RGB_DELTA and values["state"] > 1e-4)
+            detail = (f"span={begin:.3f}..{end:.3f}s source={origin} rgb={values['rgb']:.6f} "
+                      f"changed={values['pixels']:.6f} state={values['state']:.6f} ambient={values['ambient']} own={values['own']} "
+                      f"threshold_rgb={ACTION_RGB_DELTA} threshold_changed={ACTION_PIXEL_FRACTION}")
+            action_rows.append(f"ACTION_SPAN {scene} {text!r} {'PASS' if moving else 'FAIL'} {detail}")
             cls = match_class(text)
             if not targets:
                 md = (f"no linked part: script noun not in names of {[p_['names'] for p_ in parts]} "
