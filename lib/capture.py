@@ -177,19 +177,20 @@ async def capture(args, html, out, batches, starts):
             nonlocal count, renderer, drawn_only
             browser = await playwright.chromium.launch(
                 executable_path=CHROME, headless=True, args=CHROME_ARGS)
-            try:
+
+            def console(message):
+                if message.type == "error":
+                    errors.append(f"Worker {wid} console.error: {message.text}")
+                elif wid == 0 and message.type == "warning":
+                    print("Scene warning: " + message.text, file=sys.stderr)
+
+            async def open_page():
+                nonlocal renderer
                 page = await browser.new_page(
                     viewport={"width": args.width, "height": args.height},
                     device_scale_factor=1)
                 page.on("pageerror", lambda error: errors.append(
                     f"Worker {wid} pageerror: {error}"))
-
-                def console(message):
-                    if message.type == "error":
-                        errors.append(f"Worker {wid} console.error: {message.text}")
-                    elif wid == 0 and message.type == "warning":
-                        print("Scene warning: " + message.text, file=sys.stderr)
-
                 page.on("console", console)
                 await page.goto(html.as_uri(), wait_until="load")
                 await page.evaluate("document.fonts.ready")
@@ -198,14 +199,24 @@ async def capture(args, html, out, batches, starts):
                 }""")
                 if not await page.evaluate('typeof window.renderAt === "function"'):
                     raise RuntimeError("The scene must provide a window.renderAt function")
-                if wid == 0:
+                if wid == 0 and renderer is None:
                     renderer = await page.evaluate(RENDERER_JS)
-                protocol = await page.context.new_cdp_session(page=page)
+                return page, await page.context.new_cdp_session(page=page)
+
+            try:
+                page, protocol = await open_page()
                 last = None
                 for frame in batch:
                     target = out / f"f_{frame:05d}.png"
                     if args.skip_existing and target.exists() and target.stat().st_size > 0:
                         continue
+                    if last is not None and last < scene_start(starts, frame):
+                        # A scene can carry state from the one before into its first frame (seen: one frame of a
+                        # ring drawn with stale geometry), so a page that crossed the boundary would paint that
+                        # frame unlike a page that starts there. Each scene therefore starts on a fresh page.
+                        await page.close()
+                        page, protocol = await open_page()
+                        last = None
                     first = draw_from(starts, last, frame)
                     if last is None:
                         await warm_canvas(page, protocol, first / args.fps, wid)
