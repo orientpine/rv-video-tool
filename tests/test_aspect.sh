@@ -63,7 +63,7 @@ echo "$sec" | tail -3
 grep -qx MUTATION_CAUGHT <<<"$sec"
 
 # C: no "aspect", bars drawn by the scenes themselves. The mutation box goes to the same relative spot inside the picture
-# (the frame minus edge-to-edge black rows/columns), white on a dark spot; CHECKS.md names it on a MUTATION_BOX line.
+# (the frame minus edge-to-edge black rows/columns), white on a dark spot; CHECKS.md names it on a FLICKER_MUTATION_BOX line.
 flick() {   # flick <name> <picture colour> <filters>: rv check on a 4 s video, prints its flicker mutation section
   local R="$T/$1"; mkdir -p "$R/build" "$R/out"
   echo '{"name":"d","checks":"strict"}' > "$R/script.json"
@@ -76,16 +76,16 @@ flick() {   # flick <name> <picture colour> <filters>: rv check on a 4 s video, 
 }
 # C1: 2.35:1 bars (131 px, a caption box inside the bottom one) and a dark set where the box lands: inside the picture, white.
 sec=$(flick drawn 0x606060 "drawbox=x=0:y=560:w=900:h=300:color=black:t=fill,drawbox=x=0:y=0:w=iw:h=131:color=black:t=fill,drawbox=x=0:y=949:w=iw:h=131:color=black:t=fill,drawbox=x=440:y=960:w=1040:h=60:color=0x808080:t=fill")
-echo "$sec" | grep -E 'MUTATION_BOX|MUTATION_'
-grep -q 'MUTATION_BOX x=0.0000\*iw+1.0000\*iw/8:y=0.1213\*ih+0.7574\*ih\*5/8:.*:color=white$' <<<"$sec"
+echo "$sec" | grep -E 'FLICKER_MUTATION_BOX|MUTATION_'
+grep -q 'FLICKER_MUTATION_BOX x=0.0000\*iw+1.0000\*iw/8:y=0.1213\*ih+0.7574\*ih\*5/8:.*:color=white$' <<<"$sec"
 grep -qx MUTATION_CAUGHT <<<"$sec"
 # C2: side bars 690 px wide: the old spot (x = iw/8..iw/4) lies wholly in the left bar; the box goes inside the picture.
 sec=$(flick pillar 0xa0a0a0 "drawbox=x=0:y=0:w=690:h=ih:color=black:t=fill,drawbox=x=1230:y=0:w=690:h=ih:color=black:t=fill")
-echo "$sec" | grep -E 'MUTATION_BOX|MUTATION_'
-grep -q 'MUTATION_BOX x=0.3594\*iw+0.2812\*iw/8:y=0.0000\*ih+1.0000\*ih\*5/8:.*:color=black$' <<<"$sec"
+echo "$sec" | grep -E 'FLICKER_MUTATION_BOX|MUTATION_'
+grep -q 'FLICKER_MUTATION_BOX x=0.3594\*iw+0.2812\*iw/8:y=0.0000\*ih+1.0000\*ih\*5/8:.*:color=black$' <<<"$sec"
 grep -qx MUTATION_CAUGHT <<<"$sec"
 # C3: a bright 16:9 video keeps the old box: x = iw/8, y = ih*5/8, black.
 sec=$(flick plain 0xa0a0a0 null)
-grep -qx 'MUTATION_BOX x=0.0000\*iw+1.0000\*iw/8:y=0.0000\*ih+1.0000\*ih\*5/8:w=1.0000\*iw/8:h=1.0000\*ih/8:color=black' <<<"$sec"
+grep -qx 'FLICKER_MUTATION_BOX x=0.0000\*iw+1.0000\*iw/8:y=0.0000\*ih+1.0000\*ih\*5/8:w=1.0000\*iw/8:h=1.0000\*ih/8:color=black' <<<"$sec"
 grep -qx MUTATION_CAUGHT <<<"$sec"
 echo "ASPECT_TESTS PASS"
