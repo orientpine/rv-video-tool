@@ -60,7 +60,7 @@ my-project/
 "scenes": [{"name": "chamber", "transition": {"type": "dip", "dur": 1.0, "depth": 0.85}}],
 "sound": {"music": "synth:ambient", "auto_cues": true}
 ```
-- `look`: 접촉 그림자(SAO) · 피사계 심도 · 블룸 · 색 보정(ACES·대비·채도·비네트·필름 결) · 모션 블러(셔터 안 시각 8개 평균). 렌더가 약 2배(프레임당 약 2.2배) 느려진다. 미리보기(`rv preview`)는 자동으로 끈다. 항목별 덮어쓰기: `{"preset": "cinema", "dof": {"k": 0.004}, "mb": {"samples": 8, "shutter": 1.0}, "msaa": 4}`. 이번 빌드만 끄려면 `RV_LOOK=off`.
+- `look`: 접촉 그림자(SAO, 불투명 물체만: 불투명도 0.5 미만인 반투명 재질·`transmission`·`depthWrite: false`·additive 빛줄기·입자(`Points`)·스프라이트는 그림자를 만들지 않아 유리·입자 뒤가 검게 되지 않는다) · 피사계 심도 · 블룸 · 색 보정(ACES·대비·채도·비네트·필름 결) · 모션 블러(셔터 안 시각 8개 평균). 렌더가 약 2배(프레임당 약 2.2배) 느려진다. 미리보기(`rv preview`)는 자동으로 끈다. 항목별 덮어쓰기: `{"preset": "cinema", "dof": {"k": 0.004}, "mb": {"samples": 8, "shutter": 1.0}, "msaa": 4}`. 이번 빌드만 끄려면 `RV_LOOK=off`.
 - **초점은 주인공을 따라간다**: 장면이 `o.focus` 를 준 것 > `KIT.fx.focus(물체)` 로 고른 것(또는 `scene.userData.subject = 물체`) > 보이는 이름표 대상 > 화면 가운데를 덮는 가장 가까운 큰 물체(땅·바닥·방 같은 판과 `KIT.fx.prop` 은 빼고) > 카메라가 바라보는 점. 주인공 앞뒤 끝까지 1 px 안으로 또렷하게 조리개를 조인다. 헷갈리면 `KIT.fx.focus(물체)` 를 매 render 에서 부른다.
 - 모션 블러: 벽이 있는 실내 장면은 셔터 1.0(돌아가는 고리 같은 주기 무늬가 카메라 이동에서 반짝이는 것을 막음), 바깥 장면(벽 없음, 또는 `"site": "construction"`)은 셔터 0.5 로 번짐 절반. `"site": "lab"|"office"` 는 실내로 본다.
 - 공유판(`_discord`): 20 MiB 에 넣으면 영상 비트레이트가 1.2 Mb/s 아래가 되는 긴 영상(약 2분 넘게)은 `out/<name>_discord_part1.mp4` · `part2` … 로 장면 경계에서 나뉘고(조각마다 ≤ 20 MiB), 목록은 `out/<name>_discord_parts.json`. 올릴 때는 조각을 차례로. 바닥을 바꾸려면 `rv discord my-project --min-kbps 1500`. (한 파일 4분 = 0.6 Mb/s 이면 주인공 세부가 배경보다 먼저 뭉개진다.)
