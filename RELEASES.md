@@ -6,6 +6,16 @@ Every release is a git tag `vX.Y.Z` (Z for fixes, Y for features). Each tag gets
 
 릴리스는 git 태그 `vX.Y.Z` 하나다(고침 = Z, 기능 = Y). 태그마다 이 파일과 GitHub 릴리스 페이지에 한국어·영어 노트를 쓴다. 설치는 `scripts/install.sh`, 확인은 `scripts/verify.sh`.
 
+## Unreleased
+
+### English
+
+- Fix: the `check_layout` occlusion check no longer fails a target because of weather around it. Its two ID passes used to turn only meshes into masks and draw points, lines and sprites with their own material, so big additive lamp halos, mist particles and rain streaks counted as target pixels in the target-only pass and as covered in the scene pass (a night scene: 50139 target pixels for one worker, visible 34%). Points, lines and sprites outside the target are now left out of both passes; those inside the target's group (sparks, wires) are drawn as target, custom particle shaders with their own size and shape. A real object or card in front still fails as before.
+
+### 한국어
+
+- 고침: `check_layout` 가림 검사가 대상 둘레의 날씨 효과 때문에 대상을 FAIL 하지 않는다. 두 ID 패스가 메시만 마스크로 바꾸고 점·선·스프라이트는 제 재질로 그려서, 큰 가산 가로등 빛무리·물안개 입자·빗줄기가 '대상만' 패스에서 대상 화소로 세지고 장면 패스에서는 가린 것으로 세졌다(밤 장면 작업자 대상 화소 50139, 보임 34%). 이제 대상 밖 점·선·스프라이트는 두 패스에서 다 빼고, 대상 묶음 안의 것(불꽃·전선)은 대상으로 그린다(사용자 입자 셰이더는 제 크기·모양 그대로). 진짜 물체나 카드가 앞을 막으면 전처럼 FAIL.
+
 ## v0.3.0
 
 ### English
