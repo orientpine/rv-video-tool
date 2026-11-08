@@ -9,9 +9,21 @@ status=0
 while read -r _ local_sha _; do
   [[ "$local_sha" == "$ZERO" ]] && continue
   # After a rebase, a range from the old remote tip includes unrelated main commits.
-  # Use the branch's base on main for both existing and new remote branches.
-  if ! base="$(git -C "$ROOT" merge-base "$local_sha" origin/main)"; then
-    echo "pre-push: cannot find merge-base with origin/main; push refused" >&2
+  # Trust the destination's main, not a possibly stale local tracking ref.
+  if ! remote_main="$(git -C "$ROOT" ls-remote "$2" refs/heads/main 2>/dev/null)" ||
+    [[ -z "$remote_main" ]]; then
+    echo "pre-push: cannot read remote main; fetch origin main first; push refused" >&2
+    status=1
+    continue
+  fi
+  read -r remote_main _ <<< "$remote_main"
+  if ! git -C "$ROOT" cat-file -e "$remote_main^{commit}" 2>/dev/null; then
+    echo "pre-push: remote main commit is not available locally; fetch origin main first; push refused" >&2
+    status=1
+    continue
+  fi
+  if ! base="$(git -C "$ROOT" merge-base "$local_sha" "$remote_main")"; then
+    echo "pre-push: branch is not based on remote main; push refused" >&2
     status=1
     continue
   fi
