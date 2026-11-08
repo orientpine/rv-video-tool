@@ -2,7 +2,7 @@
 
     uv run -q --no-project --with playwright --with pillow python tests/look_sao_probe.py <look 켠 video.html> <lib 폴더>
 출력 한 줄 JSON: {"bg": {"on": [r,g,b], "off": [...]}, "dome": {...}, "contact": {"on": l, "off": l},
-                "see": {"glass": d, "clear": d, "dust": d, "beam": d, "ghost": d, "crease": {"on": l, "off": l}}}
+                "see": {"glass": d, "clear": d, "dust": d, "beam": d, "ghost": d, "crease": {"on": l, "off": l}}, "see_relief": {같은 칸, relief 강조 모드}}
   see: 벽 앞 유리판(불투명도 0.15)·거의 투명한 판(0.02)·입자(Points + 스프라이트)·additive 빛줄기·세기 0 렌즈 플레어 고스트(가산 스프라이트, depthTest false) 뒤에서
        AO 를 켜면 AO 끈 것보다 밝기가 8 넘게 어두워진 칸의 비율(d, 0..1). crease = 불투명 상자 앞 바닥(상자와 맞닿은 곳)의 밝기.
 """
@@ -43,11 +43,13 @@ PROBE = r"""async () => {
     R.dispose(); return out;
   };
   // see-through things in front of a flat wall: none of them may darken what is behind (old: black box / dark dots)
-  const see = ao => {
+  const see = (ao, mode) => {
     const c = document.createElement('canvas'); c.width = 1920; c.height = 1080;
     const R = new THREE.WebGLRenderer({canvas: c, preserveDrawingBuffer: true});
     R.setPixelRatio(1); R.setSize(1920, 1080, false);
     R.toneMapping = THREE.ACESFilmicToneMapping; R.outputEncoding = THREE.sRGBEncoding;
+    const rawR = R.render.bind(R);   // kit/shell.html wraps render for relief/clean scenes before LOOK.install: same order here
+    R.render = (s, c) => KIT.fx.emphasis.active() && s.isScene && !R.getScissorTest() ? KIT.fx.emphasis.wrap(s, c, rawR) : rawR(s, c);
     LOOK.install(R, ao ? {preset: 'cinema'} : {preset: 'cinema', ao: null});
     const S = new THREE.Scene(); S.background = new THREE.Color(0xd9d5d0);
     S.add(new THREE.HemisphereLight(0xffffff, 0x888888, 1.0));
@@ -78,7 +80,8 @@ PROBE = r"""async () => {
     b1.position.set(-0.45, .3, 0); b2.position.set(0.17, .3, 0); S.add(b1, b2);
     const cam = new THREE.PerspectiveCamera(50, 16 / 9, 0.1, 1000); cam.position.set(0, 1.6, 4.5); cam.lookAt(0, 1.5, -3);
     cam.updateMatrixWorld(); cam.userData.focus = 4.5;
-    R.render(S, cam);
+    KIT.fx.emphasis.mode = mode || null;
+    try { R.render(S, cam); } finally { KIT.fx.emphasis.mode = null; }
     const t = document.createElement('canvas'); t.width = 1920; t.height = 1080; const x = t.getContext('2d'); x.drawImage(c, 0, 0);
     const d = x.getImageData(0, 0, 1920, 1080).data, L = new Float32Array(1920 * 1080);
     for (let i = 0; i < L.length; i++) L[i] = 0.2126 * d[4 * i] + 0.7152 * d[4 * i + 1] + 0.0722 * d[4 * i + 2];
@@ -92,16 +95,16 @@ PROBE = r"""async () => {
     R.dispose(); return out;
   };
   const r = {};
-  {
-    const on = see(true), off = see(false), s = {};
+  for (const mode of [null, 'relief']) {
+    const on = see(true, mode), off = see(false, mode), s = {};
     for (const [k, [x0, y0, x1, y1]] of Object.entries(on.rects)) {
       let dark = 0, all = 0;
       for (let y = y0; y < y1; y += 2) for (let x = x0; x < x1; x += 2) { all++; if (off.L[y * 1920 + x] - on.L[y * 1920 + x] > 8) dark++; }
       s[k] = all ? +(dark / all).toFixed(4) : null;
     }
     s.crease = {on: +on.crease.toFixed(2), off: +off.crease.toFixed(2)}; s.rects = on.rects;
-    if (on.png) s.png = {on: on.png, off: off.png};
-    r.see = s;
+    if (on.png && !mode) s.png = {on: on.png, off: off.png};
+    r[mode ? 'see_' + mode : 'see'] = s;
   }
   for (const dome of [false, true]) {
     const on = shot(dome, true), off = shot(dome, false);

@@ -22,26 +22,35 @@ mkdir -p "$W/p/final" "$W/p/test-video/shared"; cp -a "$P" "$W/p/final/project";
 rm -rf "$PP/build/frames" "$PP/build/stills" "$PP"/build/clip_* "$PP"/build/frames_clip "$PP"/build/stems*
 mutant() { rm -rf "$W/tool"; cp -a "$TOOL" "$W/tool"; rm -rf "$W/tool/.git"; }
 
-sao() {   # $1 도구 → "bg_on_off_diff dome_diff contact_drop glass clear dust beam ghost crease_drop"
+sao() {   # $1 도구 → "bg_on_off_diff dome_diff contact_drop glass clear dust beam ghost crease_drop relief_worst"
   (cd "$PP" && VIDEO_HTML="$W/sao.html" python3 "$1/lib/build.py" . >/dev/null 2>&1) || { echo "ERR"; return; }
   "${UVPW[@]}" "$TOOL/tests/look_sao_probe.py" "$W/sao.html" "$TOOL/lib" | python3 -c "
 import json,sys; r=json.loads(sys.stdin.read().strip().splitlines()[-1]); assert not r['errors'], r['errors']
 d=lambda k: max(abs(a-b) for a,b in zip(r[k]['on'], r[k]['off']))
 s=r['see']
-print(d('bg'), d('dome'), round(r['contact']['off']-r['contact']['on'],2), s['glass'], s['clear'], s['dust'], s['beam'], s['ghost'], round(s['crease']['off']-s['crease']['on'],2))"; }
-read b d c gl cl du be gh cr < <(sao "$TOOL"); echo "  하늘 차이(배경 색) $b · (하늘 돔) $d · 접촉 그림자 $c"
+print(d('bg'), d('dome'), round(r['contact']['off']-r['contact']['on'],2), s['glass'], s['clear'], s['dust'], s['beam'], s['ghost'], round(s['crease']['off']-s['crease']['on'],2), max(v for k, v in r['see_relief'].items() if k in ('glass','clear','dust','beam','ghost')))"; }
+read b d c gl cl du be gh cr rl < <(sao "$TOOL"); echo "  하늘 차이(배경 색) $b · (하늘 돔) $d · 접촉 그림자 $c"
 [ "$b" != ERR ] && [ "${b:-99}" -le 2 ] && [ "${d:-99}" -le 2 ] && ok "AO 켜도 하늘 그대로" || bad "AO 가 하늘을 바꿈 ($b, $d)"
 awk -v c="${c:-0}" 'BEGIN{exit !(c >= 5)}' && ok "접촉 그림자는 남음 (≥ 5)" || bad "접촉 그림자 사라짐 ($c)"
 echo "  비치는 것 뒤 어두워진 칸: 유리판 $gl · 투명판 $cl · 입자 $du · 빛줄기 $be · 고스트 $gh · 상자 모서리 그늘 $cr"
 awk -v a="${gl:-1}" -v b="${cl:-1}" -v c="${du:-1}" -v e="${be:-1}" -v g="${gh:-1}" 'BEGIN{exit !(a <= .01 && b <= .01 && c <= .01 && e <= .01 && g <= .01)}' \
   && ok "반투명·입자·빛줄기·플레어 고스트 뒤 검은 AO 없음 (≤ 1 %)" || bad "비치는 것 뒤가 AO 로 어두움 ($gl $cl $du $be $gh)"
 awk -v c="${cr:-0}" 'BEGIN{exit !(c >= 5)}' && ok "불투명 상자 모서리 그늘은 남음 (≥ 5)" || bad "모서리 그늘 사라짐 ($cr)"
+# relief·clean 장면(강조 모드): shell.html 이 렌더를 emphasis.wrap 으로 감싸 재질을 클레이로 바꾼다 → 끈 재질은 클레이도 꺼져야 함
+awk -v r="${rl:-1}" 'BEGIN{exit !(r <= .01)}' && ok "relief 장면에서도 비치는 것 뒤 검은 AO 없음 (≤ 1 %)" || bad "relief 장면에서 비치는 것 뒤가 어두움 ($rl)"
+mutant; python3 - "$W/tool/kit/scene_kit.js" <<'EOF'
+import sys; p = sys.argv[1]; s = open(p).read()
+s2 = s.replace(" c.visible = m.visible;", "")
+assert s2 != s, "mutation not applied"; open(p, "w").write(s2)
+EOF
+read b d c gl cl du be gh cr rl < <(sao "$W/tool"); echo "  되돌림(클레이가 visible 안 따름) relief 최악 칸 $rl"
+[ "$b" != ERR ] && awk -v r="${rl:-0}" 'BEGIN{exit !(r >= .1)}' && ok "되돌림(클레이 재질이 꺼진 재질을 다시 켬) → relief 에서 어두움(잡힘)" || bad "되돌림인데 relief 최악 칸 $rl"
 mutant; python3 - "$W/tool/kit/look.js" <<'EOF'
 import sys; p = sys.argv[1]; s = open(p).read()
 s2 = s.replace("for (const x of hid) x.visible = false;", "")
 assert s2 != s, "mutation not applied"; open(p, "w").write(s2)
 EOF
-read b d c gl cl du be gh cr < <(sao "$W/tool"); echo "  되돌림 유리판 $gl · 투명판 $cl · 입자 $du · 빛줄기 $be · 고스트 $gh"
+read b d c gl cl du be gh cr rl < <(sao "$W/tool"); echo "  되돌림 유리판 $gl · 투명판 $cl · 입자 $du · 빛줄기 $be · 고스트 $gh"
 # 되돌림 기준(앞 수치의 약 1/3): 유리판 .81 · 투명판 .13 · 입자 .085 · 빛줄기 .25 · 고스트 .36
 [ "$b" != ERR ] && awk -v a="${gl:-0}" -v b="${cl:-0}" -v c="${du:-0}" -v e="${be:-0}" -v g="${gh:-0}" 'BEGIN{exit !(a >= .3 && b >= .04 && c >= .03 && e >= .08 && g >= .1)}' \
   && ok "되돌림(비치는 것도 AO 패스에) → 유리판·투명판·입자·빛줄기·고스트 모두 어두움(잡힘)" || bad "되돌림인데 안 어두운 칸 ($gl $cl $du $be $gh)"
