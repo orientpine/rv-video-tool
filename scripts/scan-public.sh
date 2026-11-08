@@ -41,7 +41,7 @@ else
 fi
 
 g() { grep -rInP --exclude-dir=.git "$@" "$DIR" | sed "s|^$DIR/||" ; }
-[[ "$MODE" == "--git" ]] && git -C "$DIR" log --all -p --format='commit %H%n%an <%ae>%n%B' > "$TMP/log"
+[[ "$MODE" == "--git" ]] && git -C "$DIR" log --all -p --format='commit %H%n%an <%ae>%n%cn <%ce>%n%B' > "$TMP/log"
 gl() { [[ -f "$TMP/log" ]] && grep -nP "$@" "$TMP/log" | sed 's/^/git-log:/' ; true; }
 IP='\b(?:10|172\.(?:1[6-9]|2\d|3[01])|192\.168|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7]))\.\d{1,3}\.\d{1,3}(?:\.\d{1,3})?\b'
 { g "$IP"; gl "$IP"; } | grep -vP '\b\d+\.\d+\.\d+\.\d+\.\d+' > "$TMP/ips"
