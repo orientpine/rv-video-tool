@@ -106,6 +106,8 @@ def main():
     script = json.loads(script_file.read_text(encoding="utf-8")) if script_file.exists() else {}
     scenes = [entry for entry in script.get("scenes", []) if isinstance(entry, dict)]
     scene_sites = {entry["name"]: entry["site"] for entry in scenes if "site" in entry}
+    scene_places = {entry["name"]: entry["place"] for entry in scenes if "place" in entry}   # KIT.place(NAME, scene) builds it
+    scene_beats = {entry["name"]: entry["beat"] for entry in scenes if "beat" in entry}      # problem | inside | result | after
     transitions = {}
     for entry in scenes:
         transition = entry.get("transition")
@@ -127,6 +129,8 @@ def main():
         "// kit/human_body.js\n" + (ROOT / "kit/human_body.js").read_text(encoding="utf-8"),
         "// kit/scene_kit.js\n" + kit.read_text(encoding="utf-8"),
         "// kit/process.js\n" + (ROOT / "kit/process.js").read_text(encoding="utf-8"),
+        "// kit/places.js\n" + (ROOT / "kit/places.js").read_text(encoding="utf-8"),
+        "// kit/fx.js\n" + (ROOT / "kit/fx.js").read_text(encoding="utf-8"),
     ]
     if allowed is not None:
         sources = json.loads((project / "sources.json").read_text(encoding="utf-8"))
@@ -135,6 +139,25 @@ def main():
         portions.append("window.SITE=" + js_json(script["site"]) + ";")
     if scene_sites:
         portions.append("window.SCENE_SITE=" + js_json(scene_sites) + ";")
+    if scene_places:
+        portions.append("window.SCENE_PLACE=" + js_json(scene_places) + ";")
+    # CC0 place assets (kit/assets/places/<kind>/, common/): only the kinds this project names, so video.html stays small
+    place_dir, kit_assets, loaded_vendor = ROOT / "kit/assets/places", {}, set()
+    for kind in sorted({"common", *scene_places.values()}):
+        folder = place_dir / kind
+        for path in sorted(folder.rglob("*")) if folder.is_dir() else []:
+            if path.is_file() and path.suffix.lower() not in (".md", ".txt"):
+                mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+                kit_assets[f"{kind}/{path.relative_to(folder).as_posix()}"] = f"data:{mime};base64," + base64.b64encode(path.read_bytes()).decode("ascii")
+    if kit_assets:
+        portions.append("window.KIT_ASSETS=" + js_json(kit_assets) + ";")
+        for name in ("GLTFLoader.js", "OBJLoader.js"):   # models in the asset folders are parsed by these (three r147 examples/js)
+            path = (ROOT / "vendor" / name).resolve()
+            if path not in loaded_vendor:
+                loaded_vendor.add(path)
+                portions.append("// vendor/" + name + "\n" + path.read_text(encoding="utf-8"))
+    if scene_beats:
+        portions.append("window.SCENE_BEAT=" + js_json(scene_beats) + ";")
     if transitions:
         portions.append("window.TRANSITIONS=" + js_json(transitions) + ";")
     if "aspect" in script:   # "2.35:1" letterbox / "4:3" pillarbox (kit/shell.html #matte, window.PICTURE)
