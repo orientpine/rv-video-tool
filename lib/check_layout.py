@@ -124,7 +124,7 @@ OCCLUSION_INIT = r"""(() => {
   }});
 })()"""
 
-OCCLUSION = r"""([mutate, now]) => {
+OCCLUSION = r"""([mutate, now, fixedBars]) => {
   const labels=window.__KIT_LABELS || [], results=[], skipped=[], subjects=[];
   const prev=window.__layoutPrev || (window.__layoutPrev=new Map()), seen=new Map();
   const views=window.__LAYOUT_VIEWS, caches=new Map();
@@ -163,6 +163,25 @@ OCCLUSION = r"""([mutate, now]) => {
   }).map(e=>{const r=e.getBoundingClientRect();
     return {e,r,name:e.id||e.textContent.trim().slice(0,60)||
       `${e.tagName}${e.className?'.'+String(e.className).trim().replace(/\s+/g,'.'):''} scene=${e.closest('[data-scene]')?.dataset.scene||'-'} ${Math.round(r.width)}x${Math.round(r.height)} bg=${getComputedStyle(e).backgroundColor}`};});
+  // What lies outside the picture is not covered, like what lies outside the frame. script.json "aspect" declares the
+  // picture (kit/shell.html window.PICTURE, its #matte bars are not cards). Without it, frame bars a scene draws itself
+  // (2.35:1 letterbox, 4:3 pillarbox): a fully opaque black strip on one edge of the frame, across the whole width (at most
+  // a quarter of the height) or the whole height (at most a quarter of the width). Python keeps only strips that are there
+  // with the same rect at every sample (fixedBars); a strip that comes and goes is judged as a card.
+  const P=window.PICTURE, declared=P&&(P.w<1920||P.h<1080)?P:null;
+  const barKey=r=>[r.left,r.top,r.right,r.bottom].map(Math.round).join(',');
+  const frameBars=declared?[]:cards.filter(({e,r})=>{
+    const c=getComputedStyle(e).backgroundColor.match(/[\d.]+/g).map(Number);
+    let opacity=1;
+    for(let a=e;a;a=a.parentElement) opacity*=+getComputedStyle(a).opacity;
+    if((c.length<4?1:c[3])*opacity<.99||c.slice(0,3).some(v=>v>16)) return false;
+    return (r.left<=0&&r.right>=1920&&(r.top<=0||r.bottom>=1080)&&r.height<=270) ||
+      (r.top<=0&&r.bottom>=1080&&(r.left<=0||r.right>=1920)&&r.width<=480);
+  });
+  const bars=frameBars.filter(({r})=>!fixedBars||fixedBars.includes(barKey(r)));
+  for(const bar of bars) cards.splice(cards.indexOf(bar),1);
+  const offPicture=declared?(px,py)=>px<declared.x||px>=declared.x+declared.w||py<declared.y||py>=declared.y+declared.h
+    :(px,py)=>bars.some(({r})=>px>=r.left&&px<r.right&&py>=r.top&&py<r.bottom);
   for(const label of labels) {
     if(!label.camera || !shown(label.box)) continue;
     const view=views.get(label.camera);
@@ -282,12 +301,11 @@ OCCLUSION = r"""([mutate, now]) => {
     const covering=cards.filter(({e})=>![...owns].some(own=>e===own||e.contains(own))),
       cardPixels=new Uint32Array(covering.length);
     for(let y=0;y<h;y++) for(let x=0;x<w;x++) {
-      const i=(y*w+x)*4;
-      if(alone[i]<128) continue;
+      const i=(y*w+x)*4, px=(x+.5)*4, py=(h-y-.5)*4;
+      if(alone[i]<128||offPicture(px,py)) continue;
       total++;
       if(full[i]<128) continue;
       depth++;
-      const px=(x+.5)*4, py=(h-y-.5)*4;
       let covered=false;
       covering.forEach(({r},j)=>{
         if(px>=r.left&&px<r.right&&py>=r.top&&py<r.bottom) {cardPixels[j]++;covered=true;}
@@ -319,7 +337,7 @@ OCCLUSION = r"""([mutate, now]) => {
       if(area&&o/area>=.02) pictures.push({picture:pic.dataset.rvPicture,card:name,fraction:o/area});
     }
   }
-  return {results,skipped,pictures};
+  return {results,skipped,pictures,picture:declared,bars:Object.fromEntries(frameBars.map(({r,name})=>[barKey(r),name]))};
 }"""
 
 
@@ -414,7 +432,7 @@ async def measure(pw, a, shard, shards):
         await p.evaluate("""async t => {window.__LAYOUT_VIEWS.clear(); await window.renderAt(t);
             await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))}""", t)
         rows = await p.evaluate(COLLECT)
-        occlusion = await p.evaluate(OCCLUSION, [a.mutate, t])
+        occlusion = await p.evaluate(OCCLUSION, [a.mutate, t, a.fixed_bars])
         skips.update(occlusion["skipped"])
         for target in occlusion["results"]:
             occluded += 1
@@ -490,7 +508,7 @@ async def measure(pw, a, shard, shards):
                 if area > 4:
                     w, h = round(q[2] - q[0]), round(q[3] - q[1])
                     bad("overlap", f"with={other['text']!r} ({other['id']} {other['tag']} {w}x{h}) area={area:.2f}px^2")
-        results.append((index, lines, failures, caught, skips, occluded, len(rows)))
+        results.append((index, lines, failures, caught, skips, occluded, len(rows), occlusion["bars"], occlusion["picture"]))
         if a.mutate and caught:   # a mutation only has to be caught once; the real check samples every time
             break
     await browser.close()
@@ -503,10 +521,27 @@ async def main(a):
     occlusion_count, occlusion_skips = 0, set()
     # The real check deals sample times round-robin to --shards browsers; a mutation stays on one page.
     shards = 1 if a.mutate else max(1, min(a.shards, len(a.at)) if a.at is not None else a.shards)
+    a.fixed_bars = None   # first pass: every frame-bar-shaped strip is outside the picture
     async with async_playwright() as pw:
         parts = await asyncio.gather(*(measure(pw, a, k, shards) for k in range(shards)))
+        seen = [r[7] for part in parts for r in part[0]]
+        names = {key: name for bars in seen for key, name in bars.items()}
+        fixed = set.intersection(*(set(bars) for bars in seen)) if seen else set()
+        declared = next((r[8] for part in parts for r in part[0] if r[8]), None)
+        if declared:
+            print(f"LAYOUT_PICTURE aspect x={declared['x']} y={declared['y']} w={declared['w']} h={declared['h']} "
+                  "(script.json aspect: outside it is not the picture)")
+        if names:
+            print(f"LAYOUT_PICTURE bars={len(fixed)} " + " ".join(f"{names[k]!r}@{k}" for k in sorted(fixed))
+                  + " (the same black strip on a frame edge at every sample: outside the picture)")
+        if any(set(bars) != fixed for bars in seen):
+            # A strip missing from some sample is not a frame bar: measure again with it as a card.
+            for key in sorted(set(names) - fixed):
+                print(f"LAYOUT_PICTURE not_fixed {names[key]!r}@{key} (not at every sample: judged as a card)")
+            a.fixed_bars = sorted(fixed)
+            parts = await asyncio.gather(*(measure(pw, a, k, shards) for k in range(shards)))
     errors = [e for part in parts for e in part[1]]
-    for _, lines, fails, caught, skips, occluded, texts in sorted((r for part in parts for r in part[0]), key=lambda r: r[0]):
+    for _, lines, fails, caught, skips, occluded, texts, _, _ in sorted((r for part in parts for r in part[0]), key=lambda r: r[0]):
         for line in lines:
             print(line)
         failures += fails
