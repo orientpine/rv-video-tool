@@ -10,7 +10,7 @@ export GIT_AUTHOR_NAME="rv maintainers" GIT_COMMITTER_NAME="rv maintainers"
 export GIT_AUTHOR_EMAIL="rv@users.noreply.github.com" GIT_COMMITTER_EMAIL="rv@users.noreply.github.com"
 export RV_SCAN_PATTERNS="$T/patterns" RV_SCAN_EXTRA="" RV_SCAN_ALLOW_IDENTITIES=/dev/null
 printf '%s\n' 'SyntheticForbiddenMarker' > "$RV_SCAN_PATTERNS"
-g() { GIT_MASTER=1 git "$@"; }
+g() { git "$@"; }
 g init -q --bare --initial-branch=main "$T/remote.git"
 g init -q --initial-branch=main "$T/repo"
 cd "$T/repo"
@@ -42,13 +42,14 @@ ZERO=0000000000000000000000000000000000000000
 fail=0
 check() {
   local name="$1" expected="$2" remote_sha="$3" code=0
+  local diagnostic="${4:-private-patterns(1).* [1-9]}" remote_url="${5:-$T/remote.git}"
   printf 'refs/heads/topic %s refs/heads/topic %s\n' "$(g rev-parse HEAD)" "$remote_sha" |
-    bash "$HOOK" origin "$T/remote.git" > "$T/hook.log" 2>&1 || code=$?
+    bash "$HOOK" origin "$remote_url" > "$T/hook.log" 2>&1 || code=$?
   if [[ "$code" == "$expected" ]] &&
-    { [[ "$expected" == 0 ]] || grep -q 'private-patterns(1).* [1-9]' "$T/hook.log"; }; then
+    { [[ "$expected" == 0 ]] || grep -q "$diagnostic" "$T/hook.log"; }; then
     echo "PASS $name (exit $code)"
   else
-    echo "FAIL $name (expected $expected, got $code)"
+    echo "FAIL $name (expected exit $expected with diagnostic, got $code)"
     cat "$T/hook.log"
     fail=1
   fi
@@ -76,5 +77,34 @@ g switch -qc own-identity "$clean_tip"
 GIT_COMMITTER_NAME=SyntheticForbiddenMarker g commit -q --allow-empty -m "Own identity"
 g commit -q --allow-empty -m "Clean tip"
 check own-identity-force-push 1 "$old_remote"
+
+# A commit removed from remote main must not be trusted via a stale tracking ref.
+remote_main="$(g --git-dir="$T/remote.git" rev-parse refs/heads/main)"
+g switch -qc tracking-ahead "$clean_tip"
+g commit -q --allow-empty -m "SyntheticForbiddenMarker"
+g update-ref refs/remotes/origin/main "$(g rev-parse HEAD)"
+g commit -q --allow-empty -m "Branch built on stale tracking main"
+check tracking-ahead-update 1 "$old_remote"
+g update-ref refs/remotes/origin/main "$remote_main"
+g switch -q topic
+
+# The remote advertises a commit that has never been fetched into this clone.
+remote_only="$(printf 'Remote-only main\n' |
+  g --git-dir="$T/remote.git" commit-tree "$remote_main^{tree}" -p "$remote_main")"
+g --git-dir="$T/remote.git" update-ref refs/heads/main "$remote_only"
+if g cat-file -e "$remote_only^{commit}" 2>/dev/null; then
+  echo "FAIL fixture already has remote-only main"; exit 1
+fi
+check remote-main-not-fetched 1 "$old_remote" 'fetch origin main first'
+g --git-dir="$T/remote.git" update-ref refs/heads/main "$remote_main"
+
+check remote-main-unreadable 1 "$old_remote" 'fetch origin main first' "$T/missing.git"
+g --git-dir="$T/remote.git" update-ref -d refs/heads/main
+check remote-main-missing 1 "$old_remote" 'fetch origin main first'
+g --git-dir="$T/remote.git" update-ref refs/heads/main "$remote_main"
+
+g checkout -q --orphan unrelated "$clean_tip"
+g commit -qm "Unrelated root"
+check unrelated-history 1 "$old_remote" 'branch is not based on remote main'
 
 [[ "$fail" == 0 ]] && echo "PRE_PUSH_TESTS PASS" || { echo "PRE_PUSH_TESTS FAIL"; exit 1; }
