@@ -8,6 +8,8 @@
 #   ${RV_SCAN_EXTRA:-} (colon separated), one PCRE per line.
 # Prints one count per check and exits 1 if any count is not 0 (2 if no pattern file).
 set -uo pipefail
+# grep -P refuses to run in a multibyte locale that is not UTF-8, and a silent grep error would read as 0.
+export LC_ALL=C.UTF-8
 
 DIR="${1:?usage: scan-public.sh <dir> [--git]}"
 MODE="${2:-}"
@@ -18,6 +20,7 @@ ALLOW="${RV_SCAN_ALLOW_IDENTITIES:-$HOME/.config/rv-video-tool/scan-allow-identi
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 fail=0
+: > "$TMP/errors"
 
 count() {
   local n
@@ -42,7 +45,8 @@ else
   echo "gitleaks not installed: regex checks only"
 fi
 
-g() { grep -rInP --exclude-dir=.git "$@" "$DIR" | sed "s|^$DIR/||" ; }
+# a grep that could not run (bad pattern, locale) is a finding, never a silent 0
+g() { grep -rInP --exclude-dir=.git "$@" "$DIR" | sed "s|^$DIR/||"; local s=${PIPESTATUS[0]}; [[ $s -lt 2 ]] || echo "grep failed (exit $s)" >> "$TMP/errors"; }
 if [[ "$MODE" == "--git" ]]; then
   git -C "$DIR" log --all -p --format='%x1ecommit %H%x1e%n%an <%ae>%n%cn <%ce>%n%B' > "$TMP/raw" || { echo "history read failed: git log" >&2; exit 2; }
   # allowed identity lines are blanked only in the two header lines of a commit, never elsewhere
@@ -54,7 +58,12 @@ if [[ "$MODE" == "--git" ]]; then
     i == 1 || i == 2 { if ($0 in ok) { print ""; next } print "git-log-identity:" NR ":" $0 > identf }
     { print }' "$TMP/raw" > "$TMP/log" || { echo "history read failed: identity filter" >&2; exit 2; }
 fi
-gl() { [[ -f "$TMP/log" ]] && grep -nP "$@" "$TMP/log" | sed 's/^/git-log:/' ; true; }
+gl() {
+  [[ -f "$TMP/log" ]] || return 0
+  grep -nP "$@" "$TMP/log" | sed 's/^/git-log:/'; local s=${PIPESTATUS[0]}
+  [[ $s -lt 2 ]] || echo "grep failed (exit $s)" >> "$TMP/errors"
+  return 0
+}
 IP='\b(?:10|172\.(?:1[6-9]|2\d|3[01])|192\.168|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7]))\.\d{1,3}\.\d{1,3}(?:\.\d{1,3})?\b'
 { g "$IP"; gl "$IP"; } | grep -vP '\b\d+\.\d+\.\d+\.\d+\.\d+' > "$TMP/ips"
 KEY='gh[pousr]_[A-Za-z0-9]{20,}|github_pa[t]_|\bsk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[abposr]-|-----BEGIN [A-Z ]*PRIVATE KEY|(?:discord|bot)[_-]?token\s*[:=]\s*\S{20,}'
@@ -82,6 +91,7 @@ count emails "$TMP/emails"
 count home-paths "$TMP/home"
 count chat-ids "$TMP/snow"
 count "private-patterns($npat)" "$TMP/private"
+count scan-errors "$TMP/errors"
 [[ "$MODE" == "--git" ]] && count identities "$TMP/ident"
 
 ( cd "$DIR" && find . -path ./.git -prune -o \( -name 'REPORT*.md' -o -name 'HANDOVER*.md' -o -name 'brief*.md' -o -name '.omo' -o -name 'upstream-v3' -o -name 'private' -o -name 'evidence' -o -name '*.mp4' -o -name '*.webm' -o -name '*.mov' -o -name '*.wav' -o -name '*.glb' -o -name '*.stl' -o -name '*.urdf' -o -name 'scan-patterns' -o -name 'scan-allow-identities' -o -name 'robots_shutter*' -o -name '__pycache__' -o -name '.ruff_cache' \) -print ) > "$TMP/paths"
