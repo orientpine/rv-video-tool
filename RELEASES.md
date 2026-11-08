@@ -14,7 +14,7 @@ Every release is a git tag `vX.Y.Z` (Z for fixes, Y for features). Each tag gets
 
 ### 한국어
 
-- 고침: `check_motion` `ACTION_SPAN` 이 구간을 그 말이 가리키는 부품으로 잔다. `ACTION_MATCH` 가 `KIT.process` 부품을 찾으면 그 부품(및 그 아래 메시)의 상태와, 구간 동안 그 부품이 지난 화면 상자 안의 화소로 재고(줄의 `part=`, `region=`), 문턱은 그대로다. 넓은 부엌에서 작은 컵을 올리면 화면의 0.0002 만 바뀌어 `ACTION_MATCH` 는 올라감을 보고도 `action_static` FAIL 이었는데, 이제 컵 상자의 0.107 이 바뀌어 PASS. 컵은 가만히 있고 옆 큰 상자만 미끄러지면 더는 동작으로 치지 않는다. 찾은 부품이 없는 구간은 전처럼 화면 전체.
+- 고침: `check_motion` `ACTION_SPAN` 이 구간을 그 말이 가리키는 부품으로 잰다. `ACTION_MATCH` 가 `KIT.process` 부품을 찾으면 그 부품(및 그 아래 메시)의 상태와, 구간 동안 그 부품이 지난 화면 상자 안의 화소로 재고(줄의 `part=`, `region=`), 문턱은 그대로다. 넓은 부엌에서 작은 컵을 올리면 화면의 0.0002 만 바뀌어 `ACTION_MATCH` 는 올라감을 보고도 `action_static` FAIL 이었는데, 이제 컵 상자의 0.107 이 바뀌어 PASS. 컵은 가만히 있고 옆 큰 상자만 미끄러지면 더는 동작으로 치지 않는다. 찾은 부품이 없는 구간은 전처럼 화면 전체.
 
 ## v0.3.1
 
