@@ -1609,7 +1609,7 @@ async def main(a):
         if d > threshold:
             failures.append((frame, name, "teleport",
                              f"displacement={d:.6f}m threshold={threshold:.6f}m median_speed={medians[key]*a.fps:.6f}m/s"))
-            if mutation and frame == mutation["frame"] and name == mutation["name"]:
+            if mutation and frame == mutation.get("frame") and name == mutation.get("name"):
                 caught = True
     failures.sort(key=lambda r: (r[0], r[1], r[2]))
     print("| t (s) | object | rule | values |")
