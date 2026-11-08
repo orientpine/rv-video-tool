@@ -48,8 +48,11 @@ CHECK = r"""([humans,mutation]) => {
        const hip=g.getObjectByName('hip_'+side),knee=g.getObjectByName('knee_'+side),ankle=g.getObjectByName('ankle_'+side);
        const a=v(hip).sub(v(knee)).normalize(),b=v(ankle).sub(v(knee)).normalize();
        const angle=Math.acos(THREE.MathUtils.clamp(a.dot(b),-1,1))*180/Math.PI;
-       if(Math.abs(angle-90)>5)fail('sit knee '+angle);
-       if(Math.abs(hip.rotation.x+Math.PI/2)>.05)fail('sit hip not 90 degrees');
+       // Seated range: knees bent 45..150 degrees, thighs within -15..45 degrees of level (KIT.fx.seat fits them to
+       // the seat and floor); a standing or walking figure labelled sit stays outside it.
+       if(angle<45||angle>150)fail('sit knee '+angle);
+       const lift=-hip.rotation.x-Math.PI/2;
+       if(lift<-.27||lift>.8)fail('sit hip '+(90+lift*180/Math.PI)+' degrees');
      }
    }
  }

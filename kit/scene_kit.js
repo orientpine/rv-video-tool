@@ -723,9 +723,10 @@
           pelvis.position.y = sitPelvis;
           for (const [side, s] of [["l", -1], ["r", 1]]) {
             joints["hip_" + side].rotation.x = -Math.PI / 2;
-            joints["knee_" + side].rotation.x = Math.PI / 2;
-            joints["shoulder_" + side].rotation.set(.12, 0, s * .2);
-            joints["elbow_" + side].rotation.x = -1.35;
+            joints["knee_" + side].rotation.x = Math.PI / 2 - shinOpen;   // shins forward, soles kept flat
+            joints["ankle_" + side].rotation.x = shinOpen;
+            joints["shoulder_" + side].rotation.set(sitArm[0], 0, s * sitArm[1]);
+            joints["elbow_" + side].rotation.x = sitArm[2];
             joints["wrist_" + side].rotation.y = -s * Math.PI / 2;   // palms (inward at rest) turn down onto the controls
           }
         } else {
@@ -829,6 +830,9 @@
         if (k < 1e-3 || !base.emissive) return base;
         if (!copies) pulseCopies.set(o, copies = new Map());
         let copy = copies.get(base);
+    const SIT_DROP = .39;   // seat contact to soles, metres at h = 1.75 (old figure)
+    const SIT_PALM = [.2817, .2042, .2446];   // right palm from the seat contact (old figure): where scenes put levers
+    let shinOpen = 0, sitArm = [.12, .2, -1.35];
         if (!copy) { copy = base.clone(); copies.set(base, copy); pulseBase.set(copy, base); }
         copy.color && base.color && copy.color.copy(base.color).lerp(accent, .5 * k);   // tint too: glow alone is lost on white parts
         copy.transparent = base.transparent; copy.opacity = base.opacity; copy.depthWrite = base.depthWrite;
@@ -844,7 +848,8 @@
   const fx = {cutaway, explode, human, prop, emphasis, reveal, pulse, decor, focus(...objs) { for (const o of objs) if (o) emphasis.extra.add(o); }, env(...objs) { for (const o of objs) if (o) emphasis.env.add(o); },
     clearance,
     attach(part, support, {tol_mm = 2} = {}) { clearance.attachments.push({part, support, tol_mm}); },
-    seat(human, {seat, floor, levers = [], hand_mm = 150, up = [0, 1, 0]} = {}) {
+    seat(human, {seat, floor, back, levers = [], hand_mm = 150, up = [0, 1, 0]} = {}) {
+      if (human && human.seatFit) human.seatFit({seat, floor, back});   // a seated KIT human sits on the seat top, soles on the floor
       clearance.seats.push({human, seat, floor, levers, hand_mm, up}); },
     reset() { clearance.attachments.length = 0; clearance.seats.length = 0; for (const x of live) x.reset(); }};
 
@@ -853,3 +858,79 @@
   const K = {clamp, smooth, win, wordT, lineSpan, label, rng, camAt, camSet, shot, shotAt, easeEnds, info, fx};
   Object.defineProperty(window, "KIT", {configurable: true, get: () => K, set: v => { Object.assign(K, v); }});
 })();
+    // Seated legs: by default the shins open forward until the soles sit SIT_DROP below the seat contact, the old
+    // figure's seated height (seats in existing scenes were built for it). seatFit puts the seat contact on the seat
+    // top and opens the knees until the soles reach the floor top under them (KIT.fx.seat calls it).
+    const sole = () => Math.min(...feet.map(f => g.worldToLocal(f.getWorldPosition(new THREE.Vector3())).y));
+    const seatY = () => g.worldToLocal(g.userData.contacts.seat.getWorldPosition(new THREE.Vector3())).y;
+    // Shin opening where f, which rises with the opening, reaches 0 (the ends when it never does).
+    function openTo(f, lo = 0, hi = 1.1) {
+      if (f(lo) >= 0) return lo;
+      if (f(hi) <= 0) return hi;
+      for (let i = 0; i < 24; i++) { const m = (lo + hi) / 2; f(m) > 0 ? hi = m : lo = m; }
+      return (lo + hi) / 2;
+    }
+    const legs = open => { for (const s of ["l", "r"]) { joints["knee_" + s].rotation.x = Math.PI / 2 - open; joints["ankle_" + s].rotation.x = open; }
+      g.updateWorldMatrix(true, true); };
+    // Knees up by a (radians; below 0 = thighs down), shins vertical, soles flat: the soles rise about thigh * sin(a)
+    // while staying where they are front to back, the way a wheelchair user sits on a high footrest.
+    const knees = a => { for (const s of ["l", "r"]) { joints["hip_" + s].rotation.x = -Math.PI / 2 - a; joints["knee_" + s].rotation.x = Math.PI / 2 + a; joints["ankle_" + s].rotation.x = 0; }
+      g.updateWorldMatrix(true, true); };
+    g.pose("sit", {}, true);
+    shinOpen = openTo(o => { legs(o); return SIT_DROP - (seatY() - sole()); });
+    {   // seated arms: shoulder pitch, shoulder spread, elbow so the palms sit where the old figure's did (Gauss-Newton)
+      const miss = a => { sitArm = a; g.pose("sit", {}, true); g.updateWorldMatrix(true, true);
+        const c = g.worldToLocal(g.userData.contacts.seat.getWorldPosition(new THREE.Vector3()));
+        return g.worldToLocal(hands[1].getWorldPosition(new THREE.Vector3())).sub(c).sub(new THREE.Vector3(...SIT_PALM)); };
+      let a = sitArm.slice();
+      for (let it = 0; it < 12; it++) {
+        const r0 = miss(a), Jc = [0, 1, 2].map(k => { const b = a.slice(); b[k] += 1e-4; return miss(b).sub(r0).divideScalar(1e-4); });
+        const Jm = new THREE.Matrix3().set(Jc[0].x, Jc[1].x, Jc[2].x, Jc[0].y, Jc[1].y, Jc[2].y, Jc[0].z, Jc[1].z, Jc[2].z);
+        if (Math.abs(Jm.determinant()) < 1e-12) break;
+        const d = r0.clone().applyMatrix3(Jm.invert());
+        a = [a[0] - d.x, a[1] - d.y, a[2] - d.z];
+        if (d.length() < 1e-6) break;
+      }
+      sitArm = a;
+    }
+    g.seatFit = function ({seat, floor, back} = {}) {
+      if (g.userData.pose !== "sit") return g;
+      for (const o of [seat, floor, back]) if (o) o.updateWorldMatrix(true, true);   // a chair that moved this frame
+      g.updateWorldMatrix(true, true);
+      if (back) {   // slide forward (body +Z) until the back and buttocks are out of the seat back's box
+        deform();
+        const inv = new THREE.Matrix4().copy(g.matrixWorld).invert(), box = new THREE.Box3().setFromObject(back).applyMatrix4(inv), v = new THREE.Vector3();
+        let rear = Infinity;
+        for (const s of skins) if (/^(torso|pelvis)/.test(s.o.userData.rvPart)) {
+          const p = s.o.geometry.attributes.position;
+          for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i);
+            if (v.x > box.min.x && v.x < box.max.x && v.y > box.min.y && v.y < box.max.y && v.z < rear) rear = v.z; }
+        }
+        if (rear < box.max.z + .003) {
+          const w = new THREE.Vector3(0, 0, box.max.z + .003 - rear).applyMatrix4(g.matrixWorld), o = new THREE.Vector3().applyMatrix4(g.matrixWorld);
+          g.position.add(g.parent ? g.parent.worldToLocal(w).sub(g.parent.worldToLocal(o)) : w.sub(o)); g.updateWorldMatrix(true, true);
+        }
+      }
+      const down = new THREE.Vector3(0, -1, 0).transformDirection(g.matrixWorld), k = g.matrixWorld.getMaxScaleOnAxis(), ray = new THREE.Raycaster();
+      const below = (root, p, reach) => {   // first surface of root under p within reach, as a world point
+        ray.set(p, down); ray.far = reach;
+        const hit = ray.intersectObject(root, true).find(h => h.object.isMesh && h.object.visible);
+        return hit ? hit.point : null;
+      };
+      if (seat) {
+        const c = g.userData.contacts.seat.getWorldPosition(new THREE.Vector3()), top = below(seat, c.clone().addScaledVector(down, -.25 * k), .6 * k);
+        if (top) {
+          const move = g.parent ? g.parent.worldToLocal(top.clone()).sub(g.parent.worldToLocal(c.clone())) : top.clone().sub(c);
+          g.position.add(move); g.updateWorldMatrix(true, true);
+        }
+      }
+      if (floor) {   // f = how far the floor top lies below the lower sole, body metres (rises as the shins open)
+        const f = () => Math.min(...feet.map(o => { const p = o.getWorldPosition(new THREE.Vector3()), q = below(floor, p.clone().addScaledVector(down, -.35 * k), .9 * k);
+          return q ? q.sub(p).dot(down) / k : Infinity; }));
+        const KNEES = [-.25, .75], at = a => { knees(a); return f(); };
+        const solve = (lo, hi) => { if (at(lo) >= 0) return lo; if (at(hi) <= 0) return hi; for (let i = 0; i < 24; i++) { const m = (lo + hi) / 2; at(m) > 0 ? hi = m : lo = m; } return (lo + hi) / 2; };
+        // f rises with a; f(a) = 0 puts the lower sole on the floor top. A floor out of reach keeps the nearest end.
+        knees(solve(...KNEES));
+      }
+      deform(); return g;
+    };
