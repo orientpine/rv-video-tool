@@ -25,10 +25,10 @@ CASE = r"""async ([dxs, loadDx, s = 1, bed = false, seg = 1, nogrid = false, ano
     const heap = new THREE.Mesh(new THREE.SphereGeometry(.3, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), M()); heap.name = 'loose-load'; heap.position.y = .4; g.add(heap);
     truck.add(g); }
   if (loadDx !== null) { const load = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial()); load.name = 'loose-load'; load.position.set(loadDx, 0, 0); truck.add(load); }
-  let out;
-  for (const dx of dxs) { truck.position.x = dx; truck.updateMatrixWorld(true); window.__rvClearance.begin(); r.render(scene, cam); out = window.__rvClearance.check(); }
+  const outs = [];
+  for (const dx of dxs) { truck.position.x = dx; truck.updateMatrixWorld(true); window.__rvClearance.begin(); r.render(scene, cam); outs.push(window.__rvClearance.check()); }
   r.dispose(); r.domElement.remove();
-  return {machine: out.targets.machine, humans: out.findings.filter(f => f.rule === 'human penetration').length, fails: out.findings.filter(f => f.rule === 'machine penetration').map(f => [f.name, +f.mm.toFixed(1)])};
+  return outs;
 }"""
 
 BED = r"""async ([bedKind, boom, boomOpen, frames = [[6, 0], [0, 0]]]) => {
@@ -48,11 +48,32 @@ BED = r"""async ([bedKind, boom, boomOpen, frames = [[6, 0], [0, 0]]]) => {
     truck.add(box(2.3, .95, .08, 0, .575, -2.11)); truck.add(box(2.3, .95, .08, 0, .575, 2.11)); truck.add(box(.2, .2, .2, 0, .2, 1.5)); }
   else truck.add(box(2.3, 1.05, 4.3, 0, .525, 0, null, bedKind === 'open' ? 'top' : bedKind === 'crack' ? 'crack' : false));
   scene.add(truck);
-  let out;
-  for (const [dx, ex] of frames) { truck.position.x = dx; exc.position.x = ex; truck.updateMatrixWorld(true); exc.updateMatrixWorld(true); window.__rvClearance.begin(); r.render(scene, cam); out = window.__rvClearance.check(); }
+  const outs = [];
+  for (const [dx, ex] of frames) { truck.position.x = dx; exc.position.x = ex; truck.updateMatrixWorld(true); exc.updateMatrixWorld(true); window.__rvClearance.begin(); r.render(scene, cam); outs.push(window.__rvClearance.check()); }
   r.dispose(); r.domElement.remove();
-  return out.findings.filter(f => f.rule === 'machine penetration').map(f => [f.name, f.mm === null ? null : +f.mm.toFixed(1)]);
+  return outs;
 }"""
+
+
+def last_frame(outs):
+    """Machine rows are decided by check_clearance.machine_findings over the frames in order, as rv check does."""
+    rows = [[i, None, out] for i, out in enumerate(outs)]
+    check_clearance.machine_findings(rows)
+    return rows[-1][2]
+
+
+def machine_fails(out):
+    return [[f["name"], None if f["mm"] is None else round(f["mm"], 1)] for f in out["findings"] if f["rule"] == "machine penetration"]
+
+
+async def run_case(p, args):
+    out = last_frame(await p.evaluate(CASE, args))
+    return {"machine": out["targets"]["machine"], "humans": sum(f["rule"] == "human penetration" for f in out["findings"]),
+            "fails": machine_fails(out)}
+
+
+async def run_bed(p, args):
+    return machine_fails(last_frame(await p.evaluate(BED, args)))
 
 
 async def main():
@@ -63,26 +84,26 @@ async def main():
         await p.add_script_tag(path=str(ROOT / "vendor/three-0.147.0.min.js"))
         await p.evaluate("window.KIT = window.KIT || {fx: {clearance: {attachments: [], seats: []}}}")
         await p.evaluate(check_clearance.MESH_CHECK)
-        cases = {"swings into it 0.1 m": await p.evaluate(CASE, [[3.0, 0.9], None]),
-                 "apart": await p.evaluate(CASE, [[3.0, 3.0], None]),
-                 "touching": await p.evaluate(CASE, [[3.0, 1.0], None]),
-                 "seated from the first frame": await p.evaluate(CASE, [[0.9, 0.9], None]),
-                 "load in bed overlaps arm": await p.evaluate(CASE, [[3.0, 1.05], -0.05 - 1.05]),
-                 "0.3 m held tool into a body": await p.evaluate(CASE, [[3.0, 0.5], None, 0.1]),
-                 "arm into a loaded bed (boxes + heap)": await p.evaluate(CASE, [[-5.0, -2.2], None, 1, True])}
-        grid_on = await p.evaluate(CASE, [[3.0, 0.93], None, 1, False, 12, False])
-        grid_off = await p.evaluate(CASE, [[3.0, 0.93], None, 1, False, 12, True])
-        anon = await p.evaluate(CASE, [[3.0, 0.9], None, 1, False, 1, False, True])
-        beds = {"arm in the air over a five-box bed": (await p.evaluate(BED, ["boxes", [.3, .3, .3, 0, .5, 0], False]), False),
-                "arm resting on a five-box bed floor": (await p.evaluate(BED, ["boxes", [.3, .3, .3, 0, .25, 0], False]), False),
-                "arm through a 0.08 m side wall": (await p.evaluate(BED, ["boxes", [.3, .3, .3, 1.11, .6, 0], False]), True),
-                "arm in the air inside an open-shell bed": (await p.evaluate(BED, ["open", [.3, .3, .3, 0, .5, 0], False]), False),
-                "open-bottom arm over a bed part without touching it": (await p.evaluate(BED, ["boxes", [.9, .9, .9, 0, .6, 1.5], "bottom"]), False),
-                "open-shell arm through a side wall": (await p.evaluate(BED, ["boxes", [.3, .3, .9, 1.11, .6, 0], "top"]), True),
-                "open-shell arm through an open-shell bed wall (faces cross)": (await p.evaluate(BED, ["open", [.3, .3, .3, 1.15, .6, 0], "top"]), True),
-                "cracked arm in a cracked body from the first frame, unchanged": (await p.evaluate(BED, ["crack", [.3, .3, .3, 1.15, .6, 0], "crack", [[0, 0], [0, 0]]]), False),
-                "cracked arm in a cracked body from the first frame, then 0.1 m deeper": (await p.evaluate(BED, ["crack", [.3, .3, .3, 1.15, .6, 0], "crack", [[0, 0], [0, -.1]]]), True)}
-        closed_box = await p.evaluate(BED, ["closed", [.3, .3, .3, 0, .5, 0], False])
+        cases = {"swings into it 0.1 m": await run_case(p, [[3.0, 0.9], None]),
+                 "apart": await run_case(p, [[3.0, 3.0], None]),
+                 "touching": await run_case(p, [[3.0, 1.0], None]),
+                 "seated from the first frame": await run_case(p, [[0.9, 0.9], None]),
+                 "load in bed overlaps arm": await run_case(p, [[3.0, 1.05], -0.05 - 1.05]),
+                 "0.3 m held tool into a body": await run_case(p, [[3.0, 0.5], None, 0.1]),
+                 "arm into a loaded bed (boxes + heap)": await run_case(p, [[-5.0, -2.2], None, 1, True])}
+        grid_on = await run_case(p, [[3.0, 0.93], None, 1, False, 12, False])
+        grid_off = await run_case(p, [[3.0, 0.93], None, 1, False, 12, True])
+        anon = await run_case(p, [[3.0, 0.9], None, 1, False, 1, False, True])
+        beds = {"arm in the air over a five-box bed": (await run_bed(p, ["boxes", [.3, .3, .3, 0, .5, 0], False]), False),
+                "arm resting on a five-box bed floor": (await run_bed(p, ["boxes", [.3, .3, .3, 0, .25, 0], False]), False),
+                "arm through a 0.08 m side wall": (await run_bed(p, ["boxes", [.3, .3, .3, 1.11, .6, 0], False]), True),
+                "arm in the air inside an open-shell bed": (await run_bed(p, ["open", [.3, .3, .3, 0, .5, 0], False]), False),
+                "open-bottom arm over a bed part without touching it": (await run_bed(p, ["boxes", [.9, .9, .9, 0, .6, 1.5], "bottom"]), False),
+                "open-shell arm through a side wall": (await run_bed(p, ["boxes", [.3, .3, .9, 1.11, .6, 0], "top"]), True),
+                "open-shell arm through an open-shell bed wall (faces cross)": (await run_bed(p, ["open", [.3, .3, .3, 1.15, .6, 0], "top"]), True),
+                "cracked arm in a cracked body from the first frame, unchanged": (await run_bed(p, ["crack", [.3, .3, .3, 1.15, .6, 0], "crack", [[0, 0], [0, 0]]]), False),
+                "cracked arm in a cracked body from the first frame, then 0.1 m deeper": (await run_bed(p, ["crack", [.3, .3, .3, 1.15, .6, 0], "crack", [[0, 0], [0, -.1]]]), True)}
+        closed_box = await run_bed(p, ["closed", [.3, .3, .3, 0, .5, 0], False])
         await b.close()
     same = grid_on == grid_off and bool(grid_on["fails"])
     print(f"{'PASS' if same else 'FAIL'} 864-triangle boxes: grid index and full loop give the same rows: {grid_on['fails']} vs {grid_off['fails']}")
@@ -102,6 +123,29 @@ async def main():
     named = bool(anon["fails"]) and all("[machine-a / machine-b]" in f[0] for f in anon["fails"])
     print(f"{'PASS' if named else 'FAIL'} unnamed top groups: the row names the nearest named ancestors: {anon['fails']}")
     ok = ok and same and named
+    # Two pages, interleaved frames: the pair is first seen apart on page 1 (frame 0) and only page 2 sees it 0.1 m in
+    # (frame 30). The base must come from page 1's sighting (0 mm), so the 100 mm penetration is still a finding.
+    truck, robot, fixed = [0, 0, 0, 1, 1, 1], [5, 0, 0, 6, 1, 1], [0, 0, 2, 1, 1, 3]
+    seen = lambda key, boxes, **m: {"count": 1, "findings": [], "measurements": [], "machines": [dict(key=key, boxes=boxes, **m)]}
+    deep = dict(head="Scene <-> Scene", worst="", cross="", depth=.1, depth_text="100", uuid="u")
+    page1 = [[0, None, seen("1|2", [fixed, truck], apart=True)]]
+    page2 = [[30, None, seen("1|2", [fixed, truck], **deep)]]
+    expected, wanted = check_clearance.identity_checks([(page1,), (page2,)])
+    rows = sorted(page1 + page2, key=lambda r: r[0])
+    check_clearance.machine_findings(rows)
+    split = [round(f["mm"]) for f in rows[1][2]["findings"]] == [100] and wanted == {1: {0: {1, 2}}}
+    print(f"{'PASS' if split else 'FAIL'} pages split the frames: first sighting on another page sets the base, and the other page is asked about frame 0: {rows[1][2]['findings']} {wanted}")
+
+    class Page:   # stands in for a browser page: answers the world boxes of the asked ids at the asked frame
+        def __init__(self, boxes): self.boxes = boxes
+        async def evaluate(self, _script, args): return [self.boxes[id_] for id_ in args[1]]
+    same = (await check_clearance.same_bodies([None, Page({1: fixed, 2: truck})], expected, wanted))
+    # Two models both named "Scene" load in a different order on page 2: id 2 is the robot there. Names and child
+    # places match, but at frame 0 the robot's box is not the truck's, so the split is refused.
+    swapped = (await check_clearance.same_bodies([None, Page({1: fixed, 2: robot})], expected, wanted))
+    differ = same and not swapped
+    print(f"{'PASS' if differ else 'FAIL'} a key that names another body on another page (same names, swapped load order) is caught")
+    ok = ok and split and differ
     print("MACHINE_COLLISION", "PASS" if ok else "FAIL")
     return 0 if ok else 1
 
