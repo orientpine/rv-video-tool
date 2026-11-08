@@ -11,7 +11,7 @@ T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 mkdir -p "$T/tool/lib" "$T/bin" "$T/proj/build" "$T/proj/out"
 cp "$RV_SRC" "$T/tool/rv"; chmod +x "$T/tool/rv"
 mkfifo "$T/started" "$T/go"
-for f in check_cuts check_flicker sync_check check_clearance check_captions sheet check_layout check_audio check_motion check_numbers; do printf 'print("STUB PASS")\n' > "$T/tool/lib/$f.py"; done
+for f in check_cuts check_flicker sync_check check_clearance check_captions sheet check_layout check_audio check_motion check_numbers check_quality; do printf 'print("STUB PASS")\n' > "$T/tool/lib/$f.py"; done
 cat > "$T/bin/python3" <<EOF
 #!/bin/bash
 if [ ! -e "$T/once" ]; then : > "$T/once"; echo x > "$T/started"; read -r _ < "$T/go"; fi

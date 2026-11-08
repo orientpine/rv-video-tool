@@ -9,7 +9,7 @@ TOOL="$(cd "${1:-$(dirname "$0")/..}" && pwd)"
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 mkdir -p "$T/tool/lib" "$T/bin"
 cp "$TOOL/rv" "$T/tool/rv"; cp "$TOOL/lib/mix.py" "$TOOL/lib/check_audio.py" "$T/tool/lib/"
-for f in check_cuts check_flicker sync_check check_clearance check_captions sheet check_layout check_motion check_numbers cutlist check_sharp check_human; do
+for f in check_cuts check_flicker sync_check check_clearance check_captions sheet check_layout check_motion check_numbers cutlist check_sharp check_human check_quality; do
   printf 'import sys\nm = any(x == "--mutate" or "/mut_" in x for x in sys.argv)\nprint("MUTATION_CAUGHT" if m else "STUB PASS")\nsys.exit(1 if m else 0)\n' > "$T/tool/lib/$f.py"
 done
 printf '#!/bin/bash\nshift; while [ "$1" != python ] && [ $# -gt 0 ]; do shift; done; shift; exec python3 "$@"\n' > "$T/bin/uv"
