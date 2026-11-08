@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang='ko'>
+<head>
+<meta charset='UTF-8'>
+<title>기술 설명 영상</title>
+<style>
+:root {
+  --surface:#F7F9F9; --rule:#95A8AF; --ink:#16323C; --ink3:#7A8E96;
+  --accent:#1F5566; --fade:#0E1A22;
+  --ui:Pretendard,"Apple SD Gothic Neo","Noto Sans CJK KR","Noto Sans KR",sans-serif;
+}
+html,body { margin:0; width:1920px; height:1080px; overflow:hidden; background:var(--fade); }
+#stage { position:absolute; left:0; top:0; width:1920px; height:1080px; overflow:hidden; }
+#stage canvas { position:absolute; left:0; top:0; display:block; }
+.overlay { position:absolute; left:0; top:0; width:1920px; height:1080px; display:none; pointer-events:none; z-index:1; }
+#steps { position:absolute; top:36px; left:0; right:0; display:flex; justify-content:center; gap:12px; z-index:5; opacity:0; }
+.chip { font:600 34px/1 var(--ui); letter-spacing:-0.3px; padding:12px 26px; border:2px solid var(--rule); background:var(--surface); color:#566A72; }
+.chip.on { background:var(--accent); border-color:var(--accent); color:var(--surface); }
+#cap { position:absolute; left:0; right:0; bottom:56px; display:flex; justify-content:center; z-index:6; }
+#cap .box { max-width:1560px; background:var(--surface); border-top:3px solid var(--accent); color:var(--ink); font:600 44px/1.36 var(--ui); letter-spacing:-0.6px; padding:14px 36px 16px; text-align:center; white-space:pre-line; word-break:keep-all; }
+#cap .box:empty { display:none; }
+#fade { position:absolute; inset:0; background:var(--fade); z-index:9; opacity:0; }
+#theme-blend { position:absolute; left:0; top:0; width:1920px; height:1080px; pointer-events:none; z-index:2; display:none; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div id="steps"></div>
+<div id="cap"><div class="box"></div></div>
+<div id="fade"></div>
+<script>
+/*__THREE__*/
+</script>
+<script>
+/*__BUNDLE__*/
+</script>
+<script>
+(function () {
+  const TL = window.TIMELINE;
+  const stage = document.getElementById("stage"), stepsEl = document.getElementById("steps");
+  const caption = document.querySelector("#cap .box"), fade = document.getElementById("fade");
+  const renderer = new THREE.WebGLRenderer({antialias:true});
+  renderer.setPixelRatio(1); renderer.setSize(1920, 1080);
+  stage.append(renderer.domElement);
+  const raw = renderer.render.bind(renderer);
+  renderer.render = function (scene, camera) {
+    const emphasis = KIT.fx.emphasis;
+    if (emphasis.active() && scene.isScene && !renderer.getScissorTest()) return emphasis.wrap(scene, camera, raw);
+    return raw(scene, camera);
+  };
+  if (window.LOOK && window.LOOK_CFG) LOOK.install(renderer, LOOK_CFG);
+  const timeline = TL, FPS = timeline.fps || 30;
+  const registry = window.SCENES = window.SCENES || {};
+  const looks = window.SCENE_LOOK || {}, transitions = window.TRANSITIONS || {};
+  const blendLength = Math.max(1.5, (window.THEME_PLAN && THEME_PLAN.blend_s) || 2);
+  const modeOf = name => looks[name] || "cinema";
+  const bounds = (value, low, high) => Math.min(high, Math.max(low, value));
+  const ramp = u => { u = bounds(u, 0, 1); return u * u * (3 - 2 * u); };
+
+  function placeholder(name, duration) {
+    let text;
+    return {duration, show() {},
+      init(sceneRenderer, namespace, layer) {
+        text = document.createElement("div");
+        text.style.cssText = "position:absolute;left:0;top:400px;width:100%;text-align:center;color:#F7F9F9;font:600 64px/1.4 var(--ui)";
+        layer.append(text);
+      },
+      render(t) {
+        renderer.setClearColor("#6F8087", 1); renderer.toneMapping = THREE.NoToneMapping;
+        renderer.clear();
+        text.innerHTML = `${name} · 준비 중<br><span style="font:500 40px Menlo,monospace">${t.toFixed(3)} s</span>`;
+      }};
+  }
+  const entries = [], warnings = [];
+  let total = 0;
+  for (const name of timeline.order) {
+    const planned = timeline.modules[name].duration;
+    const module = registry[name] || (registry[name] = placeholder(name, planned));
+    const duration = +module.duration || planned;
+    const sceneLayer = document.createElement("div");
+    sceneLayer.dataset.scene = name; sceneLayer.className = "overlay";
+    stage.append(sceneLayer);
+    entries.push({name, m:module, overlay:sceneLayer, dur:duration, start:total, end:total + duration});
+    total += duration;
+    if (Math.abs(duration - planned) > 0.5 / FPS) warnings.push(`${name}: ${duration}s / timeline ${planned}s`);
+  }
+  if (warnings.length) {
+    const text = warnings.join("; ") + " — use timeline duration";
+    console.warn(text);
+    const banner = document.createElement("div");
+    banner.style.cssText = "position:absolute;left:0;right:0;top:0;z-index:8;background:#A3223F;color:white;font:600 26px/1.4 var(--ui);padding:8px 20px";
+    banner.textContent = text; document.body.appendChild(banner);
+  }
+  window.VIDEO_TOTAL_S = total;
+  const lastFrame = total - 1 / FPS;
+  const ready = (async function initializeScenes() {
+    if (document.fonts) { await document.fonts.ready; }
+    for (const entry of entries) await entry.m.init(renderer, THREE, entry.overlay);
+    for (const entry of entries) {
+      entry.overlay.style.display = "none";
+      if (entry.m.show) entry.m.show(false);
+    }
+  })();
+  window.renderReady = ready;
+
+  const blur = window.LOOK && LOOK.on ? LOOK.cfg.mb || {} : {};
+  const samples = Math.max(1, blur.samples | 0), shutter = (blur.shutter || 0.5) / FPS;
+  const environments = window.MBENV = {};
+  async function draw(entry, time) {
+    const local = t => bounds(t - entry.start, 0, entry.dur);
+    if (samples === 1) {
+      KIT.fx.reset(); await entry.m.render(local(time));
+      return;
+    }
+    if (!environments[entry.name]) {
+      LOOK.blurEnd(); LOOK.wantEnv = true;
+      KIT.fx.reset(); await entry.m.render(0);
+      environments[entry.name] = LOOK.lastEnv || "indoor";
+    }
+    const exposure = environments[entry.name] === "outdoor" && blur.outdoor ? blur.outdoor.shutter / FPS : shutter;
+    if (exposure > 0) {
+      for (let i = 0; i < samples; i++) {
+        LOOK.blurStep(samples, i);
+        KIT.fx.reset();
+        await entry.m.render(local(time - exposure * (samples - 1 - i) / (samples - 1)));
+      }
+    } else {
+      LOOK.blurEnd(); KIT.fx.reset(); await entry.m.render(local(time));
+    }
+    LOOK.blurEnd();
+  }
+
+  const blend = document.createElement("div"); blend.id = "theme-blend";
+  const canvas = document.createElement("canvas"); canvas.width = 1920; canvas.height = 1080;
+  blend.appendChild(canvas); stage.appendChild(blend);
+  const context = canvas.getContext("2d");
+  let cloned = null, current = null;
+  const steps = timeline.steps || [];
+  const labels = new Map();
+  for (const step of steps) labels.set(step.n, step.label);
+  const chips = [...labels].sort((a, b) => a[0] - b[0]).map(([number, text]) => {
+    const chip = document.createElement("span");
+    chip.className = "chip"; chip.dataset.n = number; chip.textContent = text;
+    stepsEl.appendChild(chip); return chip;
+  });
+  const firstStep = Math.min(...steps.map(s => s.start)), lastStep = Math.max(...steps.map(s => s.end));
+  let chipFrom;
+
+  window.renderAt = async function (time) {
+    await ready;
+    const selected = entries.find(entry => entry.end > time) || entries[entries.length - 1];
+    if (current !== selected) {
+      for (const entry of entries) if (entry !== selected) {
+        entry.overlay.style.display = "none";
+        if (entry.m.show) entry.m.show(false);
+      }
+      selected.overlay.style.display = "block";
+      if (selected.m.show) selected.m.show(true);
+      current = selected;
+    }
+    window.__LOOK_FRAME = Math.round(time * FPS);
+    KIT.fx.emphasis.mode = looks[selected.name] && looks[selected.name] !== "cinema" ? looks[selected.name] : null;
+    const boundary = entries.findIndex((entry, i) => i > 0 && modeOf(entry.name) !== modeOf(entries[i - 1].name) && time >= entry.start && time < entry.start + blendLength);
+    if (boundary > 0 && !window.__THEME_HARD_CUT) {
+      const previous = entries[boundary - 1], end = previous.end - 1 / FPS, outgoingLayer = previous.overlay;
+      if (selected.m.show) selected.m.show(false);
+      if (previous.m.show) previous.m.show(true);
+      outgoingLayer.style.display = "block";
+      KIT.fx.emphasis.mode = looks[previous.name] !== "cinema" ? looks[previous.name] : null;
+      window.__LOOK_FRAME = Math.round(FPS * end);
+      await draw(previous, end);
+      context.drawImage(renderer.domElement, 0, 0);
+      if (cloned) cloned.remove();
+      cloned = outgoingLayer.cloneNode(true); blend.appendChild(cloned);
+      outgoingLayer.style.display = "none";
+      if (previous.m.show) previous.m.show(false);
+      if (selected.m.show) selected.m.show(true);
+      blend.style.display = "block";
+      blend.style.opacity = (1 - ramp((time - entries[boundary].start) / blendLength)).toFixed(6);
+    } else blend.style.display = "none";
+    window.__LOOK_FRAME = Math.round(time * FPS);
+    KIT.fx.emphasis.mode = looks[selected.name] && looks[selected.name] !== "cinema" ? looks[selected.name] : null;
+    await draw(selected, time);
+
+    let text = "";
+    for (const item of timeline.captions || []) if (item.t <= time) text = item.text;
+    if (caption.textContent !== text) caption.textContent = text;
+    if (chipFrom === undefined) {
+      chipFrom = firstStep - 0.4;
+      const containing = entries.findIndex(entry => firstStep >= entry.start && firstStep < entry.end);
+      if (containing > 0) {
+        const incomingName = entries[containing].name, precedingName = entries[containing - 1].name;
+        let incomingDuration = +TL.crossfade_s || 0;
+        if (modeOf(incomingName) !== modeOf(precedingName)) {
+          const plannedBlend = (window.THEME_PLAN && window.THEME_PLAN.blend_s) || 2;
+          incomingDuration = Math.max(incomingDuration, 1.5, plannedBlend);
+        } else if (transitions[incomingName]) {
+          incomingDuration = Math.max(incomingDuration, (transitions[incomingName].dur || 0.6) / 2);
+        }
+        chipFrom = Math.max(chipFrom, entries[containing].start + incomingDuration);
+      }
+    }
+    const reveal = Math.max(0, Math.min(1, (time - chipFrom) / 0.4, (lastStep + 0.3 - time) / 0.3));
+    const clippedEdge = ((1 - reveal) * 50).toFixed(2);
+    stepsEl.style.opacity = String(Number(reveal > 0));
+    stepsEl.style.clipPath = reveal < 1 ? `inset(0 ${clippedEdge}% 0 ${clippedEdge}%)` : "";
+    const active = steps.find(step => step.start <= time && time < step.end);
+    for (const chip of chips) chip.classList.toggle("on", !!active && active.n === +chip.dataset.n);
+    fade.style.background = "";
+    let opacity = 0;
+    if (time < timeline.fade_in_s) opacity = 1 - time / timeline.fade_in_s;
+    else if (time > lastFrame - timeline.fade_out_s) opacity = Math.min(1, (time - lastFrame + timeline.fade_out_s) / timeline.fade_out_s);
+    for (let i = 1; i < entries.length; i++) {
+      const entry = entries[i], transition = transitions[entry.name];
+      if (modeOf(entry.name) !== modeOf(entries[i - 1].name) || entry.start <= 0 || !transition) continue;
+      const half = (transition.dur || 0.6) / 2, s = 1 - Math.abs(time - entry.start) / half;
+      if (s > 0) {
+        opacity = Math.max(opacity, (transition.depth ?? 1) * s * s * (3 - 2 * s));
+        fade.style.background = looks[entry.name] && looks[entry.name] !== "cinema" ? "#E6EAEC" : "";
+      }
+    }
+    fade.style.opacity = opacity.toFixed(4);
+  };
+  const query = new URLSearchParams(location.search);
+  if (query.has("t")) window.renderReady.then(() => window.renderAt(parseFloat(query.get("t")) || 0));
+  if (query.has("play")) window.renderReady.then(() => {
+    const start = performance.now();
+    const tick = async () => {
+      await window.renderAt(((performance.now() - start) / 1000) % total);
+      requestAnimationFrame(tick);
+    };
+    tick();
+  });
+})();
+</script>
+</body>
+</html>

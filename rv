@@ -1,0 +1,261 @@
+#!/bin/bash
+# rv: 대본(JSON) → 장면 → 나레이션(낱말 시각) → 렌더 → mp4 · srt · 썸네일 · 검사를 한 명령으로.
+#
+#   rv make  <프로젝트> [--from A --to B] [--discord] [--jobs N] [--no-heavy] [--full]   바뀐 장면 프레임만 다시 찍음(--full = 전부)
+#   rv preview <프로젝트> [--fps 15] [--jobs N]        빠른 미리보기: 실사 단계 끔·15 fps·960 px → out/<name>_preview.mp4 (검사 없음)
+#   rv still <프로젝트> <t ...>                      장면 몇 순간만 PNG (빌드만, 인코딩 없음)
+#   rv scrub <프로젝트> <A> <B>                      A~B 초를 0.2 s 간격으로 PNG (X 글 6단계 "전환 훑기")
+#   rv discord <프로젝트> [--min-kbps 1200]          디스코드판만 다시: 20 MiB 에 넣으면 바닥 아래인 긴 영상은 _discord_part1.mp4 … 로 나눔
+#   rv check <프로젝트>                               이미 만든 mp4 에 검사만 다시
+#   rv board <프로젝트> [장면,장면]                   콘티: 장면마다 시작·키워드 순간·끝 정지 화면 한 장 (렌더 전에 연출 검토)
+#
+# 프로젝트 폴더:  script.json · scenes/<장면>/module.js (+deps.json) · shared/ · data/
+# 만들어지는 것:  build/ (tts 캐시·timeline·video.html·frames)   out/<name>.mp4 · .srt · _thumb.jpg · _discord.mp4 · CHECKS.md · sheets/
+#
+# 무거운 단계(캡처·인코딩)는 예약된 작업 슬롯 안에서 이 PC 로 돈다.
+# 음성(edge-tts)은 인터넷이 필요해 슬롯 밖에서 먼저 만든다(대본 그대로면 캐시라 오프라인).
+set -euo pipefail
+# 본문 전체를 main 안에 둔다: bash 가 시작할 때 끝까지 읽어 두므로, 도는 중에 이 파일이 바뀌어도 죽지 않는다.
+# 이 파일·lib/*.sh 를 고칠 때는 새 파일에 쓰고 mv 로 바꿔치기한다.
+main() {
+TOOL="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+L="$TOOL/lib"
+UVPW=(uv run -q --no-project --with playwright --with pillow python)
+cmd="${1:-}"; shift || true
+P="$(cd "${1:?프로젝트 폴더를 주십시오}" && pwd)"; shift
+B="$P/build"; O="$P/out"
+NAME=$(python3 -c "import json,sys;d=json.load(open('$P/script.json'));print(d.get('name') or '$(basename "$P")')")
+mkdir -p "$B" "$O"
+
+prep() {   # 음성·시간표·묶기·나레이션 트랙(음량 맞춤)
+  uv run -q --no-project --with edge-tts python "$L/timeline.py" "$P"
+  python3 "$L/build.py" "$P"
+  python3 "$L/narration.py" "$B/narration.json" --out "$B/narration_raw.wav"
+  python3 "$L/master.py" "$B/narration_raw.wav" "$B/narration.wav"
+  AUD="$B/narration.wav"   # 5단계: script.json 에 "sound" 가 있으면 배경음·효과음을 깔고 말할 때 줄인 뒤 −16 LUFS 로 (lib/mix.py)
+  if python3 -c "import json,sys;sys.exit(0 if json.load(open('$P/script.json')).get('sound') else 1)"; then
+    # "auto_cues": true (또는 "cues": "auto") 면 리그 동작(발·팔·헤드·회전 부품·숫자 카드)에서 효과음 큐를 뽑음 (lib/cues.py)
+    if python3 -c "import json,sys;s=json.load(open('$P/script.json'))['sound'];sys.exit(0 if s.get('auto_cues') or s.get('cues')=='auto' else 1)"; then
+      "${UVPW[@]}" "$L/cues.py" "$B/video.html" --out "$B/cues_auto.json"
+    fi
+    python3 "$L/mix.py" "$P" --narration build/narration.wav --out build/mix.wav && AUD="$B/mix.wav"
+  else
+    rm -rf "$B/stems"   # 소리 없는 프로젝트: 지난 줄기가 남아 검사에 끼지 않게
+  fi
+}
+
+checks() {   # mp4 하나에 모든 검사. 하나라도 FAIL 이면 종료 코드 1
+  local MP4="$O/$NAME.mp4" R="$O/CHECKS.md" fail=0
+  {
+    echo "# CHECKS $NAME ($(date -u +%FT%TZ))"; echo
+    echo '## 규격'; echo '```'
+    ffprobe -v error -show_entries format=duration,size:stream=codec_name,width,height,r_frame_rate,sample_rate,channels -of default=nw=1 "$MP4"
+    echo '```'
+  } > "$R"
+  # 검사기가 죽으면(Traceback·페이지 오류) 그 검사는 통과가 아니다: CHECK_ERROR 로 적고 strict 여부와 상관없이 판정 FAIL
+  # (장면 init 이 죽어 check_motion·check_sharp·check_clearance 가 아무것도 안 재고 PASS 로 세던 문제)
+  CRASH_RE='Traceback \(most recent call last\)|^ERR |PAGE_ERROR|pageerror|Page\.evaluate: '
+  local TM="$O/CHECKS.timing.tsv"; printf 'step\tstart\tseconds\n' > "$TM"   # 검사마다 걸린 시간(CHECKS.md 내용은 그대로)
+  run() { local title="$1"; shift; local tmp ec=0 t0=$EPOCHREALTIME; tmp=$(mktemp); echo "## $title" >> "$R"; echo '```' >> "$R"
+          acquire; "$@" > "$tmp" 2>&1 || ec=$?; release; cat "$tmp" >> "$R"; echo '```' >> "$R"
+          printf '%s\t%s\t%.1f\n' "$title" "$t0" "$(echo "$EPOCHREALTIME - $t0" | bc)" >> "$TM"
+          if grep -Eq "$CRASH_RE" "$tmp"; then echo "CHECK_ERROR 검사기가 끝까지 못 돎(오류) — 통과로 치지 않음" >> "$R"; fail=1; rm -f "$tmp"; return 1; fi
+          rm -f "$tmp"; return $ec; }
+  "${UVPW[@]}" "$L/cutlist.py" "$B/video.html" --out "$B/cuts.json" >/dev/null 2>&1 || echo '{"cuts": []}' > "$B/cuts.json"   # 장면이 선언한 의도 컷
+  # 검사를 묶음으로 나눠 동시에: 묶음·변이마다 제 조각 파일에 쓰고
+  # 끝에 원래 순서대로 이어 붙여 CHECKS.md 는 하나씩 돌 때와 같은 바이트. 검사기(브라우저) 동시 수는 RV_CHECK_JOBS(기본 6), 1 이면 예전처럼 하나씩
+  local SEC; SEC=$(mktemp -d); local JOBS_N="${RV_CHECK_JOBS:-6}"; local -a SUBS=()
+  acquire() { local k; while :; do for ((k = 1; k <= JOBS_N; k++)); do mkdir "$SEC/slot$k" 2>/dev/null && { SLOT=$k; return 0; }; done; sleep 0.2; done; }
+  release() { rmdir "$SEC/slot$SLOT"; }
+  sub() { local id="$1"; shift; SUBS+=("$id")
+          if [ "$JOBS_N" -le 1 ]; then ( SUBS=(); R="$SEC/$id.md"; fail=0; : > "$R"; "$@"; echo "$fail" > "$SEC/$id.fail" )
+          else ( SUBS=(); R="$SEC/$id.md"; fail=0; : > "$R"; "$@"; echo "$fail" > "$SEC/$id.fail" ) & fi; }
+  sub_join() { local id; wait; for id in "${SUBS[@]}"; do cat "$SEC/$id.md" >> "$R"
+           [ "$(cat "$SEC/$id.fail" 2>/dev/null)" = 0 ] || { [ -f "$SEC/$id.fail" ] || echo "CHECK_ERROR 검사 묶음 $id 이 끝까지 못 돎" >> "$R"; fail=1; }; done; SUBS=(); }
+  local MID; MID=$(python3 -c "import json;t=json.load(open('$B/timeline.json'));print(round(t['total_s']*15))")
+  local DC="$O/${NAME}_discord.mp4" DPJ="$O/${NAME}_discord_parts.json"
+  if [ -f "$DPJ" ]; then   # 나눌 디스코드판(lib/discord.sh): 조각마다 크기, 이어 붙인 것으로 깜빡임·컷(조각 이음매까지)
+    DC="$B/discord_joined.mp4"
+    python3 -c "import json,sys;[print(\"file '%s/%s'\" % (sys.argv[2], p['file'])) for p in json.load(open(sys.argv[1]))]" "$DPJ" "$O" > "$B/discord_parts.txt"
+    ffmpeg -nostdin -v error -y -f concat -safe 0 -i "$B/discord_parts.txt" -c copy "$DC"
+  fi
+  # 새 검사(6단계)의 지적은 script.json "checks": "strict" 일 때만 판정에 넣는다. 아니면 참고로 적기만(예전 프로젝트는 예전 판정 그대로 = 하위 호환). 변이는 늘 잡혀야 함
+  STRICT=$(python3 -c "import json;print(1 if json.load(open('$P/script.json')).get('checks')=='strict' else 0)")
+  strict_fail() { if [ "$STRICT" = 1 ]; then fail=1; else echo "참고: checks=strict 아님 → 판정에 안 넣음" >> "$R"; fi; }
+  mut() {   # 변이: 검사기가 넣은 결함을 그 자체로 잡았다고 말해야(검사기 출력 MUTATION_CAUGHT) 통과. 원래 FAIL 이라 종료 코드만 1 인 것은 안 침
+    local title="$1"; shift; local tmp t0=$EPOCHREALTIME; tmp=$(mktemp); echo "## $title (변이가 잡혀야 정상)" >> "$R"; echo '```' >> "$R"
+    local ec=0; acquire; "$@" > "$tmp" 2>&1 || ec=$?; release   # set -e 아래서 변이의 FAIL(종료 1)로 rv 가 죽지 않게
+    printf '%s\t%s\t%.1f\n' "$title" "$t0" "$(echo "$EPOCHREALTIME - $t0" | bc)" >> "$TM"
+    tail -40 "$tmp" >> "$R"; echo '```' >> "$R"   # (2026-11-05 전에는 이 줄이 위 주석 안에 있어 변이 출력이 CHECKS.md 에 안 남고 코드 울타리가 안 닫혔음)
+    if [ $ec -ne 0 ] && grep -q "MUTATION_CAUGHT" "$tmp"; then echo "MUTATION_CAUGHT" >> "$R"; elif [ $ec -eq 0 ] && grep -qx "MUTATION_SKIP" "$tmp"; then echo "MUTATION_SKIP" >> "$R"; else echo "MUTATION_NOT_CAUGHT" >> "$R"; fail=1; fi; rm -f "$tmp"; }
+  mut_exit() {
+    if run "$@"; then echo "MUTATION_NOT_CAUGHT" >> "$R"; fail=1; else echo "MUTATION_CAUGHT" >> "$R"; fi; }
+
+  g_cuts() { run "검은 프레임 · 튀는 컷 (check_cuts)" python3 "$L/check_cuts.py" "$MP4" --timeline "$B/timeline.json" --cuts "$B/cuts.json" || fail=1; }
+  g_sync() { run "말하는 순간 강조 (sync_check)" "${UVPW[@]}" "$L/sync_check.py" "$B/video.html" || fail=1
+             mut_exit "변이: 낱말 시각 +1.2 s (FAIL 이어야 정상)" "${UVPW[@]}" "$L/sync_check.py" "$B/video.html" --mutate shift; }
+  g_black() { local BL="$B/mut_black.mp4"   # 변이: 가운데 프레임 하나를 검게 → check_cuts 가 잡아야 정상
+    ffmpeg -nostdin -v error -y -i "$MP4" -vf "drawbox=enable='eq(n\,$MID)':x=0:y=0:w=iw:h=ih:color=black:t=fill" -an -c:v libx264 -preset ultrafast -crf 23 "$BL"
+    mut_exit "변이: 프레임 $MID 검게 (FAIL 이어야 정상)" python3 "$L/check_cuts.py" "$BL" --timeline "$B/timeline.json"
+    rm -f "$BL"; }
+  g_flicker() { run "한두 프레임 튀었다 돌아오기 (check_flicker, 소리판)" uv run -q --no-project --with numpy python "$L/check_flicker.py" "$MP4" || fail=1; }
+  g_discord() {
+    if [ -f "$DPJ" ]; then
+      while read -r f; do
+        run "디스코드판 조각 크기 $f (≤ 20 MiB = 20971520 B)" bash -c "s=\$(stat -c %s '$O/$f'); echo \$s B; [ \$s -le 20971520 ]" || fail=1
+      done < <(python3 -c "import json,sys;[print(p['file']) for p in json.load(open(sys.argv[1]))]" "$DPJ")
+      run "디스코드판 조각 비트레이트 (바닥 이상)" python3 -c "import json,sys;P=json.load(open(sys.argv[1]));[print(p['file'],p['kbps'],'kb/s',round(p['dur'],2),'s') for p in P];sys.exit(0 if min(p['kbps'] for p in P)>=1100 else 1)" "$DPJ" || fail=1
+    fi
+    if [ -f "$DC" ]; then
+      run "한두 프레임 튀었다 돌아오기 (check_flicker, 디스코드판)" uv run -q --no-project --with numpy python "$L/check_flicker.py" "$DC" || fail=1
+      run "디스코드판 검은 프레임 · 튀는 컷" python3 "$L/check_cuts.py" "$DC" --timeline "$B/timeline.json" --cuts "$B/cuts.json" || fail=1
+      [ -f "$DPJ" ] || run "디스코드판 크기 (≤ 20 MiB = 20971520 B)" bash -c "s=\$(stat -c %s '$DC'); echo \$s B; [ \$s -le 20971520 ]" || fail=1
+    fi; }
+  g_flickmut() { local FL="$B/mut_flicker.mp4"   # 변이: 한 프레임만 왼쪽 아래 작은 자리(화면 1/8)를 검게 → check_flicker 가 잡아야 정상(check_cuts 는 못 잡을 크기)
+    ffmpeg -nostdin -v error -y -i "$MP4" -vf "drawbox=enable='eq(n\,$MID)':x=iw/8:y=ih*5/8:w=iw/8:h=ih/8:color=black:t=fill" -an -c:v libx264 -preset ultrafast -crf 18 "$FL"
+    mut_exit "변이: 프레임 $MID 작은 자리 깜빡임 (FAIL 이어야 정상)" uv run -q --no-project --with numpy python "$L/check_flicker.py" "$FL"
+    rm -f "$FL"; }
+  g_legacy() { run "센서·팔이 기계 부품에 파묻히지 않기 (check_clearance)" "${UVPW[@]}" "$L/check_clearance.py" "$B/video.html" --rules legacy || fail=1
+    if ! grep -q "CLEARANCE_CHECK 실제 SKIP" "$R"; then
+      mut_exit "변이: 목표 간극 −5 mm (FAIL 이어야 정상)" "${UVPW[@]}" "$L/check_clearance.py" "$B/video.html" --rules legacy --mutate gap
+    fi; }
+  g_captions() { run "자막 조각마다 보이는 시간 (≥ 0.4 s)" python3 "$L/check_captions.py" "$B/timeline.json" || fail=1; }
+  # 6단계 검사: 글자 겹침·잘림·대비·안전 영역 / 음량·찢어짐 / 관통·순간이동 / 출처 없는 숫자. 검사마다 변이가 걸려야 정상
+  g_layout() { run "글자 겹침·잘림·대비·안전 영역 (check_layout)" "${UVPW[@]}" "$L/check_layout.py" "$B/video.html" || strict_fail
+    sub layout1 mut "변이: 이름표 두 개 겹치기" "${UVPW[@]}" "$L/check_layout.py" "$B/video.html" --mutate overlap --every 30
+    sub layout2 mut "변이: 글자색 = 바탕색" "${UVPW[@]}" "$L/check_layout.py" "$B/video.html" --mutate contrast --every 30
+    sub_join
+    if ! grep -q "OCCLUSION_CHECK 실제 SKIP" "$R"; then   # 설명 대상 가림: check_layout 이 가시율 < 50% 를 잡아야
+      mut "변이: 설명 대상 위에 불투명 카드" "${UVPW[@]}" "$L/check_layout.py" "$B/video.html" --mutate occlude
+    fi; }
+  g_theme() { run "장면 테마 유지·전환 밝기 (check_cuts --theme)" "${UVPW[@]}" "$L/check_cuts.py" "$B/video.html" --theme || strict_fail
+    sub theme1 eval 'run "실제 영상의 흰 화면 반복 (check_cuts --theme --mp4)" python3 "$L/check_cuts.py" --theme --mp4 "$MP4" || strict_fail'   # 계획이 cinema 라도 화면이 희게 보이면 전환
+    sub theme2 mut "변이: 실제 영상에 흰 블록 네 번 삽입" python3 "$L/check_cuts.py" --theme --mp4 "$MP4" --mutate theme
+    # 문턱 넷은 지키지만 흰색 테마와 실사 테마가 과하게 전환돼서 피곤한 경우: 밝기 적응 부하 THEME_FATIGUE 가 잡아야
+    sub theme3 mut "변이: 연한 파랑 화면 60 s 마다 12 s (흰 화면 규칙은 못 봄, 밝기 적응 피로)" python3 "$L/check_cuts.py" --theme --mp4 "$MP4" --mutate fatigue
+    sub_join
+    if ! grep -q "THEME_CHECK 실제 SKIP" "$R"; then
+      mut "변이: 테마 하드 컷" "${UVPW[@]}" "$L/check_cuts.py" "$B/video.html" --theme --mutate theme
+    fi; }
+  g_audio() { run "음량·찢어짐 (check_audio)" python3 "$L/check_audio.py" "$MP4" || strict_fail
+    mut "변이: +12 dB" python3 "$L/check_audio.py" "$MP4" --mutate gain
+    if python3 -c "import json,sys;sys.exit(0 if json.load(open('$P/script.json')).get('sound') else 1)"; then   # 배경음·효과음이 말 대비 들리는 크기인지(줄기 build/stems)
+      run "배경음·효과음이 들리는지 (check_audio --stems)" python3 "$L/check_audio.py" "$MP4" --stems "$B/stems" || strict_fail
+      sub audio1 mut "변이: 배경음 −20 dB (안 들림)" python3 "$L/check_audio.py" "$MP4" --stems "$B/stems" --mutate bed-quiet
+      sub audio2 mut "변이: 배경음 +15 dB (말을 가림)" python3 "$L/check_audio.py" "$MP4" --stems "$B/stems" --mutate bed-loud
+      sub audio3 mut "변이: 배경음 120 Hz 아래만 (이어폰에서 안 들림)" python3 "$L/check_audio.py" "$MP4" --stems "$B/stems" --mutate bed-subbass
+      sub_join
+      if grep -q "SFX_CHECK 실제 SKIP" "$R"; then   # 효과음 큐 0개(리그·숫자 카드 없음): 줄일 효과음이 없으니 다른 검사처럼 SKIP
+        echo "## 변이: 효과음 −25 dB" >> "$R"; echo "SFX_MUTATION SKIP no cues (효과음 큐 0개 → 잡을 대상 없음)" >> "$R"
+      else
+        mut "변이: 효과음 −25 dB" python3 "$L/check_audio.py" "$MP4" --stems "$B/stems" --mutate sfx-quiet
+      fi
+    fi; }
+  # 부품이 지지대에 붙어 있는지 · 사람과 기계가 겹치지 않는지 · 앉은 자세 접촉(2026-11-05 X 센서 공중, 운전자 겹침). 장면이 KIT.fx.attach/seat 를 선언할 때만
+  g_mesh() { run "부품 부착·인체/기계·좌석 접촉 (check_clearance --rules mesh)" "${UVPW[@]}" "$L/check_clearance.py" "$B/video.html" --rules mesh || strict_fail
+    if grep -Eq '^CLEARANCE_TARGETS attach=[1-9][0-9]*|^CLEARANCE_TARGETS .*auto=[1-9][0-9]*' "$R"; then
+      mut "변이: 부품 20 mm 이탈" "${UVPW[@]}" "$L/check_clearance.py" "$B/video.html" --rules mesh --mutate detach
+    fi
+    if grep -Eq '^CLEARANCE_TARGETS .*seat=[1-9][0-9]*' "$R"; then
+      mut "변이: 사람 100 mm 침하" "${UVPW[@]}" "$L/check_clearance.py" "$B/video.html" --rules mesh --mutate sink
+    fi; }
+  g_human() { run "인체 부위·자세·접촉 계약 (check_human)" "${UVPW[@]}" "$L/check_human.py" "$B/video.html" || strict_fail
+    local HCOUNT; HCOUNT=$(grep '^HUMAN_COUNT ' "$R" | tail -1 || true)   # 변이 전 본 검사의 수 — site 변이가 넣는 사람을 세면 사람 없는 프로젝트에서 접촉점 변이가 돌아 놓침으로 남음
+    # 자작 사람·현장에 안 맞는 복식: 사람이 없는 프로젝트에서도 넣어 보고 잡혀야
+    sub human1 mut "변이: KIT.fx.human 아닌 자작 사람(이름 없음) 넣기" "${UVPW[@]}" "$L/check_human.py" "$B/video.html" --mutate homemade
+    sub human2 mut "변이: 사람 복식 현장을 장면과 다르게" "${UVPW[@]}" "$L/check_human.py" "$B/video.html" --mutate site
+    if [[ "$HCOUNT" =~ rvHuman=[1-9] ]]; then   # 접촉점·부위 변이는 KIT.fx.human 사람이 있을 때만 대상이 있음
+      sub human3 mut "변이: 인체 접촉점 삭제" "${UVPW[@]}" "$L/check_human.py" "$B/video.html" --mutate contacts
+      sub human4 mut "변이: 잘못된 인체 부위" "${UVPW[@]}" "$L/check_human.py" "$B/video.html" --mutate rvPart
+    fi; sub_join; }
+  g_motion() { run "관통·순간이동 · 말은 동작·화면 정지 · 카드마다 카메라 이동 (check_motion)" "${UVPW[@]}" "$L/check_motion.py" "$B/video.html" || strict_fail
+    if ! grep -q "MOTION_CHECK 실제 SKIP" "$R"; then sub motion1 mut "변이: 로봇 1 m 한 프레임 순간이동" "${UVPW[@]}" "$L/check_motion.py" "$B/video.html" --mutate teleport; fi
+    if grep -Eq '^CAMERA_UI scene=.* total=[1-9][0-9]* exempted=[0-9]+ unmeasured=0 ' "$R"; then   # 글자·카드 바뀜 ±0.6 s 카메라 이동
+      sub motion2 mut "변이: 글 변경 때 카메라 이동" "${UVPW[@]}" "$L/check_motion.py" "$B/video.html" --mutate camnudge
+    fi
+    if grep -q "^CAMERA_TRANSITION scene=" "$R"; then   # 전환 구간(dip·테마 섞기·크로스페이드) 안 카메라 이동
+      sub motion3 mut "변이: 전환 구간 안 카메라 0.3 m 미끄러짐" "${UVPW[@]}" "$L/check_motion.py" "$B/video.html" --mutate transglide
+    fi
+    if grep -q "^ACTION_SPAN " "$R"; then   # 말은 동작, 화면은 정지: 동작 구간 3D 를 멈춰도 잡아야
+      sub motion4 mut "변이: 동작 구간 3D 정지" "${UVPW[@]}" "$L/check_motion.py" "$B/video.html" --mutate freeze
+    fi
+    if grep -q "^ACTION_MATCH .* PASS " "$R"; then   # 말↔애니메이션 매칭 검사: 연결된 부품을 거꾸로 돌리면 잡아야
+      sub motion5 mut "변이: 동작 부품 거꾸로 (말↔애니메이션)" "${UVPW[@]}" "$L/check_motion.py" "$B/video.html" --mutate actreverse
+    fi; sub_join; }
+  g_numbers() { run "출처 없는 숫자 (check_numbers)" "${UVPW[@]}" "$L/check_numbers.py" "$P" --html "$B/video.html" || strict_fail
+    if ! grep -q "NUMBERS_CHECK 실제 SKIP" "$R"; then mut "변이: 출처 없는 숫자 넣기" "${UVPW[@]}" "$L/check_numbers.py" "$P" --html "$B/video.html" --every 5 --mutate screen; fi; }
+  # 주인공 선명도: 그림 단계(심도·모션 블러)와 디스코드판 인코딩에서 주인공 결이 남는지. 변이 = 초점 빗나감 · 0.3 Mb/s
+  local SH=(uv run -q --no-project --with playwright --with pillow --with numpy python "$L/check_sharp.py" "$B/video.html" --every 6)
+  g_sharp() { run "주인공 선명도 그림 단계 (check_sharp)" "${SH[@]}" || strict_fail
+    if ! grep -q "SHARP_CHECK 실제 SKIP" "$R"; then
+      sub sharp1 mut "변이: 초점을 주인공 뒤(거리 3배)로" "${SH[@]}" --mutate focus
+      if [ -f "$DPJ" ]; then local k=0; while read -r f s; do k=$((k + 1)); sub "sharpd$k" eval 'run "주인공 선명도 디스코드판 '"$f"' (check_sharp --mp4)" "${SH[@]}" --mp4 "$O/'"$f"'" --offset "'"$s"'" --ref "$MP4" || strict_fail'
+        done < <(python3 -c "import json,sys;[print(p['file'],p['start']) for p in json.load(open(sys.argv[1]))]" "$DPJ")
+      elif [ -f "$DC" ]; then sub sharpd eval 'run "주인공 선명도 디스코드판 (check_sharp --mp4)" "${SH[@]}" --mp4 "$DC" --ref "$MP4" || strict_fail'; fi
+      sub sharp2 mut "변이: 원본을 0.3 Mb/s 로" "${SH[@]}" --mutate bitrate --ref "$MP4"
+    fi; sub_join; }
+  g_srt() { run "SRT" bash -c "grep -c -- '-->' '$O/$NAME.srt' | sed 's/^/큐 /'" || fail=1; }
+  g_sheet() { rm -rf "$O/sheets"; run "접촉 시트 (박자 +0.3 s · 장면 경계 0.2 s 훑기)" "${UVPW[@]}" "$L/sheet.py" "$MP4" --build "$B" --out "$O/sheets" || fail=1; }
+  sub 01 g_cuts; sub 02 g_sync; sub 03 g_black; sub 04 g_flicker; sub 05 g_discord; sub 06 g_flickmut; sub 07 g_legacy; sub 08 g_captions
+  sub 09 g_layout; sub 10 g_theme; sub 11 g_audio; sub 12 g_mesh; sub 13 g_human; sub 14 g_motion; sub 15 g_numbers; sub 16 g_sharp
+  sub 17 g_srt; sub 18 g_sheet
+  sub_join
+  rm -f "$B/discord_joined.mp4"; rm -rf "$SEC"
+  echo "## 판정" >> "$R"
+  local REF; REF=$(grep -c "^참고: checks=strict 아님" "$R" || true)   # strict 가 아니면 새 검사 FAIL 이 참고로만 남아 놓치기 쉬움 → 끝에 건수를 모아 보여 줌
+  [ "$REF" -gt 0 ] && echo "RV_CHECKS_REFERENCE_FAILS $REF (checks: strict 가 아니라 판정에 안 넣은 검사 FAIL — 새 프로젝트는 script.json \"checks\": \"strict\")" >> "$R"
+  [ $fail = 0 ] && echo "RV_CHECKS PASS" >> "$R" || echo "RV_CHECKS FAIL" >> "$R"
+  tail -1 "$R"; echo "→ $R"
+  return $fail
+}
+
+case "$cmd" in
+  make)
+    FROM=""; TO=""; DISCORD=0; JOBS=4; HEAVY=1; FULL=""
+    while [ $# -gt 0 ]; do case "$1" in
+      --from) FROM="$2"; shift 2;; --to) TO="$2"; shift 2;; --discord) DISCORD=1; shift;;
+      --jobs) JOBS="$2"; shift 2;; --no-heavy) HEAVY=0; shift;; --full) FULL=--full; shift;; *) echo "모르는 인자 $1" >&2; exit 2;; esac; done
+    prep
+    TOTAL=$(python3 -c "import json;print(json.load(open('$B/timeline.json'))['total_s'])")
+    N=$(python3 -c "print(round($TOTAL*30))")
+    if [ -n "$FROM$TO" ]; then   # 구간만 다시: 그 구간 + 바뀐 장면(구간 밖이어도, 길이가 줄어 밀린 장면 포함) + 새 길이 뒤 프레임을 지움
+      python3 "$L/scenecache.py" "$P" $FULL --range "${FROM:-0}" "${TO:-$TOTAL}"
+    else
+      python3 "$L/scenecache.py" "$P" $FULL   # 바뀐 장면 프레임 + 새 길이 뒤 프레임을 지움
+    fi
+    # 찍기는 늘 전체 길이에서 빈 프레임만(capture --skip-existing): 지운 프레임이 구간 밖이어도 빠지지 않게
+    RENDER=(bash "$L/render.sh" "$B/video.html" "$B/frames" "$N" "$AUD" "$O" "$NAME" "$JOBS" 0 "$TOTAL")
+    if [ $HEAVY = 1 ] && command -v dori >/dev/null; then
+      dori heavy "rv-$NAME" --mem 24G -- "${RENDER[@]}"
+    else
+      "${RENDER[@]}"
+    fi
+    python3 "$L/srt.py" "$B/timeline.json" --out "$O/$NAME.srt"
+    TH=$(python3 -c "import json;print(json.load(open('$P/script.json')).get('thumb_t', 1.5))")
+    ffmpeg -nostdin -v error -y -ss "$TH" -i "$O/$NAME.mp4" -frames:v 1 -q:v 2 "$O/${NAME}_thumb.jpg"; echo "→ $O/${NAME}_thumb.jpg"
+    [ $DISCORD = 1 ] && bash "$L/discord.sh" "$O/$NAME.mp4" "$O/${NAME}_discord.mp4" 20 --timeline "$B/timeline.json"
+    checks ;;
+  check) checks ;;
+  discord)   # 이미 만든 mp4 에서 디스코드판만 다시(길면 화질 바닥 아래로 누르지 않고 part1·part2 … 로 나눔). 끝나면 검사
+    MINK=1200
+    while [ $# -gt 0 ]; do case "$1" in --min-kbps) MINK="$2"; shift 2;; *) echo "모르는 인자 $1" >&2; exit 2;; esac; done
+    bash "$L/discord.sh" "$O/$NAME.mp4" "$O/${NAME}_discord.mp4" 20 --min-kbps "$MINK" --timeline "$B/timeline.json"
+    checks ;;
+  still) prep >/dev/null; "${UVPW[@]}" "$L/still.py" "$B/video.html" --t "$@" --out "$B/stills" ;;
+  board) prep >/dev/null; "${UVPW[@]}" "$L/board.py" "$B/video.html" --build "$B" --out "$O/board" ${1:+--scene "$1"} ;;
+  preview)
+    PFPS=15; JOBS=4
+    while [ $# -gt 0 ]; do case "$1" in --fps) PFPS="$2"; shift 2;; --jobs) JOBS="$2"; shift 2;; *) echo "모르는 인자 $1" >&2; exit 2;; esac; done
+    prep >/dev/null
+    RV_LOOK=off VIDEO_HTML="$B/preview.html" python3 "$L/build.py" "$P" >/dev/null
+    TOTAL=$(python3 -c "import json;print(json.load(open('$B/timeline.json'))['total_s'])")
+    rm -rf "$B/preview_frames"
+    "${UVPW[@]}" "$L/capture.py" "$B/preview.html" --fps "$PFPS" --start 0 --end "$TOTAL" --jobs "$JOBS" --out "$B/preview_frames"
+    ffmpeg -nostdin -v error -y -framerate "$PFPS" -start_number 0 -i "$B/preview_frames/f_%05d.png" -i "$AUD" -vf scale=960:-2,format=yuv420p \
+      -c:v libx264 -preset veryfast -crf 26 -c:a aac -b:a 128k -shortest "$O/${NAME}_preview.mp4"
+    echo "→ $O/${NAME}_preview.mp4" ;;
+  scrub) prep >/dev/null; "${UVPW[@]}" "$L/still.py" "$B/video.html" --every 0.2 --from "$1" --to "$2" --out "$B/scrub_$1_$2" ;;
+  *) sed -n 2,13p "$0"; exit 2 ;;
+esac
+}
+main "$@"; exit $?

@@ -1,0 +1,6 @@
+{
+  "note": "All values are invented test data, not measurements or research claims.",
+  "numbers": [
+    {"id": "synthetic-size", "kind": "design", "show": ["7 cm"], "source": "Invented fixture dimension"}
+  ]
+}

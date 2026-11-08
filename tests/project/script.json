@@ -1,0 +1,18 @@
+{
+  "title": "Synthetic workshop",
+  "look": {"preset": "cinema"},
+  "voice": "offline-flite",
+  "steps": {"1": "Observe", "2": "Compare", "3": "Finish"},
+  "scenes": [
+    {"name": "need", "extra_s": 8, "site": "construction"},
+    {"name": "chamber", "extra_s": 4, "transition": {"type": "dip", "dur": 0.4}},
+    {"name": "hold", "extra_s": 12, "look": "relief"},
+    {"name": "map", "extra_s": 12}
+  ],
+  "lines": [
+    {"scene": "need", "text": "A box stands beside a turning drum.", "step": 1},
+    {"scene": "chamber", "text": "The ring turns inside a quiet room.", "step": 1},
+    {"scene": "hold", "text": "Compare the sliding inspection card.", "step": 2},
+    {"scene": "map", "text": "The demonstration ends with a simple box.", "step": 3}
+  ]
+}

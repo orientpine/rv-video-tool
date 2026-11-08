@@ -1,0 +1,84 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: leak scan (regex part; private name patterns stay on the maintainer's machine)
+        run: RV_SCAN_PATTERNS=/dev/null bash scripts/scan-public.sh . || [ $? = 2 ]
+
+  test:
+    name: test (${{ matrix.group }})
+    runs-on: ubuntu-24.04
+    # Linux runners are free on public repositories, so they get room for software rendering;
+    # a private copy keeps the short limit because its minutes are billed.
+    timeout-minutes: ${{ github.event.repository.private && 20 || 60 }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Measured on ubuntu-24.04 with software rendering: human 10 min, motion 19.7 min,
+          # match 2 min; rv_best alone about 18 min and the layout check in new_checks
+          # over 14 min, so those two run in groups of their own.
+          - group: human
+            tests: human sao_numbers timeline_transition machine_collision timeline_captions
+          - group: render
+            tests: theme occlusion
+          - group: rv_best
+            tests: rv_best
+          - group: motion
+            tests: action_motion sharp layout_fixes check_error timeline_steps camera_action
+          - group: checks
+            tests: clearance_ext sfx_cue_skip rv_live_edit shot_parts camera_scene_cut
+          - group: new_checks
+            tests: new_checks
+          - group: match
+            tests: action_match text_transition rv_parallel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: false
+      - name: dependency cache key
+        id: dependencies
+        run: |
+          echo "playwright=$(uv run -q --no-project --with playwright python -c 'from importlib.metadata import version; print(version("playwright"))')" >> "$GITHUB_OUTPUT"
+          echo "uv-cache=$(uv cache dir)" >> "$GITHUB_OUTPUT"
+      - name: cache Python dependencies and Chromium
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ steps.dependencies.outputs.uv-cache }}
+            ~/.cache/ms-playwright
+          key: ${{ runner.os }}-${{ runner.arch }}-rv-playwright-${{ steps.dependencies.outputs.playwright }}-${{ hashFiles('scripts/test.sh') }}
+      - name: system tools
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto-cjk
+      - name: chromium
+        run: uv run -q --no-project --with playwright python -m playwright install --with-deps chromium
+      - name: software rendering
+        run: |
+          chrome="$(uv run -q --no-project --with playwright python -c 'from playwright.sync_api import sync_playwright; p = sync_playwright().start(); print(p.chromium.executable_path); p.stop()')"
+          printf '#!/bin/bash\nexec %q "$@" --disable-gpu --use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader\n' "$chrome" > "$RUNNER_TEMP/chromium-software"
+          chmod +x "$RUNNER_TEMP/chromium-software"
+          echo "RV_CHROME=$RUNNER_TEMP/chromium-software" >> "$GITHUB_ENV"
+      - name: tests
+        run: |
+          read -r -a tests <<< "$RV_TEST_NAMES"
+          bash scripts/test.sh "${tests[@]}"
+        env:
+          RV_TEST_NAMES: ${{ matrix.tests }}
+          RV_TEST_LOGS: ${{ runner.temp }}/rv-test-logs
+      - name: logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rv-test-logs-${{ matrix.group }}
+          path: ${{ runner.temp }}/rv-test-logs

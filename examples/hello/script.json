@@ -1,0 +1,116 @@
+{
+  "name": "hello",
+  "voice": "en-US-AriaNeural",
+  "checks": "strict",
+  "site": "lab",
+  "lead_s": 0.5,
+  "tail_s": 1.0,
+  "intro_s": 0.5,
+  "thumb_t": 1.5,
+  "scenes": [
+    {
+      "name": "bench",
+      "extra_s": 3
+    },
+    {
+      "name": "probe",
+      "extra_s": 3,
+      "transition": {
+        "type": "dip",
+        "dur": 1.2,
+        "depth": 0.85
+      }
+    },
+    {
+      "name": "slide",
+      "extra_s": 16,
+      "transition": {
+        "type": "dip",
+        "dur": 1.2,
+        "depth": 0.85
+      }
+    }
+  ],
+  "lines": [
+    {
+      "scene": "bench",
+      "text": "This is a short example made with rv."
+    },
+    {
+      "scene": "bench",
+      "text": "Everything you see is drawn from a few lines of code."
+    },
+    {
+      "scene": "bench",
+      "text": "In the middle there is a steel plate, resting on a bench.",
+      "keywords": [
+        "plate"
+      ]
+    },
+    {
+      "scene": "bench",
+      "text": "Next to it hangs a thin probe, waiting above the surface."
+    },
+    {
+      "scene": "bench",
+      "text": "The camera stays still while words appear."
+    },
+    {
+      "scene": "bench",
+      "text": "No rush."
+    },
+    {
+      "scene": "probe",
+      "text": "Now watch the probe come down."
+    },
+    {
+      "scene": "probe",
+      "text": "Now the probe touches the plate.",
+      "keywords": [
+        "touches"
+      ]
+    },
+    {
+      "scene": "probe",
+      "text": "The camera moved in with it. This is an action shot."
+    },
+    {
+      "scene": "probe",
+      "text": "It starts after the transition and lasts about two seconds."
+    },
+    {
+      "scene": "probe",
+      "text": "A label names the part while it is in view."
+    },
+    {
+      "scene": "probe",
+      "text": "It holds."
+    },
+    {
+      "scene": "slide",
+      "text": "From a lower angle, we see the whole plate again."
+    },
+    {
+      "scene": "slide",
+      "text": "The probe slides slowly from left to right.",
+      "keywords": [
+        "slides"
+      ]
+    },
+    {
+      "scene": "slide",
+      "text": "Only the probe moves, so the eye knows where to look."
+    },
+    {
+      "scene": "slide",
+      "text": "Each scene is a function of time, so any frame can be drawn again."
+    },
+    {
+      "scene": "slide",
+      "text": "That is the whole example. Change a line, and run it again."
+    }
+  ],
+  "sound": {
+    "music": "synth:ambient"
+  }
+}
