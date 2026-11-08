@@ -26,7 +26,7 @@ uv --version && ffmpeg -version | head -1 && ffprobe -version | head -1 && pytho
 uv run --no-project --with playwright playwright install chromium   # or set RV_CHROME to an existing Chromium
 ```
 
-If `uv`, `ffmpeg` or a Chromium is missing and you can't install it yourself, tell the user exactly what to install. The narration (edge-tts) needs network the first time each line is spoken. After that it's cached.
+If `uv`, `ffmpeg` or a Chromium is missing and you can't install it yourself, tell the user exactly what to install. The narration (edge-tts) needs network the first time each line is spoken. After that it's cached. If renders run on a machine without network (a sandbox, a render helper), run `./rv tts projects/<name>` where there is network first, after every change to `lines`: it fetches the voices into `build/tts` and writes the timeline, and every other command then runs offline.
 
 ## 1. Start a project from the example
 

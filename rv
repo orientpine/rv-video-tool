@@ -8,6 +8,7 @@
 #   rv discord <프로젝트> [--min-kbps 1200]          디스코드판만 다시: 20 MiB 에 넣으면 바닥 아래인 긴 영상은 _discord_part1.mp4 … 로 나눔
 #   rv check <프로젝트>                               이미 만든 mp4 에 검사만 다시
 #   rv board <프로젝트> [장면,장면]                   콘티: 장면마다 시작·키워드 순간·끝 정지 화면 한 장 (렌더 전에 연출 검토)
+#   rv tts <프로젝트>                                 음성(edge-tts)·낱말 시각·timeline 만: 인터넷 되는 PC 에서 먼저, 렌더·검사는 네트워크 없는 PC 에서
 #
 # 프로젝트 폴더:  script.json · scenes/<장면>/module.js (+deps.json) · shared/ · data/
 # 만들어지는 것:  build/ (tts 캐시·timeline·video.html·frames)   out/<name>.mp4 · .srt · _thumb.jpg · _discord.mp4 · CHECKS.md · sheets/
@@ -301,6 +302,7 @@ case "$cmd" in
     [ $DISCORD = 1 ] && bash "$L/discord.sh" "$O/$NAME.mp4" "$O/${NAME}_discord.mp4" 20 --timeline "$B/timeline.json"
     checks ;;
   check) checks ;;
+  tts) uv run -q --no-project --with edge-tts python "$L/timeline.py" "$P" ;;
   discord)   # 이미 만든 mp4 에서 디스코드판만 다시(길면 화질 바닥 아래로 누르지 않고 part1·part2 … 로 나눔). 끝나면 검사
     MINK=1200
     while [ $# -gt 0 ]; do case "$1" in --min-kbps) MINK="$2"; shift 2;; *) echo "모르는 인자 $1" >&2; exit 2;; esac; done

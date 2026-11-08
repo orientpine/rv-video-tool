@@ -33,6 +33,7 @@ my-project/
 ## 2. Edit loop (fastest first)
 | 하고 싶은 것 | 명령 | 걸리는 시간(약 3분 영상) |
 |---|---|---|
+| 음성·시간표만(네트워크 되는 PC 에서 먼저, 렌더는 네트워크 없는 PC 에서) | `rv tts my-project` → `build/tts`·`build/timeline.json` | 문장당 1 s 안팎 |
 | 한 순간 정지 화면 | `rv still my-project 12.5 40.0` | 수 초 |
 | 장면마다 콘티(시작·키워드·끝) | `rv board my-project [장면,장면]` → `out/board/board_<장면>.jpg` | 장면당 수 초 |
 | 전환 훑기 | `rv scrub my-project 18.0 19.5` (0.2 s 간격 PNG) | 수 초 |
