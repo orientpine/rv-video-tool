@@ -178,7 +178,8 @@
     cam.position.copy(p); cam.lookAt(c); cam.updateMatrixWorld(true);
     const px = q => { const v = q.clone().project(cam); return v.z < 1 ? [(v.x + 1) / 2 * 1920, (1 - v.y) / 2 * 1080] : null; };
     const hit = (x0, y0, x1, y1) => avoid.some(([a, b, c2, d]) => x0 < c2 && x1 > a && y0 < d && y1 > b);
-    if (subject) { const v = px(subject); if (!v || Math.hypot(v[0] - 960, v[1] - 540) > 0.45 * 540) return false; }   // check_motion: 샷 끝에 주인공이 화면 가운데 절반(반높이 0.5) 안
+    // check_motion SUBJECT_FRAME: the explained subject ends in the middle 30% of the frame (|x-.5|, |y-.5| <= .15), with a 10% margin
+    if (subject) { const v = px(subject); if (!v || Math.abs(v[0] - 960) > 0.9 * 0.15 * 1920 || Math.abs(v[1] - 540) > 0.9 * 0.15 * 1080) return false; }
     for (const q of keep.pts) { const v = px(q); if (!v || v[0] < SAFE.x0 || v[0] > SAFE.x1 || v[1] < SAFE.y0 || v[1] > SAFE.y1 || hit(v[0], v[1], v[0], v[1])) return false; }
     for (const l of keep.labels) {   // 글자 상자: 가운데 x+dx, 아래 y+dy(KIT.label 의 translate(-50%,-100%)) — 안전 영역에 밀려나지 않고 피할 영역과 안 겹쳐야
       const v = px(l.p), x0 = v[0] + l.dx - l.w / 2, x1 = v[0] + l.dx + l.w / 2, y1 = v[1] + l.dy, y0 = y1 - l.h;
@@ -497,7 +498,8 @@
     isFocus(o) { for (let x = o; x; x = x.parent) if (this.extra.has(x)) return true;
       const m = o.material; return !!(m && m.color && Math.abs(m.color.r - ACCENT.r) + Math.abs(m.color.g - ACCENT.g) + Math.abs(m.color.b - ACCENT.b) < 0.12); },
     clayFor(m) { let c = this.clay.get(m); if (!c) { c = new THREE.MeshStandardMaterial({color: 0xB9C0C5, roughness: 0.9, metalness: 0.0, envMapIntensity: 0.6});
-      c.clippingPlanes = m.clippingPlanes; c.clipShadows = m.clipShadows; c.side = m.side; this.clay.set(m, c); } c.clippingPlanes = m.clippingPlanes; return c; },
+      c.clippingPlanes = m.clippingPlanes; c.clipShadows = m.clipShadows; c.side = m.side; this.clay.set(m, c); } c.clippingPlanes = m.clippingPlanes;
+      c.transparent = !!m.transparent; c.opacity = m.transparent ? m.opacity : 1; c.depthWrite = m.depthWrite !== false; return c; },   // a fading part stays faded in clay
     wrap(s, c, raw) {
       const swapped = [], hidden = [], bg = s.background, fog = s.fog, env = s.environment;
       s.traverse(o => { if (!o.isMesh || !o.visible || o.material.isMeshBasicMaterial || o.material.isShadowMaterial || this.isFocus(o)) return;
@@ -513,7 +515,33 @@
   live.push({reset() { emphasis.extra.clear(); }});
   // 접촉 계약은 render(t) 안에서 매번 선언한다. 이전 장면의 계약을 다음 프레임에 남기지 않는다.
   const clearance = {attachments: [], seats: []};
-  const fx = {cutaway, explode, human, prop, emphasis, focus(...objs) { for (const o of objs) if (o) emphasis.extra.add(o); }, env(...objs) { for (const o of objs) if (o) emphasis.env.add(o); },
+  // Default entrance for a 3D element: KIT.fx.reveal(obj, KIT.win(t, a, b, 0.4)) fades it in while u goes 0 -> 1
+  // (hidden at 0, own materials at 1). Geometry and pose stay as they are, so contact and clearance checks see the
+  // real part. Call it after the scene assigns materials for the frame. Switching obj.visible on in one frame is a
+  // pop (check_motion POP_IN).
+  // Copies are kept per mesh, so meshes that share a material can fade at different times.
+  const revealCopies = new WeakMap(), revealOriginal = new WeakMap();
+  function reveal(obj, u) {
+    const k = smooth(0, 1, clamp(u, 0, 1));
+    obj.visible = k > 0;
+    obj.traverse(o => {
+      if (!o.material) return;
+      let copies = revealCopies.get(o);
+      const fade = m => {
+        const own = revealOriginal.get(m) || m;
+        if (k >= 1) return own;
+        if (!copies) revealCopies.set(o, copies = new Map());
+        let copy = copies.get(own);
+        if (!copy) { copy = own.clone(); copies.set(own, copy); revealOriginal.set(copy, own); }
+        copy.color && own.color && copy.color.copy(own.color);
+        copy.transparent = true; copy.opacity = own.opacity * k; copy.depthWrite = own.depthWrite && k > .5;
+        return copy;
+      };
+      o.material = Array.isArray(o.material) ? o.material.map(fade) : fade(o.material);
+    });
+    return obj;
+  }
+  const fx = {cutaway, explode, human, prop, emphasis, reveal, focus(...objs) { for (const o of objs) if (o) emphasis.extra.add(o); }, env(...objs) { for (const o of objs) if (o) emphasis.env.add(o); },
     clearance,
     attach(part, support, {tol_mm = 2} = {}) { clearance.attachments.push({part, support, tol_mm}); },
     seat(human, {seat, floor, levers = [], hand_mm = 150, up = [0, 1, 0]} = {}) {

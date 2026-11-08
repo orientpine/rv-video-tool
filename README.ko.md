@@ -142,6 +142,8 @@ SCENES.probe = (() => {
 | 전환과 글자 (`TEXT_TRANSITION`): 전환이 시작될 때 보이는 글자, 전환 안에서 새로 뜨는 글자, 전환 직전에 너무 잠깐 떠서 못 읽는 글자 | `check_motion` | 28.0 s 안 |
 | 말과 동작 (`ACTION_MATCH`): 말한 동작 낱말마다 그 낱말이 가리키는 이름 있는 부품에 묶이고, 그 부품이 말대로 움직이는지 | `check_motion` | 28.0 s 안 (예시에 동작 낱말 없음) |
 | 문·뚜껑 (`HATCH_COVER`): 닫힌 해치가 틀 구멍을 80% 이상 덮는지 | `check_motion` | 28.0 s 안 (예시에 해치 없음) |
+| 갑자기 등장 (`POP_IN`): 카드·이름표·부품이 서서히 나타나기·밀려 들어오기·카메라가 비춰 드러내기 없이 한두 프레임에 나타나는지 | `check_motion` | `check_motion` 시간 안 |
+| 설명 대상 화면 가운데 (`SUBJECT_FRAME`): 동작을 말하는 동안 그 말이 가리키는 부품이 화면 가운데 30% 안에 오는지 | `check_motion` | `check_motion` 시간 안 (예시에 동작 낱말 없음) |
 | 부품이 지지대에 파묻히거나 떨어짐, 이름표 단 부품이 떠 있음, 기계끼리 충돌, 앉은 자세 접촉 | `check_clearance` | 34.5 s |
 | 사람: `KIT.fx.human` 만, 몸 부위, 접촉점, 복식이 현장과 맞는지 | `check_human` | 16.1 s (건너뜀, 변이는 돎) |
 | `sources.json` 에 출처 없는 화면·나레이션 숫자 | `check_numbers` | 14.3 s (건너뜀, `sources.json` 없음) |

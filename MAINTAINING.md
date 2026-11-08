@@ -13,4 +13,5 @@
 
 ## Leak scan and export
 - `bash scripts/scan-public.sh <dir> [--git]`: gitleaks (when installed) plus private IPs, tokens, e-mail addresses, home paths, chat IDs, forbidden paths, and private patterns from a local file that is never committed (`~/.config/rv-video-tool/scan-patterns`). Any non-zero count exits 1; a missing pattern file exits 2.
+- Before the first push from a checkout, install the pre-push hook: `ln -s ../../scripts/pre-push .git/hooks/pre-push`. It runs the scan on every pushed tree and on the patches and messages of the pushed commits, and refuses the push unless every count is 0. Do not run the scan in a pipe in front of `git push` (`scan | tail && git push` pushes even when the scan fails).
 - `bash scripts/export.sh <checkout> <rev> <dest> <version> --public` builds a one-commit repository from a commit, drops the paths in its `PRIVATE_ONLY` list, and refuses to commit or tag unless the scan prints 0 for the tree and the new history.

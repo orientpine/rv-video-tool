@@ -6,6 +6,28 @@ Every release is a git tag `vX.Y.Z` (Z for fixes, Y for features). Each tag gets
 
 릴리스는 git 태그 `vX.Y.Z` 하나다(고침 = Z, 기능 = Y). 태그마다 이 파일과 GitHub 릴리스 페이지에 한국어·영어 노트를 쓴다. 설치는 `scripts/install.sh`, 확인은 `scripts/verify.sh`.
 
+## v0.1.2
+
+### English
+
+- `check_motion` catches pop-in (`POP_IN`): an overlay card, label or 3D part whose on-screen weight (area share x opacity) jumps from at most 5% to at least 50% of its peak within two frames, with no fade, slide or camera reveal. Simultaneous pops are one line naming the elements; scene starts, transitions, declared cuts and camera cuts are listed as `EXEMPT`. Boxes, shapes, pictures and 3D parts count; bare text without a background (readouts, a line of text) is read like a caption and does not. Clip-path inset and overflow masks are respected. Mutation `popin` hides a steady box for 0.6 s and shows it again in one frame. Known limits: a part switched on inside a closed housing still counts (no occlusion test); SVG lines drawn with `stroke-dashoffset` and 3D lines grown with `setDrawRange` keep their box and can read as a pop.
+- `check_motion` checks that the explained part comes to the centre (`SUBJECT_FRAME`): during each spoken action, the part `ACTION_MATCH` linked (else the declared action/follow subject) must have its screen centre inside the middle 30% of the frame (`|x-.5|, |y-.5| <= .15`) in at least half of the samples after a 0.5 s lead-in. Mutation `offcenter` turns the camera 25 degrees inside those spans.
+- Swap verbs are read as actions: "바꿔 끼웁니다", "교체합니다", "갈아 끼우고" (a tool change used to get no action check at all).
+- Defaults that avoid both: `KIT.fx.reveal(obj, KIT.win(t, a, b, 0.4))` grows a 3D element in; `KIT.process.exhaust` fades its flow in and out instead of showing every arrow in one frame; `KIT.shot.action` ends with the subject inside the same middle box.
+- `check_layout` no longer judges contrast or overlap of text in the middle of a fade (`LAYOUT_FADE` line); it judges it on resting frames. A fading label failed contrast before, which pushed scenes to switch labels on in one frame. Clipping and the safe area are still checked on every sample. This applies to scene content only; rv's own step chips and captions open with a clip reveal and keep full contrast on every frame.
+- A box cut by the screen edge when it appears is sliding in or revealed by the camera, not popping, unless it already covers at least 3% of the screen and is mostly visible (a card placed a few pixels past the edge that switches on in one frame still pops): small 3D parts crossing the edge in one or two frames made 78 of 81 `POP_IN` lines on one regression project; with this rule 3 remain, each a real one-frame appearance.
+- Measured on two regression projects under the same conditions (`rv check`, old tree vs this one): project A 684 s -> 701 s, project B 1322 s -> 1339 s; verdicts unchanged and no mutation missed.
+
+### 한국어
+
+- `check_motion` 이 갑자기 등장(`POP_IN`)을 잡는다: 카드·이름표·부품의 화면 무게(넓이 비 × 불투명도)가 서서히 나타나기·밀려 들어오기·카메라가 비춰 드러내기 없이 두 프레임 안에 최대의 5% 이하에서 50% 이상으로 뛰면 FAIL. 같은 프레임에 튀는 것은 한 줄에 요소 이름과 함께, 장면 시작·전환·선언한 컷·카메라 컷은 `EXEMPT` 로 찍는다. 상자·그림·3D 부품만 세고, 배경 없는 맨 글자(읽음값·글 한 줄)는 자막처럼 세지 않는다. clip-path inset·overflow 가림은 보이는 부분만 잰다. 변이 `popin` 은 떠 있던 상자를 0.6 s 감췄다가 한 프레임에 켠다. 못 잡는/잘못 잡는 것: 닫힌 함 안에서 켜지는 부품도 센다(가림은 안 봄), `stroke-dashoffset` 으로 그리는 SVG 선·`setDrawRange` 3D 선은 상자 크기가 그대로라 등장으로 보일 수 있다.
+- `check_motion` 이 설명 대상이 화면 가운데에 오는지 본다(`SUBJECT_FRAME`): 동작 말 구간마다 `ACTION_MATCH` 가 이은 부품(없으면 선언한 action/follow 샷 대상)의 화면 중심이 앞 0.5 s 를 뺀 표본 절반 이상에서 가운데 30%(`|x-.5|, |y-.5| <= .15`) 안에 있어야 한다. 변이 `offcenter` 는 그 구간에 카메라를 25° 돌린다.
+- 교체 동사를 동작으로 읽는다: "바꿔 끼웁니다", "교체합니다", "갈아 끼우고"(툴 교체 말은 동작 검사가 아예 없었다).
+- 처음부터 안 생기게 하는 기본값: `KIT.fx.reveal(obj, KIT.win(t, a, b, 0.4))` 로 3D 요소가 자라며 나타나고, `KIT.process.exhaust` 는 화살표를 한 프레임에 다 띄우지 않고 흐름을 서서히 켜고 끈다. `KIT.shot.action` 은 샷 끝에 대상이 같은 가운데 상자 안에 오게 구도를 고른다.
+- `check_layout` 은 페이드 중인 글자의 대비·겹침을 그 순간에 재지 않고(`LAYOUT_FADE` 줄) 쉬는 프레임에서 잰다. 전에는 페이드 중 이름표가 대비 FAIL 이 나 장면들이 이름표를 한 프레임에 켜는 쪽으로 바뀌었다. 잘림·안전 영역은 표본마다 그대로 본다. 장면 내용에만 적용하고, rv 자체 단계 칩·자막은 clip 으로 열리므로 프레임마다 대비를 그대로 잰다.
+- 나타나는 순간 화면 가장자리에 걸린 상자는 밀려 들어오거나 카메라가 비춰 드러내는 것이지 갑자기 등장이 아니다. 단 이미 화면의 3% 이상이고 절반 넘게 보이면(가장자리를 몇 px 넘긴 카드가 한 프레임에 켜짐) 등장으로 센다. 화면 끝을 한두 프레임에 넘는 작은 3D 부품이 회귀 프로젝트 하나의 `POP_IN` 81줄 중 78줄이었고, 이 규칙 뒤 남은 3줄은 모두 실제로 한 프레임에 나타난 것이다.
+- 회귀 프로젝트 둘을 같은 조건으로 잼(`rv check`, 옛 트리 대비): 프로젝트 A 684 s -> 701 s, 프로젝트 B 1322 s -> 1339 s. 판정 그대로, 놓친 변이 0.
+
 ## v0.1.1
 
 ### English
