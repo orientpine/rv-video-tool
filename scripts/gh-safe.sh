@@ -40,10 +40,13 @@ while [[ $i -lt ${#args[@]} ]]; do
   a="${args[$i]}"; i=$((i + 1))
   if [[ "$a" != -* ]]; then positional+=("$a"); continue; fi
   name="$a"; [[ "$a" == --*=* ]] && name="${a%%=*}"
-  shown="argument $i"; [[ "$name" =~ ^--?[A-Za-z][A-Za-z-]*$ ]] && shown="argument $i ($name)"
+  shown="argument $i"
   if [[ " ${spec[0]} " == *" $name "* ]]; then
     if [[ "$a" == --*=* ]]; then v="${a#*=}"
     else [[ $i -lt ${#args[@]} ]] || refuse "$shown needs a value"; v="${args[$i]}"; i=$((i + 1)); fi
+    if [[ "$name" == -R || "$name" == --repo ]] && [[ ! "$v" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ || "$v" == *..* ]]; then
+      refuse "$shown: --repo must be owner/name"
+    fi
     val[$name]="$v"
   elif [[ " ${spec[1]} " != *" $name "* ]]; then
     refuse "$shown is not allowed for $cmd; the text comes only from <file>"
@@ -53,23 +56,26 @@ if [[ ${#positional[@]} -lt ${spec[2]} || ${#positional[@]} -gt ${spec[3]} ]]; t
   refuse "$cmd takes ${spec[2]} to ${spec[3]} positional arguments, got ${#positional[@]}"
 fi
 repo="${val[--repo]:-${val[-R]:-}}"
-if [[ -n "$repo" && ( ! "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ || "$repo" == *..* ) ]]; then refuse "--repo must be owner/name"; fi
 if [[ "$cmd" == pr-create && -z "${val[--title]:-${val[-t]:-}}" ]]; then refuse "pr-create needs --title (gh would ask for one and post it unscanned)"; fi
 if [[ "$cmd" == pr-edit && ! "${positional[0]}" =~ ^[0-9]+$ ]]; then refuse "pr-edit needs a pull request number"; fi
 
-if [[ ! -f "$file" || ! -r "$file" ]]; then refuse "cannot read $file"; fi
-if [[ ! -s "$file" ]]; then refuse "$file is empty"; fi
+if [[ ! -f "$file" || ! -r "$file" ]]; then refuse "cannot read <file>"; fi
+if [[ ! -s "$file" ]]; then refuse "<file> is empty"; fi
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 mkdir "$work/scan"
 # gh is given this copy, so the posted bytes are the scanned bytes even if <file> changes meanwhile.
-cp "$file" "$work/scan/text.txt" || refuse "cannot copy $file"
-# scan-public.sh greps with -I, which skips a file it takes for binary (a NUL byte): refuse those instead.
-if ! tr -d '\000' < "$work/scan/text.txt" | cmp -s - "$work/scan/text.txt" || ! grep -qI '' "$work/scan/text.txt"; then
-  refuse "$file is not plain text"
-fi
+cp "$file" "$work/scan/text.txt" || refuse "cannot copy <file>"
 for ((n = 1; n <= ${#args[@]}; n++)); do printf '%s\n' "${args[$((n - 1))]}" > "$work/scan/arg-$n.txt"; done
+# scan-public.sh's grep skips a binary file (NUL byte) and, in a UTF-8 locale, a line with an invalid byte,
+# while GitHub still shows the rest of that line: refuse anything that is not NUL-free valid UTF-8.
+for f in "$work"/scan/*.txt; do
+  what="<file>"; [[ "$f" == */arg-*.txt ]] && what="argument $(basename "$f" .txt | cut -c5-)"
+  if ! tr -d '\000' < "$f" | cmp -s - "$f" || ! iconv -f UTF-8 -t UTF-8 "$f" > /dev/null 2>&1; then
+    refuse "$what is not plain UTF-8 text"
+  fi
+done
 
 code=0
 bash "$ROOT/scripts/scan-public.sh" "$work/scan" > "$work/scan.out" 2>&1 || code=$?

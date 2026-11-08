@@ -47,22 +47,28 @@ RV_SCAN_PATTERNS="$T/missing" run missing-pattern-file 1 'pattern file missing' 
 run body-flag-bypass 1 'is not allowed' pr-comment "$T/clean.md" 41 --body "other text"
 run body-file-bypass 1 'is not allowed' pr-edit "$T/clean.md" 41 --body-file=/dev/null
 run editor-bypass 1 'is not allowed' pr-create "$T/clean.md" --web
-run empty-file 1 'is empty' pr-comment "$T/empty.md" 41
+run empty-file 1 '<file> is empty' pr-comment "$T/empty.md" 41
 run unknown-command 2 'usage' pr-merge "$T/clean.md" 41
 run pr-edit-without-number 1 'positional arguments' pr-edit "$T/clean.md" --title x
 run pr-edit-not-a-number 1 'needs a pull request number' pr-edit "$T/clean.md" main
 run pr-edit-other-argument 1 'is not allowed' pr-edit "$T/clean.md" 41 --add-label x
-run combined-short-body-flag 1 'argument 3 (-dF) is not allowed' pr-create "$T/clean.md" -t ok -dF "$T/leak.md"
+run combined-short-body-flag 1 'argument 3 is not allowed' pr-create "$T/clean.md" -t ok -dF "$T/leak.md"
 run combined-short-web-flag 1 'is not allowed' release-notes "$T/clean.md" v9.9.9 -dw
 run recover-file 1 'is not allowed' pr-create "$T/clean.md" -t ok --recover "$T/leak.md"
 run release-asset 1 'positional arguments' release-notes "$T/clean.md" v9.9.9 "$T/leak.md"
-run refused-value-not-printed 1 'argument 2 (--body) is not allowed' pr-comment "$T/clean.md" 41 --body=SyntheticForbiddenMarker
+run refused-value-not-printed 1 'argument 2 is not allowed' pr-comment "$T/clean.md" 41 --body=SyntheticForbiddenMarker
 run pr-create-without-title 1 'needs --title' pr-create "$T/clean.md" --base main
 printf 'Summary\0\nfixes the SyntheticForbiddenMarker scene\n' > "$T/nul.md"
-run nul-byte-body 1 'is not plain text' pr-comment "$T/nul.md" 41
+run nul-byte-body 1 'is not plain UTF-8 text' pr-comment "$T/nul.md" 41
 printf '# only a comment\n' > "$T/comments-only"
 RV_SCAN_PATTERNS="$T/comments-only" run pattern-file-without-patterns 1 'no private pattern was checked' pr-comment "$T/clean.md" 41
 run repo-path-escape 1 'owner/name' pr-edit "$T/clean.md" 41 -R o/r/../../x
+run repo-overridden-by-later-flag 1 'argument 4: --repo must be owner/name' pr-comment "$T/clean.md" 41 --repo o/r -R ghe.example.org/o/r
+printf 'caf\xe9 SyntheticForbiddenMarker\n' > "$T/latin1.md"
+run invalid-utf8-body 1 '<file> is not plain UTF-8 text' release-notes "$T/latin1.md" v9.9.9 --title v9.9.9
+run invalid-utf8-title 1 'argument 2 is not plain UTF-8 text' pr-create "$T/clean.md" --title "$(printf 'SyntheticForbiddenMarker \xff')"
+run refused-flag-name-not-printed 1 'argument 1 is not allowed' pr-comment "$T/clean.md" --SyntheticForbiddenMarker
+run unread-file-path-not-printed 1 'cannot read <file>' pr-comment "$T/SyntheticForbiddenMarker-notes.md" 41
 run leak-in-pr-edit-title 1 'argument 3' pr-edit "$T/clean.md" 41 --title "SyntheticForbiddenMarker"
 GH_SAFE_TEST_EXIT=3 run gh-failure-passes-through 3 - pr-comment "$T/clean.md" 41
 
