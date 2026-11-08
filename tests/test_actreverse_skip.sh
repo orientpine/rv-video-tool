@@ -72,6 +72,8 @@ run_case spare_mut spare --mutate actreverse
 run_case vent_mut vent --mutate actreverse
 { [ $rc = 0 ] && grep -qx MUTATION_SKIP "$W/vent_mut.log" && grep -q "^ACTION_MATCH proc '뚜껑 열기' PASS target=exhaust" "$W/vent_mut.log" &&
   ! grep -q MUTATION_NOT_CAUGHT "$W/vent_mut.log"; } || fail "vent: exhaust-only linked handle is not MUTATION_SKIP (rc=$rc)" vent_mut
+run_case driven driven
+grep -q "^ACTION_MATCH proc '뚜껑 열기' PASS target=part:'뚜껑'" "$W/driven.log" || fail "driven: lid does not follow the valve without the mutation" driven
 run_case driven_mut driven --mutate actreverse
 { [ $rc != 0 ] && grep -qx MUTATION_CAUGHT "$W/driven_mut.log" && ! grep -qx MUTATION_SKIP "$W/driven_mut.log"; } ||
   fail "driven: lid reversed through an unnamed handle is not MUTATION_CAUGHT (rc=$rc)" driven_mut
