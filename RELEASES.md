@@ -6,6 +6,16 @@ Every release is a git tag `vX.Y.Z` (Z for fixes, Y for features). Each tag gets
 
 릴리스는 git 태그 `vX.Y.Z` 하나다(고침 = Z, 기능 = Y). 태그마다 이 파일과 GitHub 릴리스 페이지에 한국어·영어 노트를 쓴다. 설치는 `scripts/install.sh`, 확인은 `scripts/verify.sh`.
 
+## Unreleased
+
+### English
+
+- Hand rv work to your own coding agent: the new [AGENTS.md](AGENTS.md) walks the agent from `examples/hello` to a strict `RV_CHECKS PASS`. It covers how to read `CHECKS.md`, the fix order, what never to do to get a PASS, speed settings and when to ask you. The README has prompts to copy, and `CLAUDE.md` points to `AGENTS.md`. A fresh agent given one README prompt made a 63.6 s video that passed in about 7 minutes.
+
+### 한국어
+
+- 자기 코딩 에이전트에게 rv 일을 맡길 수 있다. 새 [AGENTS.md](AGENTS.md) 는 에이전트가 `examples/hello` 에서 시작해 strict `RV_CHECKS PASS` 까지 가는 길을 안내한다. `CHECKS.md` 읽기, 고치는 순서, PASS 를 받으려고 하면 안 되는 것, 빨리 하는 설정, 사용자에게 물을 때를 담았다. README 에 복사해 쓰는 지시문을 넣었고, `CLAUDE.md` 는 `AGENTS.md` 를 가리킨다. 새 에이전트에게 README 지시문 하나만 주었더니 63.6초 영상을 약 7분 만에 통과시켰다.
+
 ## v0.2.0
 
 ### English
