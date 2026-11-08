@@ -8,7 +8,8 @@
 #   ${RV_SCAN_EXTRA:-} (colon separated), one PCRE per line.
 # Prints one count per check and exits 1 if any count is not 0 (2 if no pattern file).
 set -uo pipefail
-# grep -P refuses to run in a multibyte locale that is not UTF-8, and a silent grep error would read as 0.
+# The scan runs in C whatever the caller's locale (grep -P refuses to run in a multibyte locale that is not
+# UTF-8); gp() below also runs each pattern in C.UTF-8.
 export LC_ALL=C
 
 DIR="${1:?usage: scan-public.sh <dir> [--git]}"
@@ -46,18 +47,22 @@ else
 fi
 
 # Every pattern runs twice and either hit counts: bytewise in C (a byte that is not UTF-8 never hides a line
-# and . matches it) and in C.UTF-8 (. matches one Korean character). A grep that could not run (bad pattern)
-# is a finding, never a silent 0.
-gp() {
-  local loc s
+# and . matches it) and in C.UTF-8 (. matches one Korean character). The C.UTF-8 run reads exactly the files
+# C takes for text (no NUL byte) with -a, so a stray byte elsewhere on a line cannot hide a UTF-8 match.
+# A grep that could not run (bad pattern) is a finding, never a silent 0.
+gp() {  # gp <files list (NUL separated)> <grep args and pattern...>
+  local list="$1" s; shift
+  local files=(); mapfile -d '' files < "$list"
   : > "$TMP/gp"
-  for loc in C C.UTF-8; do
-    LC_ALL=$loc grep "$@" >> "$TMP/gp"; s=$?
-    [[ $s -lt 2 ]] || echo "grep failed (exit $s)" >> "$TMP/errors"
-  done
+  [[ ${#files[@]} -gt 0 ]] || return 0
+  LC_ALL=C grep -HnP "$@" -- "${files[@]}" >> "$TMP/gp"; s=$?
+  [[ $s -lt 2 ]] || echo "grep failed (exit $s)" >> "$TMP/errors"
+  LC_ALL=C.UTF-8 grep -aHnP "$@" -- "${files[@]}" >> "$TMP/gp"; s=$?
+  [[ $s -lt 2 ]] || echo "grep failed (exit $s)" >> "$TMP/errors"
   sort -u "$TMP/gp"
 }
-g() { gp -rInP --exclude-dir=.git "$@" "$DIR" | sed "s|^$DIR/||"; }
+grep -rIlZ --exclude-dir=.git '' "$DIR" > "$TMP/tree-files" || [[ $? == 1 ]] || echo "grep failed (file list)" >> "$TMP/errors"
+g() { gp "$TMP/tree-files" "$@" | sed "s|^$DIR/||"; }
 if [[ "$MODE" == "--git" ]]; then
   git -C "$DIR" log --all -p --format='%x1ecommit %H%x1e%n%an <%ae>%n%cn <%ce>%n%B' > "$TMP/raw" || { echo "history read failed: git log" >&2; exit 2; }
   # allowed identity lines are blanked only in the two header lines of a commit, never elsewhere
@@ -69,7 +74,8 @@ if [[ "$MODE" == "--git" ]]; then
     i == 1 || i == 2 { if ($0 in ok) { print ""; next } print "git-log-identity:" NR ":" $0 > identf }
     { print }' "$TMP/raw" > "$TMP/log" || { echo "history read failed: identity filter" >&2; exit 2; }
 fi
-gl() { [[ -f "$TMP/log" ]] || return 0; gp -nP "$@" "$TMP/log" | sed 's/^/git-log:/'; }
+[[ -f "$TMP/log" ]] && printf '%s\0' "$TMP/log" > "$TMP/log-files"
+gl() { [[ -f "$TMP/log" ]] || return 0; gp "$TMP/log-files" "$@" | sed "s|^$TMP/log:|git-log:|"; }
 IP='\b(?:10|172\.(?:1[6-9]|2\d|3[01])|192\.168|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7]))\.\d{1,3}\.\d{1,3}(?:\.\d{1,3})?\b'
 { g "$IP"; gl "$IP"; } | grep -vP '\b\d+\.\d+\.\d+\.\d+\.\d+' > "$TMP/ips"
 KEY='gh[pousr]_[A-Za-z0-9]{20,}|github_pa[t]_|\bsk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[abposr]-|-----BEGIN [A-Z ]*PRIVATE KEY|(?:discord|bot)[_-]?token\s*[:=]\s*\S{20,}'

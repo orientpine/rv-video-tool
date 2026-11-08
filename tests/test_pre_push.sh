@@ -127,6 +127,11 @@ printf '%s\n' '합성금지 문구' > korean.txt
 g add korean.txt
 g commit -qm "Korean text"
 LC_ALL=C RV_SCAN_PATTERNS="$T/locale-patterns" check korean-dot-c-caller 1 "$ZERO" 'private-patterns(2).* [1-9]'
+g switch -qc invalid-byte-korean "$clean_tip"
+printf 'caf\xe9 합성금지\n' > mixed.txt
+g add mixed.txt
+g commit -qm "Mixed bytes"
+LC_ALL=C.UTF-8 RV_SCAN_PATTERNS="$T/locale-patterns" check invalid-byte-korean-dot 1 "$ZERO" 'private-patterns(2).* [1-9]'
 g switch -q topic
 
 # A leak earlier in the branch must be caught even when the tip is clean.

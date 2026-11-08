@@ -71,7 +71,7 @@ mkdir "$T/fault-bin"
 GH_SAFE_TEST_REAL_GREP="$(command -v grep)"; export GH_SAFE_TEST_REAL_GREP
 cat > "$T/fault-bin/grep" <<'EOF'
 #!/usr/bin/env bash
-for a; do [[ "$a" == -rInP ]] && { echo "synthetic grep failure" >&2; exit 2; }; done
+for a; do [[ "$a" == -HnP || "$a" == -aHnP ]] && { echo "synthetic grep failure" >&2; exit 2; }; done
 exec "$GH_SAFE_TEST_REAL_GREP" "$@"
 EOF
 chmod +x "$T/fault-bin/grep"
