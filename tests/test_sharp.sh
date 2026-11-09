@@ -99,6 +99,34 @@ copy_case() { rm -f "$W"/fit_discord*; bash "$1/lib/discord.sh" "$W/fit.mp4" "$W
   [ -f "$W/fit_discord_parts.json" ] && python3 -c "import json,os,sys;P=json.load(open(sys.argv[1]));sys.exit(0 if len(P)>=2 and all(os.path.getsize(os.path.join(sys.argv[2],p['file']))<=1048576 and p['kbps']>=150 for p in P) else 1)" "$W/fit_discord_parts.json" "$W" \
     && [ "$(frames_of $(ls "$W"/fit_discord_part*.mp4 | sort -V) | md5sum)" = "$(frames_of "$W/fit.mp4" | md5sum)" ]; }
 if copy_case "$TOOL"; then ok "복사 나눔: $(grep -c '^DISCORD part' "$W/fit.log") 조각 ≤ 1 MiB · ≥ 바닥, 이어 붙인 그림 = 원본"; else bad "복사 나눔 실패 ($W/fit.log)"; fi
+# 복사 나눔의 음성: 조각마다 자기 구간의 소리가 빠지지 않아야 한다(AAC 패킷만 복사하면 조각 시작의 Skip Samples 가 소리를 지움)
+python3 - "$W/fit.mp4" "$W/fit_discord_parts.json" <<'EOF' >> "$W/audio.log" 2>&1 && ok "복사 나눔 음성: 조각마다 구간 소리 보존(샘플 부족 0)" || bad "복사 나눔 음성 손실 ($W/audio.log)"
+import json, subprocess, sys
+src, manifest = sys.argv[1], sys.argv[2]
+parts = json.load(open(manifest))
+rate = int(subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=sample_rate",
+                           "-of", "csv=p=0", src], capture_output=True, text=True).stdout.strip())
+def samples(path):
+    channels = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=channels",
+                               "-of", "csv=p=0", path], capture_output=True, text=True).stdout.strip()
+    out = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-threads", "1", "-i", path, "-map", "0:a:0",
+                          "-f", "s16le", "-acodec", "pcm_s16le", "-"], capture_output=True, check=True).stdout
+    return len(out) // (2 * int(channels))
+def duration(path):
+    return float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path],
+                                capture_output=True, text=True).stdout)
+total = 0
+for p in parts:
+    f = manifest.rsplit("/", 1)[0] + "/" + p["file"]
+    n, expected = samples(f), duration(f) * rate
+    print(f"{p['file']}: {n} samples, interval about {expected:.0f}")
+    assert n >= expected - 1024, f"{p['file']} lost {expected - n} samples of audible content"
+    total += n
+original = samples(src)
+print(f"original {original}, parts {total}")
+assert total >= original - 1024, f"lost {original - total} samples over all parts"
+assert total - original <= 1024 * len(parts), "too much padding at the cuts"
+EOF
 mutant; rm -f "$W/tool/lib/discord_copy.py"
 if copy_case "$W/tool"; then bad "되돌림(복사 없음)인데 같음 — 시험이 복사를 안 봄"; else ok "되돌림(복사 없음) → 다시 인코딩, 그림 다름 (잡힘)"; fi
 
