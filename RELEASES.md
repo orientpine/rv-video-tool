@@ -6,21 +6,59 @@ Every release is a git tag `vX.Y.Z` (Z for fixes, Y for features). Each tag gets
 
 릴리스는 git 태그 `vX.Y.Z` 하나다(고침 = Z, 기능 = Y). 태그마다 이 파일과 GitHub 릴리스 페이지에 한국어·영어 노트를 쓴다. 설치는 `scripts/install.sh`, 확인은 `scripts/verify.sh`.
 
-## Unreleased
+## v0.3.1
 
 ### English
 
-- Fix: the `check_layout` occlusion check no longer fails a target because of weather around it. Its two ID passes used to turn only meshes into masks and draw points, lines and sprites with their own material, so big additive lamp halos, mist particles and rain streaks counted as target pixels in the target-only pass and as covered in the scene pass (a night scene: 50139 target pixels for one worker, visible 34%). Points, lines and sprites outside the target are now left out of both passes; those inside the target's group (sparks, wires) are drawn as target, custom particle shaders with their own size and shape. A real object or card in front still fails as before.
-- People (issue #36): a seated `KIT.fx.human` no longer sinks into seats built for the old figure. `pose("sit")` puts the soles 0.39 m below the seat contact and the palms where the old figure's were; `KIT.fx.seat(person, {seat, floor, back})` also fits the person: out of the seat back, seat contact on the seat top, knees raised or lowered until the soles reach the floor. The seat contact is under the pelvis centre, not the crotch. `check_human`'s seated contract is a range (knees 45..150°, thighs -15..45° from level).
-- People: `act(t, {grip, place, sit})`. `grip: {target, t0, touch, release, t1, avoid}` puts the palm on the target's nearest surface; `place: {hold, on, t0, touch, t1}` carries a held object onto a shelf top and lets go; `sit` makes the act seated (wheelchair hands on the push rims). The way there is lifted over `avoid` boxes and the elbow swings away from them. One line instead of hand-tuned arm angles.
-- `check_clearance` human penetration: on an open mesh (cab panels with openings) a point is inside only where seven rays agree, as for machines; a limb through one open panel is measured on the shallower side. The seated operator scene that read 476.5 mm (old figure) and 662.0 mm (new body) read false depths from single rays; with this rule the old figure reads 86.3 mm there.
+rv 0.3.1: seated people sit on their seat instead of sinking into it, people's hands can grip and set things down in one line, and four checks stop failing good videos.
+
+**People: seated fit and hand goals (#40, fixes #36)**
+
+- The seated-operator penetration in v0.3.0's known issue (663 mm new body, 477 mm old figure) was a measuring error: `check_clearance` counted a body point as inside an open cab panel when one ray crossed it an odd number of times. On an open mesh a point is now inside only where six more rays agree (as the machine rule already did); a limb pushed through one open panel is measured on the panel's shallower side. With this rule the same scene reads 86.3 mm for the old figure and 41.4 mm now.
+- `pose("sit")` puts the soles 0.39 m below the seat contact and the palms where the old figure's were (seats and levers in existing scenes were built for it); the seat contact is under the pelvis centre. `KIT.fx.seat(person, {seat, floor, back})` also fits a seated person: out of the seat back, seat contact on the seat top, knees raised or lowered until the soles reach the floor. A wheelchair rider declared this way has no penetration.
+- `act(t, {grip, place, sit})`: `grip` puts the palm on a target's nearest surface, `place` carries a held object onto a shelf top and lets go, `sit` makes the act seated (wheelchair push rims). The way there is lifted over `avoid` boxes and the elbow swings away from them. Palm error in the tests: 1.4 mm (bottle), 0.3 mm (handle), 0.9 mm (push rims).
+- `check_human`'s seated contract is a range (knees 45..150°, thighs -15..45° from level).
+
+**Fixes**
+
+- `check_human` no longer counts ball-and-stick molecule models as home-made people (#32).
+- `check_sharp --mutate bitrate` steps resolution down until the picture really degrades, so dark flat scenes no longer print `MUTATION_NOT_CAUGHT` (#32).
+- `check_motion` reads action words as stems with one conjugation rule, so formal and past endings ("올립니다", "올렸습니다") are actions (#32).
+- `check_motion`: the part a line explains is never counted as background motion (#35).
+- `check_layout`: rain, mist and lamp halos around a target are not its cover (#37).
+
+**Check time** (same machine, old v0.3.0 / new, seconds): project A `rv check` 179 -> 186; project B `rv check` 509 -> 547; project C `check_motion` 23.6 -> 22.4; G3 `check_human` 9.0 -> 8.5; G3 `check_clearance` 56.6 -> 83.5. These are wall-clock measurements from one combined regression, not controlled benchmarks.
+
+**Known issues**
+
+- The more robust open-mesh human-penetration check takes longer on the seated-operator G3 scene (56.6 -> 83.5 s, +48%).
+- `check_motion` `text_still` is not deterministic across runs (#43).
 
 ### 한국어
 
-- 고침: `check_layout` 가림 검사가 대상 둘레의 날씨 효과 때문에 대상을 FAIL 하지 않는다. 두 ID 패스가 메시만 마스크로 바꾸고 점·선·스프라이트는 제 재질로 그려서, 큰 가산 가로등 빛무리·물안개 입자·빗줄기가 '대상만' 패스에서 대상 화소로 세지고 장면 패스에서는 가린 것으로 세졌다(밤 장면 작업자 대상 화소 50139, 보임 34%). 이제 대상 밖 점·선·스프라이트는 두 패스에서 다 빼고, 대상 묶음 안의 것(불꽃·전선)은 대상으로 그린다(사용자 입자 셰이더는 제 크기·모양 그대로). 진짜 물체나 카드가 앞을 막으면 전처럼 FAIL.
-- 사람(이슈 #36): 앉은 `KIT.fx.human` 이 예전 사람에 맞춘 좌석에 박히지 않는다. `pose("sit")` 은 발바닥을 좌석 접촉점 0.39 m 아래, 손바닥을 예전 사람 자리에 둔다. `KIT.fx.seat(person, {seat, floor, back})` 는 사람도 맞춘다: 등받이 밖으로, 접촉점을 좌석 윗면에, 발바닥이 바닥에 닿게 무릎을 올리고 내림. 좌석 접촉점은 사타구니가 아니라 골반 가운데 아래. `check_human` 앉은 계약은 범위(무릎 45~150°, 허벅지 수평에서 -15~45°).
-- 사람: `act(t, {grip, place, sit})`. `grip: {target, t0, touch, release, t1, avoid}` 는 손바닥을 대상의 가장 가까운 겉면에, `place: {hold, on, t0, touch, t1}` 는 손에 든 물체를 선반 윗면에 내려놓고 손을 뺀다. `sit` 이면 앉은 채로(휠체어 푸시림 잡기). 가는 길은 `avoid` 상자 위로 들리고 팔꿈치는 장애물을 비켜 돈다. 팔 각도 손맞춤 대신 한 줄.
-- `check_clearance` 사람 관통: 열린 메시(문·창이 뚫린 운전실 판넬)에서는 일곱 광선이 모두 '안'일 때만 안으로 본다(기계 규칙과 같음). 열린 판 한 장을 뚫은 팔다리는 판 양쪽 중 얕은 쪽 깊이로 잰다. 앉은 운전자 장면의 476.5 mm(옛 사람)·662.0 mm(새 몸)는 광선 하나의 착시였고, 이 규칙으로 옛 사람은 86.3 mm.
+rv 0.3.1: 앉은 사람이 좌석에 박히지 않고 제자리에 앉으며, 사람 손이 한 줄로 잡고 내려놓고, 좋은 영상을 걸던 검사 넷을 고쳤다.
+
+**사람: 앉은 자세 맞춤과 손 목표 (#40, #36 고침)**
+
+- v0.3.0 알려진 문제의 앉은 운전자 관통(새 몸 663 mm, 옛 사람 477 mm)은 재기 착오였다. `check_clearance` 가 몸의 점에서 광선 하나가 열린 운전실 판넬을 홀수 번 지나면 안으로 셌다. 이제 열린 메시에서는 여섯 광선이 더 '안'이라고 할 때만 안으로 본다(기계 규칙과 같음). 열린 판 한 장을 뚫은 팔다리는 판 양쪽 중 얕은 쪽 깊이로 잰다. 같은 장면이 이 규칙으로 옛 사람 86.3 mm, 지금 41.4 mm.
+- `pose("sit")` 은 발바닥을 좌석 접촉점 0.39 m 아래, 손바닥을 예전 사람 자리에 둔다(예전 장면의 좌석·레버가 거기 맞춰져 있음). 좌석 접촉점은 골반 가운데 아래. `KIT.fx.seat(person, {seat, floor, back})` 는 앉은 사람을 맞춘다: 등받이 밖으로, 접촉점을 좌석 윗면에, 발바닥이 바닥에 닿게 무릎을 올리고 내림. 이렇게 선언한 휠체어 탄 사람은 관통 0.
+- `act(t, {grip, place, sit})`: `grip` 은 손바닥을 대상의 가장 가까운 겉면에, `place` 는 손에 든 물체를 선반 윗면에 내려놓고 손을 빼며, `sit` 이면 앉은 채로(휠체어 푸시림). 가는 길은 `avoid` 상자 위로 들리고 팔꿈치는 장애물을 비켜 돈다. 시험의 손바닥 오차 1.4 mm(병), 0.3 mm(손잡이), 0.9 mm(푸시림).
+- `check_human` 앉은 계약은 범위(무릎 45~150°, 허벅지 수평에서 -15~45°).
+
+**고침**
+
+- `check_human` 이 공·막대 분자 모델을 자작 사람으로 세지 않는다(#32).
+- `check_sharp --mutate bitrate` 가 화면이 정말 상할 때까지 해상도를 낮춰 눌러, 어둡고 평평한 장면에서 `MUTATION_NOT_CAUGHT` 가 안 난다(#32).
+- `check_motion` 이 동작어를 어간과 활용 규칙 하나로 읽어 높임·과거 끝말("올립니다", "올렸습니다")도 동작이다(#32).
+- `check_motion`: 줄이 설명하는 부품은 배경 움직임으로 세지 않는다(#35).
+- `check_layout`: 대상 둘레의 비·물안개·가로등 빛무리는 대상을 가린 것이 아니다(#37).
+
+**검사 시간** (같은 기계, 옛 v0.3.0 / 새, 초): 프로젝트 A `rv check` 179 -> 186; 프로젝트 B `rv check` 509 -> 547; 프로젝트 C `check_motion` 23.6 -> 22.4; G3 `check_human` 9.0 -> 8.5; G3 `check_clearance` 56.6 -> 83.5. 한 번의 합친 회귀에서 잰 wall-clock 값으로, 통제된 벤치마크는 아니다.
+
+**알려진 문제**
+
+- 열린 메시의 사람 관통을 더 정확히 재는 대신 앉은 운전자 G3 장면 검사가 56.6 -> 83.5 초(+48%)로 늘었다.
+- `check_motion` `text_still` 결과가 실행 사이에 달라질 수 있다(#43).
 
 ## v0.3.0
 
