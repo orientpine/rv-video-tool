@@ -47,7 +47,7 @@ grep -E 'OCCLUSION |LAYOUT_CHECK' "$T/layout.log"
 grep -q 'OCCLUSION t=1.000 .*card_coverage=0.000' "$T/layout.log"
 
 # B: flicker mutation inside a 1:2 pillarbox picture, with the real check_flicker and every other checker stubbed
-mkdir -p "$T/tool/lib"; cp "$ROOT/rv" "$T/tool/rv"; cp "$ROOT/lib/check_flicker.py" "$T/tool/lib/"
+mkdir -p "$T/tool/lib"; cp "$ROOT/rv" "$T/tool/rv"; cp "$ROOT/lib/check_flicker.py" "$ROOT/lib/workers.py" "$T/tool/lib/"
 for f in check_cuts sync_check check_clearance check_captions sheet check_layout check_numbers cutlist check_sharp check_human check_motion check_audio mix check_quality; do
   printf 'import sys\nm = any(x == "--mutate" or "/mut_" in x for x in sys.argv)\nprint("MUTATION_CAUGHT" if m else "STUB PASS")\nsys.exit(1 if m else 0)\n' > "$T/tool/lib/$f.py"
 done
