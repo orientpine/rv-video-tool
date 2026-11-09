@@ -14,7 +14,10 @@ import sys
 
 BROWSER_GIB = 1.5        # per browser: 1.3 GiB measured peak, rounded up
 MEMORY_SHARE = 0.75      # of the memory free now; the rest stays for the encoder, the OS and other work
-CAPTURE_MAX = 12         # one GB10 GPU: 900 frames took 26.4 s with 12 browsers, 28.2 s with 16, 30.3 s with 20
+CAPTURE_MAX = 8           # one GB10 GPU: a 900-frame sweep first picked 12 (26.4 s vs 28.2 at 16, 30.3 at 20).
+                          # Changed after measuring the full 3-minute capture with per-scene warm-up: 8 browsers
+                          # 172.9 s, 6 browsers 188.9 s, 12 browsers 198.6 s (old value 12; more warm-up and GPU
+                          # queueing past 8, screenshot 209 ms/frame at 12 against 145 ms at 8)
 CHECK_BROWSERS = 12      # check browsers open at once, shards included: with up to 30 (20 checks, 6 shards) a
                          # 3-minute 3D project's sync_check page failed to compile its shaders, a false FAIL
 SHARDS_MAX = 4
