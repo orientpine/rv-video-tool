@@ -138,7 +138,7 @@ def synth(kind, duration, rotation_hz=2.0):
 
 
 def measure(path):
-    result = run(["ffmpeg", "-hide_banner", "-i", str(path), "-af",
+    result = run(["ffmpeg", "-nostdin", "-hide_banner", "-i", str(path), "-af",
                   "loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json", "-f", "null", "-"])
     return json.loads(re.findall(rb"\{[^{}]*\}", result.stderr)[-1])
 
@@ -146,7 +146,7 @@ def measure(path):
 def momentary(path, af=None):
     """EBU R128 momentary loudness (400 ms window) every 100 ms: [(t_end_s, LUFS)]."""
     chain = (af + "," if af else "") + "ebur128"
-    err = run(["ffmpeg", "-hide_banner", "-nostats", "-i", str(path), "-af", chain, "-f", "null", "-"]).stderr
+    err = run(["ffmpeg", "-nostdin", "-hide_banner", "-nostats", "-i", str(path), "-af", chain, "-f", "null", "-"]).stderr
     return [(float(t), float(m)) for t, m in
             re.findall(rb"t:\s*([\d.]+)\s+TARGET:[^M]*M:\s*([-\d.]+|-inf)", err.replace(b"-inf", b"-120"))]
 

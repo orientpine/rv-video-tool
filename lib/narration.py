@@ -91,7 +91,7 @@ def main():
                    f"amix=inputs={len(lines)}:normalize=0:dropout_transition=0,"
                    f"apad=whole_dur={total},atrim=0:{total},aformat=channel_layouts=stereo[mix]")
     subprocess.run(
-        [FFMPEG, "-y", "-v", "error", *inputs, "-filter_complex", ";".join(filters),
+        [FFMPEG, "-nostdin", "-y", "-v", "error", *inputs, "-filter_complex", ";".join(filters),
          "-map", "[mix]", "-ar", "48000", "-c:a", "pcm_s16le", str(output)],
         check=True,
     )
