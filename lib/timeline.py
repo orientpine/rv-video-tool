@@ -89,7 +89,7 @@ async def load_utterance(line, script, replacements, cache):
     endpoint = boundaries[-1]["t"] + boundaries[-1]["d"]
     if not wav.exists():
         subprocess.run([
-            ENCODER_PATH, "-v", "error", "-y", "-i", str(mp3),
+            ENCODER_PATH, "-nostdin", "-v", "error", "-y", "-i", str(mp3),
             "-af", f"atrim=0:{endpoint + 0.25:.3f}",
             "-ar", "48000", "-ac", "1", str(wav),
         ], check=True)
