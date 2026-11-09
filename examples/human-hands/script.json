@@ -1,0 +1,30 @@
+{
+  "name": "human-hands",
+  "voice": "en-US-AriaNeural",
+  "checks": "strict",
+  "site": "office",
+  "lead_s": 0.5,
+  "tail_s": 1.0,
+  "intro_s": 0.5,
+  "thumb_t": 5,
+  "scenes": [
+    {"name": "bottle", "extra_s": 3},
+    {"name": "handle", "extra_s": 3, "transition": {"type": "dip", "dur": 1.2, "depth": 0.85}},
+    {"name": "wheelchair", "extra_s": 3, "transition": {"type": "dip", "dur": 1.2, "depth": 0.85}}
+  ],
+  "lines": [
+    {"scene": "bottle", "text": "A hand goal connects the person to a real object.", "keywords": ["goal"]},
+    {"scene": "bottle", "text": "She puts the bottle on the shelf above her shoulder.", "keywords": ["puts", "shelf"]},
+    {"scene": "bottle", "text": "The palm follows the bottle until contact, then lets go."},
+    {"scene": "bottle", "text": "It rests."},
+    {"scene": "handle", "text": "Here the person approaches a cabinet.", "keywords": ["approaches"]},
+    {"scene": "handle", "text": "She grips the handle with her palm clear of the cabinet.", "keywords": ["grips"]},
+    {"scene": "handle", "text": "After release, the door opens on its hinge.", "keywords": ["release", "opens"]},
+    {"scene": "handle", "text": "All clear."},
+    {"scene": "wheelchair", "text": "The rider sits on the cushion with feet on the footrest.", "keywords": ["cushion"]},
+    {"scene": "wheelchair", "text": "He grips the push rims with both hands.", "keywords": ["grips"]},
+    {"scene": "wheelchair", "text": "The wheels turn gently beneath the steady hands.", "keywords": ["turn"]},
+    {"scene": "wheelchair", "text": "Ready."}
+  ],
+  "sound": {"music": "synth:ambient"}
+}
