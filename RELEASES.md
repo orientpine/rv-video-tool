@@ -6,9 +6,14 @@ Every release is a git tag `vX.Y.Z` (Z for fixes, Y for features). Each tag gets
 
 릴리스는 git 태그 `vX.Y.Z` 하나다(고침 = Z, 기능 = Y). 태그마다 이 파일과 GitHub 릴리스 페이지에 한국어·영어 노트를 쓴다. 설치는 `scripts/install.sh`, 확인은 `scripts/verify.sh`.
 
-## Unreleased
+## v0.4.1
 
 ### English
+
+- Worker counts follow the machine: `rv make`, `rv preview` and `rv check` size their browser counts from CPU cores and free memory instead of the fixed 4/6/4 (capture capped at 8 after measurement, at most 12 check browsers). Explicit `--jobs`, `RV_CHECK_JOBS` and `RV_CHECK_SHARDS` still win, `RV_CORES` / `RV_MEM_GIB` override detection, and `python3 lib/workers.py explain` prints the reasoning. The render's `dori heavy --mem` follows the worker count.
+- Capture is 1.30x faster on a 3-minute 5493-frame project (225.5 s with the old `--jobs 4` to 172.9 s with the automatic default, measured back to back on a 20-core GB10), and 1.24x on the rotor fixture. The 1.8x goal is not reached yet; the screenshot bottleneck continues in follow-up work.
+- Two nondeterminism bugs the old tool also had are fixed: a worker that began mid-scene painted earlier-faded labels with different anti-aliasing, and a scene's first frame could carry stale geometry from the previous scene. Workers now draw from their scene's start up to their first frame and start every scene on a fresh page, so frames no longer depend on `--jobs` or on which range is re-captured.
+- Share copies avoid re-encoding when the original fits: video is copied as-is, and each part's audio is encoded for exactly that part's interval so no audible content is lost at the cuts (copied AAC packets were being trimmed by each new file's edit list).
 
 - Fix: `check_motion` `ACTION_SPAN` measures a span by the part its line names. When `ACTION_MATCH` links a `KIT.process` part, the span reads that part's own state (its meshes) and the pixels of the screen box it covers during the span (`part=`, `region=` on the line), with the same thresholds. A small cup lifted in a wide kitchen changed 0.0002 of the frame and failed as `action_static` although `ACTION_MATCH` saw it rise; it now reads 0.107 of its own box and passes. A cup that holds while a big box beside it slides is no longer passed by the box. Spans with no linked part measure the whole frame as before.
 - `scripts/scan-public.sh` (also behind the pre-push hook): a grep that could not run, such as an invalid pattern line or `grep -P` in a multibyte locale that is not UTF-8 (EUC-KR), was read as 0 and let the scan pass; it is now counted as `scan-errors`. Each pattern runs in `C` and in `C.UTF-8` whatever the caller's locale and a hit in either counts: in a UTF-8 locale a line with a byte that is not UTF-8 hid its match, and in C `.` matched one byte of a Korean character.
@@ -23,6 +28,11 @@ Every release is a git tag `vX.Y.Z` (Z for fixes, Y for features). Each tag gets
 - 관리: `scripts/gh-safe.sh pr-create|pr-edit|pr-comment|issue-create|issue-comment|release-notes|release-edit <파일> [gh 인자]` 는 PR 본문·댓글·릴리스 노트를 그 글과 나머지 인자(제목 포함)에 `scripts/scan-public.sh` 가 0을 낸 뒤에만 올린다. GitHub는 본문·댓글의 모든 판을 남기고 API로 지울 수 없어, 올린 뒤 검사는 두 번 늦었다. 걸리면 아무것도 안 올리고 검사 이름과 줄 번호만 찍으며 걸린 낱말은 찍지 않는다(exit 1). 머리말에 적힌 인자만 받고(`--body`·`-dF <파일>`·`--web`·`--recover`·릴리스 첨부 파일 없음), 패턴 파일이 없거나 비었거나 본문이 글이 아니어도 거절. `tests/test_gh_safe.sh` 가 합성 패턴과 가짜 `gh` 로 돌린다.
 
 - 시험(자기 가림): 닫힌 뚜껑이 속 부품을 가린 초점 기기(뒷벽 뒤에 밝은 입자가 있는 방)는 1.000 보임: 자기 부품끼리 가린 것은 기기 자신이지 가림이 아니다. 다른 물체가 대부분을 막으면 여전히 FAIL. 0.3.0 에서는 같은 장면이 입자 때문에 FAIL 했다(#37 고침).
+
+- 일꾼 수를 기계에 맞춰 정한다: `rv make`, `rv preview`, `rv check`가 브라우저 수를 고정 4/6/4 대신 코어 수와 남은 메모리로 정한다(측정해 찍기는 최대 8, 검사 브라우저는 12 이하). `--jobs`, `RV_CHECK_JOBS`, `RV_CHECK_SHARDS`로 주면 그 값이 우선하고, `RV_CORES`·`RV_MEM_GIB`로 감지 값을 바꿀 수 있다. `python3 lib/workers.py explain`이 근거를 보여 주고, 렌더의 `dori heavy --mem`도 일꾼 수에 맞춘다.
+- 3분 5493프레임 프로젝트 찍기가 1.30배 빨라졌다(20코어 GB10에서 옛 `--jobs 4` 225.5초 → 자동 기본값 172.9초, 나란히 측정). rotor 고정물은 1.24배. 1.8배 목표는 아직 미달이며, screenshot 병목은 후속 작업에서 계속 다룬다.
+- 옛 판에도 있던 결정성 결함 둘을 고쳤다: 일꾼이 장면 중간에서 시작하면 앞서 페이드인한 라벨 글자를 다른 안티에일리어싱으로 칠했고, 장면 첫 프레임에 앞 장면의 낡은 모양이 남을 수 있었다. 이제 일꾼은 장면 시작부터 그리기만 하고 이어 찍고, 장멧마다 새 페이지를 열어 `--jobs`나 다시 찍는 구간에 따라 프레임이 달라지지 않는다.
+- 공유용 영상은 원본이 들어가면 다시 인코딩하지 않는다: 영상은 그대로 복사하고, 음성은 조각마다 그 구간만 인코딩해 넣어 조각 사이에서 소리가 잘리지 않게 했다(복사한 AAC 패킷이 새 파일의 edit list에 잘려 소리가 빠지던 문제).
 
 ## v0.4.0
 
