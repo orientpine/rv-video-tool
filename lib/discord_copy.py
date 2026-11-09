@@ -6,7 +6,9 @@ One file: the original itself (stream copy) when it is at most --limit-mib. Othe
 frames into the fewest parts that each fit, every cut at the key frame nearest a scene border close to an even
 share, written as out_part1.mp4 ... and out_parts.json like lib/discord.sh. Every part must be at most the limit
 and keep a picture bitrate of at least --min-kbps; if no split up to 8 parts does, it exits 1 and writes nothing,
-and lib/discord.sh encodes as before. Copied parts are the original's own packets, so the picture is the same.
+and lib/discord.sh encodes as before. Copied parts keep the original's own video packets, so the picture is the same;
+the audio of a part is encoded once for exactly that part's interval, because copied AAC packets get trimmed at each
+new file's start and would otherwise lose audible content at the cuts.
 """
 import argparse
 import json
@@ -43,13 +45,65 @@ def copy(src, dst):
     subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-y", "-i", src, *COPY, "-movflags", "+faststart", dst], check=True)
 
 
-def copy_split(src, base, inner_cuts):
+def audio_samples(path):
+    channels = probe(path, "-select_streams", "a:0", "-show_entries", "stream=channels", "-of", "csv=p=0").strip()
+    out = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-threads", "1", "-i", path, "-map", "0:a:0",
+                          "-f", "s16le", "-acodec", "pcm_s16le", "-"], check=True, capture_output=True).stdout
+    return len(out) // (2 * (int(channels) if channels.isdigit() else 2))
+
+
+def audio_rate(path):
+    rate = probe(path, "-select_streams", "a:0", "-show_entries", "stream=sample_rate", "-of", "csv=p=0").strip()
+    return int(rate) if rate.isdigit() else 48000
+
+
+def has_audio(path):
+    return bool(probe(path, "-select_streams", "a:0", "-show_entries", "stream=index", "-of", "csv=p=0").strip())
+
+
+def copy_split(src, base, inner_cuts, audio_kbps_value):
     # The segment muxer starts each part at the first key frame at or after its time, so the parts meet without a
     # repeated or missing frame (cutting with -ss/-to copies a few frames past the end into the next part).
+    # Audio cannot just be copied through that cut: each new MP4 trims its first AAC packets through an edit list,
+    # which dropped 0.309 s of audible content over seven parts (measured). Video is therefore split on its own,
+    # and each part's audio is decoded over exactly that part's interval and encoded once for it.
     times = ",".join(f"{t - 0.001:.6f}" for t in inner_cuts)
-    subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-y", "-i", src, *COPY, "-f", "segment", "-segment_times", times,
-                    "-reset_timestamps", "1", "-segment_start_number", "1", "-segment_format", "mp4",
-                    "-segment_format_options", "movflags=+faststart", f"{base}_part%d.mp4"], check=True)
+    subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-y", "-i", src, "-map", "0:v:0", "-an", "-c", "copy",
+                    "-f", "segment", "-segment_times", times, "-reset_timestamps", "1", "-segment_start_number", "1",
+                    "-segment_format", "mp4", f"{base}_video%d.mp4"], check=True)
+    dur = duration(src)
+    bounds = [0.0] + list(inner_cuts) + [dur]
+    for k in range(len(inner_cuts) + 1):
+        video = f"{base}_video{k + 1}.mp4"
+        dst = f"{base}_part{k + 1}.mp4"
+        if has_audio(src):
+            audio = f"{base}_audio{k + 1}.m4a"
+            subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-y", "-i", src,
+                            "-ss", f"{bounds[k]:.6f}", "-to", f"{bounds[k + 1]:.6f}",
+                            "-vn", "-c:a", "aac", "-b:a", f"{max(192, int(audio_kbps_value))}k", audio], check=True)
+            subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-y", "-i", video, "-i", audio,
+                            "-map", "0:v:0", "-map", "1:a:0", "-c", "copy", "-movflags", "+faststart", dst], check=True)
+            os.remove(audio)
+        else:
+            os.replace(video, dst)
+        if os.path.exists(video):
+            os.remove(video)
+
+
+def audio_is_complete(src, base, bounds, count):
+    # No part may lose audible content: allow one AAC frame (1024 samples) of rounding per part, never more,
+    # and never more than that much extra either. A failure means we give up and let lib/discord.sh encode instead.
+    if not has_audio(src):
+        return True
+    original, total = audio_samples(src), 0
+    rate = audio_rate(src)
+    for k in range(count):
+        samples = audio_samples(f"{base}_part{k + 1}.mp4")
+        expected = (bounds[k + 1] - bounds[k]) * rate
+        if samples < expected - 1024:
+            return False
+        total += samples
+    return abs(total - original) <= 1024 * count
 
 
 def cuts_for(n, dur, keys, borders):
@@ -92,7 +146,7 @@ def main():
             break
         parts, ok = [], True
         try:
-            copy_split(a.src, base, cuts[1:-1])
+            copy_split(a.src, base, cuts[1:-1], akbps)
         except subprocess.CalledProcessError:
             ok = False
         if not os.path.exists(f"{base}_part{n}.mp4") or os.path.exists(f"{base}_part{n + 1}.mp4"):
@@ -106,6 +160,9 @@ def main():
             if part_bytes > limit or kbps < a.min_kbps:
                 ok = False
                 break
+        if ok and not audio_is_complete(a.src, base, cuts, n):
+            ok = False
+            print("DISCORD_COPY split lost audio; encoding", file=sys.stderr)
         if ok:
             if os.path.exists(a.out):
                 os.remove(a.out)
@@ -113,12 +170,15 @@ def main():
                 fh.write("[\n" + ",\n".join("  " + json.dumps(p) for p in parts) + "\n]\n")
             for p in parts:
                 print(f"DISCORD part {p['file']} {p['start']}~{p['start'] + p['dur']:.4f} s copy {p['kbps']}k → {p['bytes']} B (≤ {a.limit_mib:g} MiB)")
-            print(f"DISCORD_COPY_SPLIT {n} 조각, 다시 인코딩 없음 → {base}_parts.json")
+            print(f"DISCORD_COPY_SPLIT {n} 조각, 영상은 다시 인코딩 없음(음성은 조각별로 한 번) → {base}_parts.json")
             return 0
         for p in range(1, MAX_PARTS + 2):
             f = f"{base}_part{p}.mp4"
             if os.path.exists(f):
                 os.remove(f)
+            v = f"{base}_video{p}.mp4"
+            if os.path.exists(v):
+                os.remove(v)
     print("DISCORD_COPY no copy split fits; encoding", file=sys.stderr)
     return 1
 
