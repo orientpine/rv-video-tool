@@ -24,7 +24,7 @@ Every release is a git tag `vX.Y.Z` (Z for fixes, Y for features). Each tag gets
 
 - 시험(자기 가림): 닫힌 뚜껑이 속 부품을 가린 초점 기기(뒷벽 뒤에 밝은 입자가 있는 방)는 1.000 보임: 자기 부품끼리 가린 것은 기기 자신이지 가림이 아니다. 다른 물체가 대부분을 막으면 여전히 FAIL. 0.3.0 에서는 같은 장면이 입자 때문에 FAIL 했다(#37 고침).
 
-## Unreleased (v0.4.0)
+## v0.4.0
 
 ### English
 
