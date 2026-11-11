@@ -82,7 +82,9 @@ KEY='gh[pousr]_[A-Za-z0-9]{20,}|github_pa[t]_|\bsk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]
 { g "$KEY"; gl "$KEY"; } > "$TMP/keys"
 MAIL='[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}'
 { g "$MAIL"; gl "$MAIL"; } | grep -vP 'git@github\.com|noreply\.github\.com|@example\.(?:com|org)|@users\.noreply' > "$TMP/emails"
-HOME_RE='/home/[a-z_][a-z0-9_-]*|/Users/[A-Za-z]|~/(?:\.d[o]ri|inbox|outbox)\b'
+# /home/<user> anywhere but inside a relative path: a folder named home after a path character (scenes/home/,
+# also in a patch header a/.../home/...) is not a home folder; after a quote, =, : or / (file:///home/...) it is
+HOME_RE='(?<![\w.-])/home/[a-z_][a-z0-9_-]*|/Users/[A-Za-z]|~/(?:\.d[o]ri|inbox|outbox)\b'
 { g "$HOME_RE"; gl "$HOME_RE"; } > "$TMP/home"
 SNOW='(?<![\w.])\d{17,20}(?![\w.])'
 { g "$SNOW"; gl "$SNOW"; } > "$TMP/snow"
