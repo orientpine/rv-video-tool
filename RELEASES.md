@@ -6,6 +6,18 @@ Every release is a git tag `vX.Y.Z` (Z for fixes, Y for features). Each tag gets
 
 릴리스는 git 태그 `vX.Y.Z` 하나다(고침 = Z, 기능 = Y). 태그마다 이 파일과 GitHub 릴리스 페이지에 한국어·영어 노트를 쓴다. 설치는 `scripts/install.sh`, 확인은 `scripts/verify.sh`.
 
+## v0.4.5
+
+### English
+
+- Examples: three KIMM research videos, `examples/kimm-morphing-wheel` (66.1 s), `examples/kimm-muscle-fabric` (68.2 s) and `examples/kimm-plasma-recycling` (66.3 s). Every number and claim has its public source in `sources.json`, and `audio/score.py` writes the music and sound effects. README "Examples" shows how to copy and build one: `rv tts`, `audio/score.py`, `rv still`, `rv make`.
+- The finished videos and their subtitles (one mp4 and one srt per example, 1920x1080 h264 with aac 48 kHz) are attached to this release. They are not kept in git. sha256: `kimm_morphing_wheel_premium.mp4` e26afa2ca1f8500c67438215671e958b4d5b57a2168f2f2b841ce64b5a881221, `.srt` 89162fb2847361088b374c148c14939cecbf993135e4222f395a4ca05302f031; `kimm_muscle_fabric_premium.mp4` aca9a6ae362d9527976e99a9ba6973233fd6942a52fe4e3bdbbe54c26f09d52e, `.srt` 3788f257aac6bd291ec8a0716210aa26ce915d1e7ed921a2db77cc4e9acaa412; `kimm_plasma_recycling_premium.mp4` 18646a747150e7c06b11b670656b4bf5a359c47bcbb442eba1664c5cc6ded083, `.srt` 0d33d7940abe4b5636fcb677a678525aef516e4e87cc7a77a0651174d6bb0e1c.
+
+### 한국어
+
+- 예제: 한국기계연구원 연구 영상 셋, `examples/kimm-morphing-wheel`(66.1초), `examples/kimm-muscle-fabric`(68.2초), `examples/kimm-plasma-recycling`(66.3초). 숫자와 주장마다 공개 출처를 `sources.json` 에 적었고, `audio/score.py` 가 배경음·효과음을 만든다. 복사해서 빌드하는 법(`rv tts`, `audio/score.py`, `rv still`, `rv make`)은 README 의 「예제」에 있다.
+- 완성 영상과 자막(예제마다 mp4·srt 하나씩, 1920x1080 h264 + aac 48 kHz)은 이 릴리스에 붙였고 git 에는 넣지 않는다. sha256 은 위 English 와 같다.
+
 ## v0.4.4
 
 ### English
