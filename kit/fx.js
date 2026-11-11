@@ -49,7 +49,10 @@
     if (!set) {
       HOOKS.set(s, set = new Set());
       let own = Object.prototype.hasOwnProperty.call(s, "onBeforeRender") ? s.onBeforeRender : null;
-      const run = function (renderer, scene, camera, target) { for (const f of set) f(camera, renderer); if (own) own.call(this, renderer, scene, camera, target); };
+      // without an own hook, fall through to Scene.prototype.onBeforeRender as read at render time: checks patch it to see
+      // every drawn scene (check_clearance), and this own property would otherwise hide KIT.place scenes from them
+      const run = function (renderer, scene, camera, target) { for (const f of set) f(camera, renderer);
+        (own || Object.getPrototypeOf(s).onBeforeRender).call(this, renderer, scene, camera, target); };
       Object.defineProperty(s, "onBeforeRender", {configurable: true, get: () => run, set: v => { own = v; }});
     }
     set.add(fn); return true;

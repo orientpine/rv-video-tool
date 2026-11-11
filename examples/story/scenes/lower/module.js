@@ -19,10 +19,10 @@ SCENES.lower = (() => {
       const down = KIT.wordT(NAME, "내려옵니다");
       window.HL = t >= down && t < down + 1.5 ? "내려옵니다" : "";
       K.P.update(t); K.steam.update(t, 1);
-      K.place(0.35);
-      const press = KIT.smooth(down - 1.6, down - 0.6, t) * (1 - KIT.smooth(down + 0.2, down + 1.0, t));
-      const hand = K.button.position.clone().addScaledVector(K.n, 0.25 * (1 - press));
-      K.mina.pose("point", {target: hand.lerp(new THREE.Vector3(K.mina.position.x, 0.9, K.mina.position.z), 1 - KIT.smooth(down - 2.4, down - 1.6, t))});
+      K.place(0.35, 0.3);   // a step back from the wall: the shelf comes down in front of her, not onto her
+      // her fingertip on the button's cap (front face), pressed 6 mm, then back
+      K.mina.act(t, {look: K.button.position, press: {target: K.button.position.clone().addScaledVector(K.n, 0.026), normal: K.n,
+        t0: down - 2.4, touch: down - 1.0, press: down - 0.6, release: down + 0.2, t1: down + 1.0, depth: 0.006, hand: "l"}});
       move.set(KIT.smooth(down - 0.3, down + 1.8, t));
       K.shelf.follow();
       KIT.fx.pulse(K.shelf.root, t, {period: 1.4, amount: 0.7});
