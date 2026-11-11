@@ -11,10 +11,12 @@ Every release is a git tag `vX.Y.Z` (Z for fixes, Y for features). Each tag gets
 ### English
 
 - Fix: the public leak scan (keys-tokens) refused kit/human_body.js, whose base64 mesh data spelled an AWS access key id by chance (AKIA and 16 capitals). scripts/human_body.py now cuts such a field into a list of pieces inside every AKIA, and the kit joins them before decoding. The decoded mesh is byte for byte the same; the scan pattern is unchanged.
+- Fix: the leak scan's home-paths check no longer takes a folder named home inside a relative path (scenes/home/deps.json, also in the a/... b/... header of a pushed patch) for a home folder. /home/<user> at the start of a line or after a space, quote, =, : or / is still caught.
 
 ### 한국어
 
 - 고침: 공개 유출 검사(keys-tokens)가 kit/human_body.js 를 막았다. base64 메시 데이터가 우연히 AWS 액세스 키 모양(AKIA 와 대문자·숫자 16자)이 됐기 때문이다. 이제 scripts/human_body.py 가 그런 칸을 AKIA 가운데에서 끊어 조각 목록으로 쓰고, 킷이 이어 붙여 디코드한다. 디코드한 메시는 바이트까지 같고, 검사 패턴은 그대로다.
+- 고침: 유출 검사의 home-paths 가 상대 경로 안의 home 폴더(scenes/home/deps.json, push 하는 패치의 a/... b/... 머리줄 포함)를 홈 폴더로 보지 않는다. 줄 처음이나 공백·따옴표·=·:·/ 뒤의 /home/<사용자>는 그대로 잡는다.
 
 ## v0.4.3
 

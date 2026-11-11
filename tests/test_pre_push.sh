@@ -155,6 +155,20 @@ GIT_COMMITTER_NAME=SyntheticForbiddenMarker g commit -q --allow-empty -m "Own id
 g commit -q --allow-empty -m "Clean tip"
 check own-identity-force-push 1 "$old_remote"
 
+# A folder named home inside a relative path (a scene's scenes/home/) is not a home path, also in patch headers;
+# a real one after a quote, = or :// still is (each line counts in the tree and in the pushed patch).
+g switch -qc relative-home "$clean_tip"
+mkdir -p scenes/home && echo '{}' > scenes/home/deps.json
+g add scenes
+g commit -qm "Scene folder named home"
+check relative-home-path 0 "$ZERO"
+g switch -qc real-home "$clean_tip"
+# built at run time, so this file itself holds no home path
+printf '"mix": "/%s/someone/x"\ncfg=/%s/someone/x\nfile:///%s/someone/x\n' home home home > real-home.txt
+g add real-home.txt
+g commit -qm "Real home paths"
+check real-home-path 1 "$ZERO" 'home-paths  *6$'
+
 # A commit removed from remote main must not be trusted via a stale tracking ref.
 remote_main="$(g --git-dir="$T/remote.git" rev-parse refs/heads/main)"
 g switch -qc tracking-ahead "$clean_tip"
