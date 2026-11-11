@@ -6,6 +6,20 @@ Every release is a git tag `vX.Y.Z` (Z for fixes, Y for features). Each tag gets
 
 릴리스는 git 태그 `vX.Y.Z` 하나다(고침 = Z, 기능 = Y). 태그마다 이 파일과 GitHub 릴리스 페이지에 한국어·영어 노트를 쓴다. 설치는 `scripts/install.sh`, 확인은 `scripts/verify.sh`.
 
+## Unreleased
+
+### English
+
+- `KIT.fx.human` act(): a scene can now give the trunk pose in the same call as `grip` or `place`: `man.act(t, {trunk: {bend, side, twist}, grip: {...}})` (radians; a number is `bend`, bend > 0 leans the chest forward). act used to write its own small lean onto the spine every frame, so a scene's back bend (a body sagging under a weight) was lost as soon as the hand gripped. The given pose now replaces that lean exactly; shoulders, arms and head ride on it, the hand grips from there with the same finger contact and penetration limits, and the automatic step toward a far goal measures reach from the bent shoulder. Without `trunk` nothing changes. HOWTO, "hand grip" row.
+- Fix: `place` onto a high shelf (a board above the shoulder, like the muscle-fabric kitchen's 1.645 m shelf). The automatic step aimed at a point on the floor (it took `place.at`'s y = 0), so the body walked 0.48 m in under the board and its head went 22 mm into it; it now aims at the board top and, when the trunk, head or a shoulder would end up under or against the board, picks the nearest spot round the goal that keeps clear of it. The carried object now goes up on a planned way that keeps the hand, the object and the arm off the board (it used to pass through the board's front edge), the palm holds the face whose arm clears the board at the drop, and the hand sets the object down without the forearm in the board.
+- Fix: the fingers round a carried mug (wider than 8 cm). They used to close into a fist next to it (26 to 37 mm off); they now wrap it the way `grip` does, the mug stays where the hand holds it, and they open once it is set down. A mug's handle no longer pushes the palm off its side. `grip` of a mug-sized object rolls the palm round it instead of resting the finger roots on it (pinky 57 deg before, about 80 now), and a rolled palm no longer sinks through a mug's wall into it.
+
+### 한국어
+
+- `KIT.fx.human` act(): 장면이 몸통 자세를 `grip`·`place` 와 같은 호출에서 줄 수 있다: `man.act(t, {trunk: {bend, side, twist}, grip: {...}})`(라디안, 숫자 하나면 `bend`, bend > 0 이 가슴 앞으로 굽힘). 예전에는 act 가 매 프레임 척추에 제 숙임을 써서, 장면이 정한 등 굽힘(무게에 짓눌린 자세)이 손으로 쥐는 순간 사라졌다. 이제 준 값이 그 숙임 대신 그대로 들어가고, 어깨·팔·머리가 그 위에 실리며, 손은 거기서 같은 손가락 접촉·뚫림 기준으로 쥔다. 먼 대상으로 몸이 스스로 옮길 때도 굽은 어깨 자리로 거리를 잰다. `trunk` 가 없으면 예전과 같다. HOWTO 「손으로 잡기·놓기」 줄.
+- 고침: 높은 선반(어깨보다 높은 판, 근육옷감 부엌의 1.645 m 선반)에 `place`. 자동 자리 잡기가 바닥의 한 점을 목표로 잡아(`place.at` 의 y = 0 을 그대로 씀) 몸이 선반 밑으로 0.48 m 걸어 들어가 머리가 판에 22 mm 박혔다. 이제 판 윗면을 목표로 잡고, 몸통·머리·어깨가 판 밑이나 판에 붙게 되면 목표 둘레에서 판을 비키는 가장 가까운 자리를 고른다. 든 물건은 손·물건·팔이 판에 닿지 않는 계획한 길로 올라가고(예전에는 판 앞 모서리를 뚫고 지났다), 손바닥은 놓는 순간 팔이 판을 비키는 면을 쥐며, 팔뚝이 판에 들어가지 않고 내려놓는다.
+- 고침: 들고 가는 머그(폭 8 cm 넘음)를 감싸는 손가락. 예전에는 컵 옆에서 주먹으로 닫혔다(26~37 mm 떠 있음). 이제 `grip` 처럼 감싸고, 머그는 손이 쥐 자리에 머물며, 내려놓으면 펴진다. 머그 손잡이 때문에 손바닥이 머그 옆면에서 떠 있던 것도 고쳤다. 머그 크기 물건의 `grip` 은 손가락 뿌리를 대는 대신 손바닥을 굴려 감싸고(새끼 굽힘 57도에서 약 80도), 굴린 손바닥이 머그 벽을 뚫고 안으로 들어가지 않는다.
+
 ## v0.4.5
 
 ### English

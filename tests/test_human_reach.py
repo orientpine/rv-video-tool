@@ -1,5 +1,5 @@
 """KIT.fx.human act() hand goals: place a held bottle on a shelf above the shoulder, grip a cabinet handle, grip both
-wheelchair push rims while seated. Each case is one act() call per frame, measured over every 30 fps frame with
+wheelchair push rims while seated, grip a cup with the scene's trunk bend, set a mug on a shelf board at 1.645 m. Each case is one act() call per frame, measured over every 30 fps frame with
 check_clearance's own 'human penetration' rule (and the bottle against the shelf with the same depth rule):
 - at touch the palm marker is within 10 mm of the goal point (place: the bottle rests on the shelf top within 3 mm);
 - no frame has a human penetration finding against the shelf, cabinet or wheelchair;
@@ -95,6 +95,34 @@ PROBE = r"""() => {
     if (hand > 30) errors.push(`pushrim: hand ${hand.toFixed(1)} mm from the rim`);
     if (r.worst > 10) errors.push('pushrim: ' + r.rows.join('; '));
     if (e.findings.length) errors.push('pushrim findings: ' + out.pushrim.findings.join('; '));
+  }
+  // 4. the scene's trunk pose kept with a grip: act(t, {trunk, grip}) puts the given bend on the spine, the hand still reaches
+  {
+    const scene = new THREE.Scene(); box(scene, [.9, .04, .32], [.18, .90, .42], "counter");
+    const cup = new THREE.Mesh(new THREE.CylinderGeometry(.055, .055, .13, 32).translate(0, .065, 0), mat); cup.position.set(.2, .92, .36); cup.name = "cup"; scene.add(cup);
+    const man = KIT.fx.human(scene, 1.75, {site: "office"}); man.visible = true;
+    man.act(2, {trunk: {bend: .5}, grip: {target: cup, t0: .4, touch: 1.4}}); man.updateMatrixWorld(true);
+    const rel = man.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(man.getObjectByName("spine").getWorldQuaternion(new THREE.Quaternion()));
+    const off = rel.angleTo(new THREE.Quaternion().setFromAxisAngle(V(1, 0, 0), .5)) * 180 / Math.PI;
+    out.trunk = {spine_off_deg: +off.toFixed(3), palm_mm: man.userData.reach.r.palm_mm};
+    if (off > .1) errors.push(`trunk: spine ${off.toFixed(2)} deg off the scene's bend`);
+    if (man.userData.reach.r.palm_mm > 10) errors.push(`trunk: palm ${man.userData.reach.r.palm_mm} mm from its goal`);
+  }
+  // 5. a mug onto a shelf board above the shoulder (top 1.645 m, the muscle-fabric kitchen): the body must not walk in
+  //    under the board, the fingers hold the mug on the way, and it rests on the board top
+  {
+    const scene = new THREE.Scene(), shelf = box(scene, [1.5, .045, .84], [.49, 1.6225, -.28], "shelf");
+    const mug = new THREE.Mesh(new THREE.CylinderGeometry(.055, .052, .13, 32).translate(0, .065, 0), mat); mug.name = "mug"; scene.add(mug);
+    const man = KIT.fx.human(scene, 1.75, {site: "office"}); man.position.set(-.45, .005, .10); man.visible = true;
+    const spec = () => ({place: {hold: mug, on: shelf, at: [.23, 0, .07], t0: 1, touch: 3.7, t1: 5.6}});
+    const r = run(scene, man, spec, frames(0, 5.6).filter(f => f % 3 === 0));
+    man.act(3.0, spec()); const ap = man.userData.autoPlace, tips = Object.values(man.userData.reach.r.fingers).map(f => f.tip_gap_mm);
+    man.act(4.5, spec()); const gap = (new THREE.Box3().setFromObject(mug).min.y - 1.645) * 1000;
+    out.shelf = {...r, room_mm: ap && ap.room_mm, moved: ap && ap.why, tips_mm: tips, mug_gap_mm: +gap.toFixed(2)};
+    if (!ap || !(ap.room_mm >= 40)) errors.push(`shelf: trunk ${ap && ap.room_mm} mm off the furniture after placing`);
+    if (r.worst > 0) errors.push(`shelf: human penetration ${r.worst} mm`);
+    if (tips.some(x => !(x <= 8))) errors.push(`shelf: fingers off the carried mug ${tips.join(', ')} mm`);
+    if (Math.abs(gap) > 3) errors.push(`shelf: mug rests ${gap.toFixed(1)} mm off the board top`);
   }
   return {errors, ...out};
 }"""
