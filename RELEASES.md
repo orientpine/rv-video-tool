@@ -6,6 +6,20 @@ Every release is a git tag `vX.Y.Z` (Z for fixes, Y for features). Each tag gets
 
 릴리스는 git 태그 `vX.Y.Z` 하나다(고침 = Z, 기능 = Y). 태그마다 이 파일과 GitHub 릴리스 페이지에 한국어·영어 노트를 쓴다. 설치는 `scripts/install.sh`, 확인은 `scripts/verify.sh`.
 
+## Unreleased
+
+### English
+
+- People have finger bones: three joints for each finger and thumb, taken from the same Quaternius mannequin rig (`scripts/human_body.py` regenerates `kit/human_body.js`; the finger skin keeps the part name `hand_l`/`hand_r`, `userData.rvPivot` names its joint). A `grip` closes the fingers joint by joint until each one touches the object (no finger goes in), and opens them on release. `place` wraps the carried object too. Small objects (a cup, a bottle, a bar; longest side 0.3 m or less) are held on their side halfway up, thumb along their long side, the hand rolled until the finger roots touch. A bar with 25 mm or more behind it (a door pull) is held by the finger roots, square to the door. `man.userData.reach.<hand>.fingers` reports each finger's bend and tip gap.
+- A standing `grip` or `place` the arm cannot reach well (out of reach, across the chest, behind the back, inside the body) moves and turns the body toward the object for the whole act (`man.userData.autoPlace`). `reposition: false` keeps the scene's spot. Walking and seated acts are never moved.
+- Measured (done check `verify.py`): on a cup, a bottle and a door pull every fingertip is 1.0 to 1.5 mm off the surface, the hand goes at most 1.1 mm into it, fingers bend 70 to 130 degrees. Forcing the fingers straight or shut is caught. HUMAN_REACH, HUMAN_ACT, HUMAN_SEAT and test_human.sh pass unchanged.
+
+### 한국어
+
+- 사람에게 손가락 뼈가 생겼다: 손가락·엄지마다 마디 3개, 같은 Quaternius 마네킹 리그에서 가져왔다(`scripts/human_body.py` 가 `kit/human_body.js` 를 다시 만든다. 손가락 겉면 부위 이름은 `hand_l`/`hand_r` 그대로이고, `userData.rvPivot` 이 마디 이름이다). `grip` 은 손가락을 마디마다 굽혀 대상에 닿으면 멈추고(뚫지 않음), 놓을 때 편다. `place` 도 든 물건을 감싼다. 작은 물체(컵·병·막대, 가장 긴 변 0.3 m 이하)는 옆면 가운데를 잡고 엄지를 긴 축 쪽으로 세우며, 손가락 뿌리가 닿을 때까지 손을 굴린다. 뒤에 25 mm 이상 틈이 있는 막대(문손잡이)는 문 정면에서 손가락 뿌리로 건다. `man.userData.reach.<손>.fingers` 에 손가락별 굽힘·끝 간격이 나온다.
+- 서서 하는 `grip`·`place` 를 팔이 제대로 못 하면(안 닿음, 가슴을 가로지름, 등 뒤, 몸속) 몸이 act 내내 물건 쪽으로 옮기고 돈다(`man.userData.autoPlace`). 장면 자리 그대로 두려면 `reposition: false`. 걷기·앉기 동작은 옮기지 않는다.
+- 측정(완료 검사 `verify.py`): 컵·병·문손잡이에서 손가락 끝이 겉면에서 1.0~1.5 mm, 손이 들어간 깊이 최대 1.1 mm, 손가락 굽힘 70~130도. 손가락을 억지로 펴거나 오므리면 잡힌다. HUMAN_REACH·HUMAN_ACT·HUMAN_SEAT·test_human.sh 는 기준 그대로 통과.
+
 ## v0.4.1
 
 ### English

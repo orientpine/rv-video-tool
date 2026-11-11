@@ -9,8 +9,10 @@ Only the mesh and its skin weights are used; no animation clip is kept.
 
 What it writes: the mannequin re-posed from its T-pose to rv's rest pose (arms hanging, bare-head height 1.75 m,
 soles at y=0, facing +Z), split by dominant joint into KIT.fx.human's 15 body parts, with every vertex weighted to
-KIT's own joint pivots (pelvis, spine, neck, head, shoulder/elbow/wrist, hip/knee/ankle). The kit deforms these
-vertices on the CPU from the pivots each pose, so checks read the real posed surface.
+KIT's own joint pivots (pelvis, spine, neck, head, shoulder/elbow/wrist, hip/knee/ankle, and three joints for each
+finger and thumb: <finger><1..3>_<side>, the rig's DEF-f_* / DEF-thumb.* bones). The kit deforms these vertices on the
+CPU from the pivots each pose, so checks read the real posed surface. Finger vertices keep the part name hand_<side>.
+Markers ftip_<finger>_<side> are the fingertips (the distal segment's farthest vertex along it).
 """
 import base64
 import json
@@ -21,10 +23,13 @@ import numpy as np
 
 HEIGHT = 1.75
 ARM_OUT_DEG = 6.0
+FINGERS = ["thumb", "index", "middle", "ring", "pinky"]
+FINGER_PIVOTS = [f"{f}{k}_{s}" for s in ("l", "r") for f in FINGERS for k in (1, 2, 3)]
 PIVOTS = ["pelvis", "spine", "neck", "head", "shoulder_l", "shoulder_r", "elbow_l", "elbow_r", "wrist_l", "wrist_r",
-          "hip_l", "hip_r", "knee_l", "knee_r", "ankle_l", "ankle_r"]
+          "hip_l", "hip_r", "knee_l", "knee_r", "ankle_l", "ankle_r"] + FINGER_PIVOTS
 PART_OF = {"pelvis": "pelvis", "spine": "torso", "neck": "head", "head": "head", "shoulder": "upperarm",
-           "elbow": "forearm", "wrist": "hand", "hip": "thigh", "knee": "shin", "ankle": "foot"}
+           "elbow": "forearm", "wrist": "hand", "hip": "thigh", "knee": "shin", "ankle": "foot", **{f: "hand" for f in FINGERS}}
+LIMBS = ["shoulder", "elbow", "wrist", "hip", "knee", "ankle"] + [f"{f}{k}" for f in FINGERS for k in (1, 2, 3)]
 COMPONENT = {5120: np.int8, 5121: np.uint8, 5122: np.int16, 5123: np.uint16, 5125: np.uint32, 5126: np.float32}
 WIDTH = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4, "MAT4": 16}
 
@@ -68,6 +73,9 @@ def rotation_between(a, b):
 
 def pivot_of(bone, x):
     side = "r" if x > 0 else "l"     # KIT faces +Z with its "_r" side at +X
+    for f in FINGERS:                 # DEF-f_index.02.L -> index2_l, DEF-thumb.01.L -> thumb1_l
+        if ("f_" + f if f != "thumb" else "thumb") + ".0" in bone:
+            return f + bone.split(".0")[1][0] + "_" + side
     for key, pivot in [("hips", "pelvis"), ("spine", "spine"), ("shoulder.", "spine"), ("neck", "neck"),
                        ("head", "head"), ("upper_arm", "shoulder"), ("forearm", "elbow"), ("hand", "wrist"),
                        ("f_", "wrist"), ("thumb", "wrist"), ("thigh", "hip"), ("shin", "knee"), ("foot", "ankle"),
@@ -138,19 +146,24 @@ def main(source, out):
         pick.update({f"shoulder_{side}": f"DEF-upper_arm.{s}", f"elbow_{side}": f"DEF-forearm.{s}",
                      f"wrist_{side}": f"DEF-hand.{s}", f"hip_{side}": f"DEF-thigh.{s}", f"knee_{side}": f"DEF-shin.{s}",
                      f"ankle_{side}": f"DEF-foot.{s}"})
+        for f in FINGERS:
+            for k in (1, 2, 3):
+                pick[f"{f}{k}_{side}"] = (f"DEF-thumb.0{k}.{s}" if f == "thumb" else f"DEF-f_{f}.0{k}.{s}")
     pivots = {}
     for pv, bone in pick.items():
         pivots[pv] = joint_pos[bone].copy()
     if pivots["shoulder_r"][0] < 0:      # mirror labels so "_r" is the +X side
-        for a in ("shoulder", "elbow", "wrist", "hip", "knee", "ankle"):
+        for a in LIMBS:
             pivots[a + "_l"], pivots[a + "_r"] = pivots[a + "_r"], pivots[a + "_l"]
-    for a in ("shoulder", "elbow", "wrist", "hip", "knee", "ankle"):   # exact left/right symmetry
+    for a in LIMBS:   # exact left/right symmetry
         l, r = pivots[a + "_l"], pivots[a + "_r"]
         x, y, z = (r[0] - l[0]) / 2, (l[1] + r[1]) / 2, (l[2] + r[2]) / 2
         pivots[a + "_l"], pivots[a + "_r"] = np.array([-x, y, z]), np.array([x, y, z])
     for a in ("pelvis", "spine", "neck", "head"):
         pivots[a][0] = 0.0
     bone_pivot = [PIVOTS.index(pivot_of(nm, joint_pos[nm][0])) for nm in names]
+    # Markers (palm, tip) are measured on the whole hand as before the finger joints existed: fingers count as wrist.
+    as_wrist = np.array([PIVOTS.index("wrist_" + n[-1]) if n in FINGER_PIVOTS else i for i, n in enumerate(PIVOTS)])
 
     parts, markers = [], {}
     for q in prims:
@@ -165,10 +178,11 @@ def main(source, out):
         q8[:, 0] += 255 - q8.sum(1)
         dominant = order[:, 0]
         bone_dom = q["jnt"][np.arange(len(p)), np.argmax(q["wgt"], 1)]
+        hand_dom = np.argmax(w @ np.eye(len(PIVOTS))[as_wrist], 1)
         tri_piv = dominant[q["idx"][:, 0]]
         for pv in range(len(PIVOTS)):
             name = PIVOTS[pv]
-            base = name.split("_")[0]
+            base = name.split("_")[0].rstrip("123")
             tris = q["idx"][tri_piv == pv]
             if not len(tris):
                 continue
@@ -186,13 +200,17 @@ def main(source, out):
             sx = -1 if side == "l" else 1
             feet = p[(dominant == PIVOTS.index("ankle_" + side)) & (p[:, 1] < .015)]
             markers["sole_" + side] = [float(feet[:, 0].mean()), 0.0, float(feet[:, 2].mean())]
-            palm = p[(dominant == PIVOTS.index("wrist_" + side)) & np.array([names[b].startswith("DEF-hand") for b in bone_dom])]
+            palm = p[(hand_dom == PIVOTS.index("wrist_" + side)) & np.array([names[b].startswith("DEF-hand") for b in bone_dom])]
             inward = -sx * palm[:, 0]
             near = palm[inward >= np.quantile(inward, .85)]
             markers["palm_" + side] = near[np.argmin(np.linalg.norm(near - near.mean(0), axis=1))].tolist()
-            hand = p[dominant == PIVOTS.index("wrist_" + side)]
+            hand = p[hand_dom == PIVOTS.index("wrist_" + side)]
             tip = hand[np.argmin(hand[:, 1])]
             markers["tip_" + side] = tip.tolist()
+            for f in FINGERS:   # fingertip: the distal segment's vertex farthest along joint 2 -> joint 3
+                seg = p[dominant == PIVOTS.index(f"{f}3_{side}")]
+                d = pivots[f"{f}3_{side}"] - pivots[f"{f}2_{side}"]
+                markers[f"ftip_{f}_{side}"] = seg[np.argmax(seg @ d)].tolist()
         pelvis = p[dominant == PIVOTS.index("pelvis")]
         under = pelvis[(np.abs(pelvis[:, 0]) < .07) & (np.abs(pelvis[:, 2] - pivots["pelvis"][2]) < .03)]   # under the pelvis centre (sit bones), not the crotch
         seat = under[np.argmin(under[:, 1])]
