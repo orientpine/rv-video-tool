@@ -66,13 +66,14 @@ jobs:
         # The runner's /etc/apt/apt-mirrors.txt lists azure.archive.ubuntu.com first. When that name does not
         # resolve, apt waits about 20 s for every file before it tries the next mirror; ffmpeg is about a hundred
         # files, so the job sat here until it was cancelled. Drop the Azure entry when it does not resolve or an
-        # attempt fails, give up on a slow mirror sooner, and try three times within a bounded step.
+        # attempt fails, and try three times; each attempt's index update and download have their own limit, the
+        # install itself then runs from the downloaded files.
         timeout-minutes: 10
         run: |
           packages=(ffmpeg fonts-noto-cjk)
-          if dpkg -s "${packages[@]}" > /dev/null 2>&1; then echo "already installed: ${packages[*]}"; exit 0; fi
           printf 'Acquire::Retries "3";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n' |
             sudo tee /etc/apt/apt.conf.d/80rv-network > /dev/null
+          if dpkg -s "${packages[@]}" > /dev/null 2>&1; then echo "already installed: ${packages[*]}"; exit 0; fi
           drop_azure() {
             if [ -f /etc/apt/apt-mirrors.txt ] && grep -q 'azure\.archive\.ubuntu\.com' /etc/apt/apt-mirrors.txt; then
               echo "::warning::apt: $1; using the other mirrors in /etc/apt/apt-mirrors.txt"
@@ -81,8 +82,9 @@ jobs:
           }
           getent hosts azure.archive.ubuntu.com > /dev/null || drop_azure "azure.archive.ubuntu.com does not resolve"
           for attempt in 1 2 3; do
-            if sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "${packages[@]}"; then
-              exit 0
+            if sudo timeout 120 apt-get update &&
+              sudo timeout 240 apt-get install -y --download-only "${packages[@]}"; then
+              exec sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "${packages[@]}"
             fi
             drop_azure "attempt $attempt failed"
             sleep 10
