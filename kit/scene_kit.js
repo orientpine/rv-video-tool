@@ -610,12 +610,12 @@
       return pts[pts.length - 1].clone();
     }
     // From a (palm at rest) to b (approach point) in world space: where the straight way runs into an obstacle, lift
-    // the worst point over it (along world up), three times at most; under an obstacle (a shelf board above the
+    // the worst point over it (along world up), twice at most; under an obstacle (a shelf board above the
     // shoulder) lifting would go into it, so the point steps out sideways past its nearest edge instead.
     // extra: points carried with the palm (a held object).
     function route(a, b, obs, extra = []) {
       const pts = [a.clone(), b.clone()], up = Vc(0, 1, 0);
-      for (let pass = 0; pass < 3 && obs.length; pass++) {
+      for (let pass = 0; pass < 2 && obs.length; pass++) {
         let worst = 0, at = null, seg = 0, hit = null;
         for (let i = 1; i < pts.length; i++) for (let k = 1; k < 12; k++) {
           const p = pts[i - 1].clone().lerp(pts[i], k / 12);
@@ -1021,10 +1021,10 @@
           const c0 = obj.getWorldPosition(Vc());
           const palmAt = n => { const o = c0.clone().add(center).setY(c0.y - bottom + size.y * (wideHold ? .5 : .45)).addScaledVector(n, 1);
             const hit = new THREE.Raycaster(o, n.clone().negate(), 0, 2).intersectObject(obj, true).find(h => h.object.isMesh);
-            return hit ? spot.clone().add(hit.point.sub(c0)).addScaledVector(n, .004) : spot.clone().add(center).setY(spot.y - bottom + size.y * .45).addScaledVector(n, r + .004); };
+            return hit && wideHold ? spot.clone().add(hit.point.sub(c0)).addScaledVector(n, .004) : spot.clone().add(center).setY(spot.y - bottom + size.y * .45).addScaledVector(n, r + .004); };
           // the arm has to clear the surface it sets the object on (a shelf board at the shoulder or above): when the face toward
           // the shoulder leaves the forearm or upper arm in the board at the drop, the palm takes the nearest face whose arm clears
-          if (s.on && armClear(palmAt(N), N) < .005) {
+          if (wideHold && s.on && armClear(palmAt(N), N) < .005) {
             let best = null;
             for (const i of [1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6, 7, -7, 8]) { const n = N.clone().applyAxisAngle(up, i * Math.PI / 8), c = armClear(palmAt(n), n);
               if (!best || (c >= .005 ? best.c < .005 : best.c < .005 && c > best.c)) best = {n, c}; }
@@ -1032,7 +1032,8 @@
           }
           P = palmAt(N);
           off = P.clone().sub(spot);   // palm minus the object's origin, while held
-          extra = [[Vc(0, -bottom + .01, 0).sub(off).add(Vc(center.x, 0, center.z)), r + .025], [Vc(0, size.y - bottom - .01, 0).sub(off).add(Vc(center.x, 0, center.z)), r + .025]];   // + the fingers round it
+          const rf = r + (wideHold ? .025 : 0);   // a mug: + the fingers round it
+          extra = [[Vc(0, -bottom + .01, 0).sub(off).add(Vc(center.x, 0, center.z)), rf], [Vc(0, size.y - bottom - .01, 0).sub(off).add(Vc(center.x, 0, center.z)), rf]];
         }
         let F = thumbF || (kind === "place" ? up.clone().cross(N).multiplyScalar(-sg) : P.clone().sub(Sw));
         F.addScaledVector(N, -F.dot(N)); if (F.lengthSq() < 1e-8) F = up.clone().addScaledVector(N, -N.y); F.normalize();
@@ -1043,7 +1044,7 @@
         const pre = kind === "place" ? P.clone().addScaledVector(up, .07) : P.clone().addScaledVector(N, .09);
         // a carried object: a planned way (planCarry) that keeps hand and object off the obstacles and the arm able to follow
         const carryBox = obj ? new THREE.Box3().setFromObject(obj).translate(off.clone().negate().sub(obj.getWorldPosition(Vc()))) : null;   // the object's box relative to the palm
-        const way = (a, b) => kind === "place" && obs.length ? planCarry(a, b) || route(a, b, obs, extra) : route(a, b, obs, extra);
+        const way = (a, b) => kind === "place" && wideHold && obs.length ? planCarry(a, b) || route(a, b, obs, extra) : route(a, b, obs, extra);
         // A* on a 4 cm grid round the shoulder: the hand (6 cm) and the object's own box (+2 cm for the fingers round it) 2 cm off
         // every obstacle, the hand between 0.6 and 0.95 of the arm from the shoulder and 17 cm off the spine; shortcuts after.
         function planCarry(a, b) {
@@ -1083,7 +1084,7 @@
           while (i0 < pts.length - 1) { let j0 = pts.length - 1; while (j0 > i0 + 1 && !clear(pts[i0], pts[j0])) j0--; out.push(pts[j0]); i0 = j0; }
           return out;
         }
-        const there = way(Hs, pre).concat([P]);
+        const there = way(Hs, pre).concat([P]);   // the planned way keeps the object off the board, so it comes up before it goes over the edge
         const touch = s.touch, t0 = s.t0 ?? touch - 1, release = s.release ?? (kind === "place" ? touch + .15 : undefined), t1 = s.t1 ?? (release ?? touch) + 1;
         const go = mjerk(t0, touch, t), back = release === undefined ? 0 : mjerk(release, t1, t);
         const away = P.clone().addScaledVector(N, .09), home = [P, away].concat(way(away, Hs).slice(1));
@@ -1119,7 +1120,7 @@
         // a carried object keeps its place when the hand backs off it (lift, along N) so the fingers fit round it
         let grasp = null, roll = 0, lift = 0, anchor = "palm"; const liftV = Vc();   // liftV: where the hand moved off (world)
         const carry = () => { if (obj) {
-          const to = held ? W(want).sub(off).sub(liftV) : rest;   // where the palm was sent, less what it backed off: the object stays put while the hand settles
+          const to = held ? (wideHold ? W(want).sub(off).sub(liftV) : palm.getWorldPosition(Vc()).sub(off)) : rest;   // a mug: where the palm was sent, less what it backed off (it stays put while the hand settles)
           obj.position.copy(obj.parent ? obj.parent.worldToLocal(to.clone()) : to); obj.updateWorldMatrix(false, true);
         } };
         solve(); carry();
@@ -1140,7 +1141,7 @@
           // the hand does not turn into it near the surface it goes on; the fingers still stop on that surface
           const rt = kind === "place" ? own : tris, behind = kind === "place" ? [] : tris;   // behind: what open fingers must not swing into (a carried object's way is planned clear)
           if (tris.length && (kind === "grip" || wideHold)) {   // roll the hand about its palm point, fingers toward the object, until the finger roots touch it
-            const Pm = palm.getWorldPosition(Vc()), Qw = wr.getWorldQuaternion(Q());
+            const Pm = kind === "place" && wideHold ? W(want) : palm.getWorldPosition(Vc()), Qw = wr.getWorldQuaternion(Q());   // a carried mug sits where the palm was sent: roll from there
             const onHand = (v, q) => v.clone().sub(hand.palm).multiplyScalar(k).applyQuaternion(q).add(Pm);
             // a thick palm rolled around a tall or thin object would go into it: it backs off along N instead (lift)
             let pm0 = null;
@@ -1151,7 +1152,7 @@
               let fm = Infinity; if (behind.length) for (const v of hand.fingerPts) fm = Math.min(fm, signedDist(onHand(v, q), behind) + lift);
               return {root: signedDist(onHand(hand.root, q), rt) + lift, lift, fm}; };
             let best = 0, bestRoot = Infinity, prev = 0;
-            for (let phi = 0; phi <= 1.1001; phi += .05) {
+            for (let phi = 0; phi <= (wide ? .9001 : 1.1001); phi += .05) {   // round a mug: rolling further buries the palm heel, and backing off for it costs the pinky its wrap
               const r = at(phi);
               if (phi > 0 && r.fm < -.001) break;   // the open fingers would swing into something (a door behind a handle)
               if (r.root <= .002) {
@@ -1179,7 +1180,7 @@
           grasp = {};
           for (const fd of hand.list) grasp[fd.finger] = closeFinger(fd, kind === "place" ? own : tris, fw);   // a carried object: the fingers hold it, nothing else
           // knuckles bulge as the fingers bend: measure the real skin, back the hand off by what went in, close again
-          for (let pass = 0; pass < (wide ? 4 : 3) && tris.length && (kind === "grip" || wideHold) && lift < (wide && roll > 0 ? .06 * k : .012); pass++) {   // a palm rolled round a mug may back off further, until it is clear
+          for (let pass = 0; pass < (wide ? 6 : 3) && tris.length && (kind === "grip" || wideHold) && lift < (wide && roll > 0 ? .06 * k : .012); pass++) {   // a palm rolled round a mug may back off further, until it is clear
             deform();
             let pen = 0; const v = Vc(), q = Vc(), out = N.clone();
             for (const o of g.children) if (o.isMesh && o.userData.rvPart === "hand_" + f) {
@@ -1188,8 +1189,9 @@
                 if (d > pen) { pen = d; if (wide) out.copy(q).sub(v).normalize(); } }   // round a mug: the deepest point's own way out
             }
             if (pen < .0012) break;
-            lift += pen + .0004; liftV.addScaledVector(out, pen + .0004);
-            want.add(out.transformDirection(new THREE.Matrix4().copy(g.matrixWorld).invert()).multiplyScalar((pen + .0004) / g.matrixWorld.getMaxScaleOnAxis()));
+            const back = wide ? pen / 2 + .0004 : pen + .0004;   // round a mug: half at a time, the fingers closing again between, so the hand does not overshoot
+            lift += back; liftV.addScaledVector(out, back);
+            want.add(out.transformDirection(new THREE.Matrix4().copy(g.matrixWorld).invert()).multiplyScalar(back / g.matrixWorld.getMaxScaleOnAxis()));
             solve(); carry();
             for (const fd of hand.list) grasp[fd.finger] = closeFinger(fd, kind === "place" ? own : tris, fw);   // a carried object: the fingers hold it, nothing else
           }
