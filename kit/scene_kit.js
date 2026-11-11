@@ -1264,6 +1264,13 @@
     const restInv = BODY.pivots.map(n => new THREE.Matrix4().makeTranslation(-R[n][0], -R[n][1], -R[n][2]));
     const surfaceOf = p => /^hand/.test(p.part) ? glove : /^foot/.test(p.part) ? boot : p.pivot === "head" ? skin : cloth;
     const seams = new Map(), skins = [];
+    // A vertex carried both by the hand (wrist, fingers) and by the forearm: the wrist seam, where a rolled hand twists
+    // far from its forearm (the arm has no twist joint).
+    const inHand = BODY.pivots.map(n => /^(wrist|thumb|index|middle|ring|pinky)/.test(n));
+    const wristSeam = (piv, wgt) => Uint8Array.from({length: wgt.length / 4}, (_, v) => {
+      let hand = false, arm = false;
+      for (let k = 0; k < 4; k++) if (wgt[4 * v + k]) { if (inHand[piv[4 * v + k]]) hand = true; else arm = true; }
+      return hand && arm ? 1 : 0; });
     for (const p of BODY.parts) {
       const rest = new Float32Array(bytes(p.pos)), n8 = new Int8Array(bytes(p.nrm));
       const nrm = Float32Array.from(n8, x => x / 127), geo = new THREE.BufferGeometry();
@@ -1275,9 +1282,16 @@
       if (p.kind !== "main") { if (!seams.has(base)) seams.set(base, seam(base)); material = seams.get(base); }
       const o = mesh(g, p.part, geo, material);
       o.userData.rvSkin = true; o.userData.rvPivot = p.pivot;   // the joint that carries it (a finger segment: index2_r)
-      skins.push({o, rest, nrm, piv: new Uint8Array(bytes(p.piv)), wgt: new Uint8Array(bytes(p.wgt))});
+      const piv = new Uint8Array(bytes(p.piv)), wgt = new Uint8Array(bytes(p.wgt));
+      skins.push({o, rest, nrm, piv, wgt, seam: wristSeam(piv, wgt)});
     }
+    // Where a wrist seam vertex's joints turn far apart (a gripping hand rolled far from its forearm), a linear blend of
+    // their matrices folds the skin through itself: triangles at the back of the hand flip and read as holes up close.
+    // There the vertex moves by the blended dual quaternion instead (rotation kept, no fold), eased in between DQ_FROM
+    // and DQ_TO; below DQ_FROM, and everywhere off the wrist seam, it moves exactly as before.
+    const DQ_FROM = Math.cos(50 * Math.PI / 360), DQ_TO = Math.cos(80 * Math.PI / 360);   // cos of half the angle between joints
     const D = pivots.map(() => new THREE.Matrix4()), inv = new THREE.Matrix4(), seen = new Float64Array(pivots.length * 16).fill(NaN);
+    const QR = new Float64Array(pivots.length * 4), QD = new Float64Array(pivots.length * 4), qt = new THREE.Quaternion();
     function deform() {
       g.updateWorldMatrix(true, true);
       inv.copy(g.matrixWorld).invert();
@@ -1285,6 +1299,10 @@
       pivots.forEach((pv, i) => { D[i].multiplyMatrices(inv, pv.matrixWorld).multiply(restInv[i]);
         const e = D[i].elements; for (let k = 0; k < 16; k++) if (seen[16 * i + k] !== e[k]) { same = false; seen[16 * i + k] = e[k]; } });
       if (same) return;
+      D.forEach((m, i) => { qt.setFromRotationMatrix(m); const e = m.elements, r = QR.subarray(4 * i, 4 * i + 4), d = QD.subarray(4 * i, 4 * i + 4);
+        r[0] = qt.x; r[1] = qt.y; r[2] = qt.z; r[3] = qt.w;   // dual part: half the translation times the rotation
+        const tx = e[12] / 2, ty = e[13] / 2, tz = e[14] / 2;
+        d[0] = tx * r[3] + ty * r[2] - tz * r[1]; d[1] = ty * r[3] + tz * r[0] - tx * r[2]; d[2] = tz * r[3] + tx * r[1] - ty * r[0]; d[3] = -(tx * r[0] + ty * r[1] + tz * r[2]); });
       for (const s of skins) {
         const pos = s.o.geometry.attributes.position.array, nor = s.o.geometry.attributes.normal.array;
         for (let v = 0, n = s.rest.length / 3; v < n; v++) {
@@ -1296,6 +1314,33 @@
             const e = D[s.piv[4 * v + k]].elements, f = w / 255;
             px += f * (e[0] * x + e[4] * y + e[8] * z + e[12]); py += f * (e[1] * x + e[5] * y + e[9] * z + e[13]); pz += f * (e[2] * x + e[6] * y + e[10] * z + e[14]);
             nx += f * (e[0] * a + e[4] * b + e[8] * c); ny += f * (e[1] * a + e[5] * b + e[9] * c); nz += f * (e[2] * a + e[6] * b + e[10] * c);
+          }
+          let top = 0, mostW = 0, near = 1;
+          if (s.seam[v]) {
+            for (let k = 0; k < 4; k++) if (s.wgt[4 * v + k] > mostW) { mostW = s.wgt[4 * v + k]; top = s.piv[4 * v + k]; }
+            for (let k = 0; k < 4; k++) if (s.wgt[4 * v + k]) { const j = 4 * s.piv[4 * v + k], i = 4 * top;
+              near = Math.min(near, Math.abs(QR[j] * QR[i] + QR[j + 1] * QR[i + 1] + QR[j + 2] * QR[i + 2] + QR[j + 3] * QR[i + 3])); }
+          }
+          if (near < DQ_FROM) {
+            const u = Math.min(1, (DQ_FROM - near) / (DQ_FROM - DQ_TO)), mix = u * u * (3 - 2 * u), i = 4 * top;
+            let rx = 0, ry = 0, rz = 0, rw = 0, dx = 0, dy = 0, dz = 0, dw = 0;
+            for (let k = 0; k < 4; k++) {
+              const w = s.wgt[4 * v + k]; if (!w) continue;
+              const j = 4 * s.piv[4 * v + k], side = QR[j] * QR[i] + QR[j + 1] * QR[i + 1] + QR[j + 2] * QR[i + 2] + QR[j + 3] * QR[i + 3];
+              const f = (side < 0 ? -w : w) / 255;   // q and -q are one rotation: blend on the dominant joint's side
+              rx += f * QR[j]; ry += f * QR[j + 1]; rz += f * QR[j + 2]; rw += f * QR[j + 3];
+              dx += f * QD[j]; dy += f * QD[j + 1]; dz += f * QD[j + 2]; dw += f * QD[j + 3];
+            }
+            const ql = Math.hypot(rx, ry, rz, rw); rx /= ql; ry /= ql; rz /= ql; rw /= ql; dx /= ql; dy /= ql; dz /= ql; dw /= ql;
+            const turn = (X, Y, Z) => {   // rotate (X, Y, Z) by the unit quaternion r
+              const cx = ry * Z - rz * Y + rw * X, cy = rz * X - rx * Z + rw * Y, cz = rx * Y - ry * X + rw * Z;
+              return [X + 2 * (ry * cz - rz * cy), Y + 2 * (rz * cx - rx * cz), Z + 2 * (rx * cy - ry * cx)];
+            };
+            const [qx, qy, qz] = turn(x, y, z), [ma, mb, mc] = turn(a, b, c);
+            const ox = 2 * (rw * dx - dw * rx + ry * dz - rz * dy), oy = 2 * (rw * dy - dw * ry + rz * dx - rx * dz), oz = 2 * (rw * dz - dw * rz + rx * dy - ry * dx);
+            px += mix * (qx + ox - px); py += mix * (qy + oy - py); pz += mix * (qz + oz - pz);
+            const nl = Math.hypot(nx, ny, nz) || 1;
+            nx = nx / nl + mix * (ma - nx / nl); ny = ny / nl + mix * (mb - ny / nl); nz = nz / nl + mix * (mc - nz / nl);
           }
           const l = Math.hypot(nx, ny, nz) || 1;
           pos[3 * v] = px; pos[3 * v + 1] = py; pos[3 * v + 2] = pz; nor[3 * v] = nx / l; nor[3 * v + 1] = ny / l; nor[3 * v + 2] = nz / l;
@@ -1337,7 +1382,7 @@
       geo.setIndex(keep);
       const vest = mesh(g, "torso", geo, hi);
       vest.userData.rvSkin = true;
-      skins.push({o: vest, rest, nrm: base.nrm, piv: base.piv, wgt: base.wgt});
+      skins.push({o: vest, rest, nrm: base.nrm, piv: base.piv, wgt: base.wgt, seam: base.seam});
     }
     const tablet = mesh(torso, "torso", new THREE.BoxGeometry(.24, .16, .014), boot, 0, .2, tz + td + .24);
     mesh(tablet, "torso", new THREE.BoxGeometry(.213, .131, .003), mat(0x588695), 0, 0, .009);
