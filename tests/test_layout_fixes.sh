@@ -3,7 +3,7 @@
 #   bash tests/test_layout_fixes.sh        → 마지막 줄 LAYOUT_FIXES PASS
 #   RV_TEST_PROJECT=<프로젝트> (기본: 합성 작업장 tests/project, 단계 칩이 있는 것)
 # ① 단계 칩이 나타나는 중(열리기 시작한 뒤 0.2 s, 들어오는 전환 끝 뒤로 미뤄진 때를 화면에서 찾음) 칩 글자 대비 ≥ 4.5 — 되돌림: 묶음 불투명도 페이드 → 어두운 장면과 섞여 contrast FAIL
-# ② KIT.label 을 위 130 px 에 가둘 때 실제 상자 위끝 ≥ 130 — 되돌림: 반올림 offsetHeight + 안쪽 반올림 없는 가두기 → 129.8 (safe 위반)
+# ② KIT.label(크기 36: 높이 59.2 px 로 소수라 반올림 차이가 보임) 을 위 130 px 에 가둘 때 실제 상자 위끝 ≥ 130 — 되돌림: 반올림 offsetHeight + 안쪽 반올림 없는 가두기 → 129.8 (safe 위반)
 # ③ 왼쪽 가두기: 소수 폭 상자(글 5개 × 30~40 px) 가장 작은 왼끝 ≥ 40 — 되돌림: 안쪽 반올림 없는 가두기 → 안전 영역 위반
 set -uo pipefail
 TOOL="$(cd "$(dirname "$0")/.." && pwd)"
@@ -36,7 +36,7 @@ async def main():
         b = await pw.chromium.launch(executable_path=CHROME, headless=True, args=CHROME_ARGS); p = await b.new_page(viewport={"width": 1920, "height": 1080})
         await p.goto(Path(sys.argv[1]).resolve().as_uri(), wait_until="load"); await p.evaluate("Promise.resolve(window.renderReady)")
         print(await p.evaluate("""() => { const ov = document.createElement('div'); ov.style.cssText='position:absolute;left:0;top:0;width:1920px;height:1080px';
-          document.body.append(ov); const l = KIT.label(ov, '상자를 선반 위에'); const cam = new THREE.PerspectiveCamera(50, 16/9, .1, 100);
+          document.body.append(ov); const l = KIT.label(ov, '상자를 선반 위에', {size: 36}); const cam = new THREE.PerspectiveCamera(50, 16/9, .1, 100);
           cam.position.set(0, 0, 5); cam.updateMatrixWorld(); l.place(cam, new THREE.Vector3(0, 0, 0), 0, -800, 1);
           const r = l.box.getBoundingClientRect(); let left = 1e9;
           for (const text of ['상자 배치', '상자를 선반 위에', '상자 놓이는 곳', '작은 파란 상자 + 큰 상자 (2개)', 'X 상자']) for (let size = 30; size <= 40; size += 0.5) {
