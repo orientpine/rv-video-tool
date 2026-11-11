@@ -243,14 +243,14 @@
     const hit = (x0, y0, x1, y1) => avoid.some(([a, b, c2, d]) => x0 < c2 && x1 > a && y0 < d && y1 > b);
     // check_motion SUBJECT_FRAME: the explained subject ends in the middle 30% of the frame (|x-.5|, |y-.5| <= .15), with a 10% margin
     if (subject) { const v = px(subject); if (!v || Math.abs(v[0] - 960) > 0.9 * 0.15 * 1920 || Math.abs(v[1] - 540) > 0.9 * 0.15 * 1080) return false; }
-    for (const q of keep.pts) { const v = px(q); if (!v || v[0] < SAFE.x0 || v[0] > SAFE.x1 || v[1] < SAFE.y0 || v[1] > SAFE.y1 || hit(v[0], v[1], v[0], v[1])) return false; }
+    for (const q of keep.pts) { const v = px(q); if (!v || v[0] < SAFE.x0 || v[0] > SAFE.x1 || v[1] < SAFE.y0 || v[1] > captionTop() || hit(v[0], v[1], v[0], v[1])) return false; }
     for (const l of keep.labels) {   // 글자 상자: 가운데 x+dx, 아래 y+dy(KIT.label 의 translate(-50%,-100%)) — 안전 영역에 밀려나지 않고 피할 영역과 안 겹쳐야
       const v = px(l.p), x0 = v[0] + l.dx - l.w / 2, x1 = v[0] + l.dx + l.w / 2, y1 = v[1] + l.dy, y0 = y1 - l.h;
-      if (x0 < SAFE.x0 || x1 > SAFE.x1 || y0 < SAFE.y0 || y1 > SAFE.y1 || hit(x0, y0, x1, y1)) return false; }
+      if (x0 < SAFE.x0 || x1 > SAFE.x1 || y0 < SAFE.y0 || y1 > captionTop() || hit(x0, y0, x1, y1)) return false; }
     return true;
   }
   function freeRects(avoid) {   // 안전 영역에서 avoid 를 뺀 빈 직사각형들(넓은 순)
-    let rects = [[SAFE.x0, SAFE.y0, SAFE.x1, SAFE.y1]];
+    let rects = [[SAFE.x0, SAFE.y0, SAFE.x1, captionTop()]];
     for (const [a, b, c, d] of avoid) {
       const next = [];
       for (const [x0, y0, x1, y1] of rects) {
@@ -429,11 +429,11 @@
     if (el.dataset.rvAuto) home(el);   // a default card starts from its home spot (the same whichever frames ran before), then stays where clear puts it
     const r = measure(el), w = r.width, h = r.height, ov = measure(el.offsetParent || el.parentElement);
     // default spots: beside the objects first (right, left, above, below, gap 48 px, inside the safe area), the corners only last
-    const cy = (y0 + y1) / 2 - h / 2, cx = (x0 + x1) / 2 - w / 2, fy = v => clamp(v, SAFE.y0 + 40, SAFE.y1 - 24 - h), fx = v => clamp(v, SAFE.x0 + 56, SAFE.x1 - 56 - w);
+    const cy = (y0 + y1) / 2 - h / 2, cx = (x0 + x1) / 2 - w / 2, fy = v => clamp(v, SAFE.y0 + 40, captionTop() - 24 - h), fx = v => clamp(v, SAFE.x0 + 56, SAFE.x1 - 56 - w);
     const beside = [[x1 + 48, fy(cy)], [x0 - 48 - w, fy(cy)], [fx(cx), y0 - 48 - h], [fx(cx), y1 + 48]]
-      .filter(([l, t]) => l >= SAFE.x0 + 56 && l + w <= SAFE.x1 - 56 && t >= SAFE.y0 && t + h <= SAFE.y1);
+      .filter(([l, t]) => l >= SAFE.x0 + 56 && l + w <= SAFE.x1 - 56 && t >= SAFE.y0 && t + h <= captionTop());
     const spots = [[r.left - ov.left, r.top - ov.top], ...(o.spots || [...beside, [SAFE.x0 + 40, SAFE.y0 + 40], [SAFE.x1 - 40 - w, SAFE.y0 + 40],
-      [SAFE.x0 + 40, SAFE.y1 - 24 - h], [SAFE.x1 - 40 - w, SAFE.y1 - 24 - h], [960 - w / 2, SAFE.y0 + 40]])];
+      [SAFE.x0 + 40, captionTop() - 24 - h], [SAFE.x1 - 40 - w, captionTop() - 24 - h], [960 - w / 2, SAFE.y0 + 40]])];
     const hit = ([l, t]) => Math.max(0, Math.min(l + w, x1) - Math.max(l, x0)) * Math.max(0, Math.min(t + h, y1) - Math.max(t, y0));
     const best = spots.reduce((a, b) => hit(b) < hit(a) ? b : a);
     const pick = spots.find(q => hit(q) === 0) || best;
