@@ -89,6 +89,9 @@ async def main():
           const f = frame(0); return {...f, top: KIT.info.captionTop()}; })()""")
         want = 1080 - 400 - (44 * 1.36 + 30) - 8   # one 44 px line in the box, 8 px gap
         check("caption raised to 400 px: the card moves up above its box", raised["card"][3] <= raised["top"] + .5 and abs(raised["top"] - want) < 1, [raised["card"], raised["top"], round(want, 1)])
+        low = await p2.evaluate("""(() => { const t = KIT.label(ov, "low tag"); t.place(cam, new THREE.Vector3(0, -3, 0), 0, 400, 1);
+          return {tag: t.box.getBoundingClientRect().bottom, top: KIT.info.captionTop()}; })()""")
+        check("caption raised: a tag pushed down stays above the caption box", low["tag"] <= low["top"] + .5, low)
         await p2.evaluate("delete window.CAPTION")
         fresh = await p2.evaluate("cleared()")
         check("clear on a settled card == on a fresh card", settled == fresh, [settled, fresh])
