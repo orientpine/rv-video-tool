@@ -217,8 +217,10 @@
     for (const a of [].concat(avoid || [])) {
       const el = a && a.nodeType === 1 ? a : a && a.box && a.box.nodeType === 1 ? a.box : null;
       if (!el) { if (Array.isArray(a) && a.length === 4) out.push(a); continue; }
-      delete el.dataset.rvAuto;   // a scene that frames its camera round a default card keeps that card where it was measured
-      const r = measure(el);
+      let r;
+      if (el.dataset.rvAuto) {   // a default card is measured at its home spot (where it starts), never where an earlier frame settled it
+        const was = [el.style.left, el.style.top]; home(el); r = measure(el); [el.style.left, el.style.top] = was;
+      } else r = measure(el);
       if (!(r.width > 0 && r.height > 0)) { if (strict) return null; console.warn("KIT: avoid 요소 크기 0 — 빼고 잼"); continue; }
       out.push([r.left, r.top, r.right, r.bottom]);
     }
@@ -369,7 +371,7 @@
     const cardBox = document.createElement("div");
     cardBox.dataset.rvCue = "tone";   // lib/cues.py: 카드가 나타나는 순간 짧은 톤
     const auto = o.left == null && o.right == null && o.top == null;
-    const x = o.left != null ? `left:${o.left}px` : o.right != null ? `right:${o.right}px` : `left:${AUTO_LEFT}px`;
+    const x = o.left != null ? `left:${o.left}px` : `right:${o.right ?? 64}px`;
     cardBox.style.cssText = `position:absolute;${x};top:${o.top ?? 150}px;background:${CARD_BG};border-left:${big ? 8 : 6}px solid ${ACC};` +
       `padding:${big ? "22px 34px 20px" : "14px 22px 12px"};max-width:${big ? 760 : 520}px;opacity:0;font-family:var(--ui)`;
     cardBox.innerHTML = `<div style="font:700 ${T.num}px/1 var(--ui);color:${ACC};letter-spacing:-2px">${val}</div>` +
@@ -377,10 +379,7 @@
       (o.sub ? `<div style="font:600 ${T.tag + 4}px/1.3 var(--ui);color:${INK};margin-top:6px">${o.sub}</div>` : "") +
       `<div style="font:500 ${T.tag}px/1.3 var(--ui);color:${MUTE};margin-top:${big ? 12 : 8}px;overflow-wrap:anywhere">${n && n.kind === "fetched" ? "출처: " + srcText(n.src) : "설계 목표"}</div>`;
     ov.append(cardBox);
-    if (auto) {   // before the first settle (or when a scene frames its camera round it): right of the centre box, half way down
-      cardBox.dataset.rvAuto = "1"; autoCards.push({box: cardBox, ov, near: o.near});
-      cardBox.style.top = `${Math.round(540 - measure(cardBox).height / 2)}px`;
-    }
+    if (auto) { cardBox.dataset.rvAuto = "1"; autoCards.push({box: cardBox, ov, near: o.near}); home(cardBox); }
     return {box: cardBox, show(a, rise = 24) { cardBox.style.opacity = a.toFixed(3); cardBox.style.transform = `translateY(${((1 - a) * rise).toFixed(1)}px)`; }};
   }
   // 정지 그림(HOWTO 4-2): 움직임으로 보여 주기 힘든 뜻은 그 뜻을 풍부하게 그린 그림으로. src = deps.json assets 의 이름(ASSETS) 또는 data:/url.
@@ -417,6 +416,7 @@
         const x = (v.x + 1) / 2 * 1920, y = (1 - v.y) / 2 * 1080; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
     }
     const pad = o.pad ?? .1, px = (x1 - x0) * pad, py = (y1 - y0) * pad; x0 -= px; x1 += px; y0 -= py; y1 += py;
+    if (el.dataset.rvAuto) home(el);   // a default card starts from its home spot (the same whichever frames ran before), then stays where clear puts it
     const r = measure(el), w = r.width, h = r.height, ov = measure(el.offsetParent || el.parentElement);
     // default spots: beside the objects first (right, left, above, below, gap 48 px, inside the safe area), the corners only last
     const cy = (y0 + y1) / 2 - h / 2, cx = (x0 + x1) / 2 - w / 2, fy = v => clamp(v, SAFE.y0 + 40, SAFE.y1 - 24 - h), fx = v => clamp(v, SAFE.x0 + 56, SAFE.x1 - 56 - w);
@@ -452,6 +452,9 @@
     return c[2] > c[0] && c[3] > c[1] ? c : null;
   }
   const shownIn = el => el.style.display !== "none" && +(el.style.opacity || 1) > 0.001;
+  function home(el) {   // a default card before settle: right of the middle box, half way down
+    el.style.right = "auto"; el.style.left = `${AUTO_LEFT}px`; el.style.top = `${Math.round(540 - measure(el).height / 2)}px`;
+  }
   function settle(ov) {
     const mine = autoCards.filter(c => c.ov === ov && c.box.dataset.rvAuto && shownIn(c.box));
     if (!mine.length) return;
@@ -459,20 +462,24 @@
     const cam = lastCam || (labels.find(l => l.camera) || {}).camera || null;
     const P = window.PICTURE || {x: 0, y: 0, w: 1920, h: 1080};
     const F = [Math.max(P.x + MARGIN.x, SAFE.x0), Math.max(P.y + MARGIN.y, SAFE.y0), Math.min(P.x + P.w - MARGIN.x, SAFE.x1), Math.min(P.y + P.h - MARGIN.y, SAFE.y1)];
-    const taken = [];   // text already on screen in this overlay: tags and cards placed by the scene or earlier in this pass
-    for (const l of labels) { const r = l.box.getBoundingClientRect(); if (r.width > 0) taken.push([r.left, r.top, r.right, r.bottom]); }
-    for (const el of ov.querySelectorAll("[data-rv-cue]")) if (!el.dataset.rvAuto && shownIn(el)) { const r = measure(el); taken.push([r.left, r.top, r.right, r.bottom]); }
+    const taken = [];   // what is already on screen in this overlay: tags, cards, pictures and panels the scene placed (not default cards)
+    for (const el of ov.children) if (!el.dataset.rvAuto && !(el instanceof SVGElement) && shownIn(el)) {
+      const r = el.getBoundingClientRect();   // a layer as big as half the frame (a vignette, a bar set) is background, not a thing to avoid
+      if (r.width > 0 && r.height > 0 && r.width * r.height < 0.5 * 1920 * 1080) taken.push([r.left, r.top, r.right, r.bottom]); }
     const over = (a, b) => Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0])) * Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]));
     for (const c of mine) {
       const near = [].concat(c.near || []).filter(Boolean);
       const subj = near.length ? near : emphasis.extra.size ? [...emphasis.extra] : labels.map(l => l.target).filter(Boolean);
       const S = (cam && subj.length && screenBox(subj, cam)) || [960 - 0.15 * 1920, 540 - 0.15 * 1080, 960 + 0.15 * 1920, 540 + 0.15 * 1080];
+      let root = subj[0]; while (root && root.parent) root = root.parent;   // people in the subject's scene are not covered either
+      const people = cam && root && root.isScene ? root.children.filter(o => o.userData && o.userData.rvHuman && o.visible) : [];
+      const busy = taken.concat(people.map(p => screenBox([p], cam)).filter(Boolean));
       const r = measure(c.box), w = r.width, h = r.height, ox = r.left - parseFloat(c.box.style.left), oy = r.top - parseFloat(c.box.style.top);   // overlay origin on screen
       const fy = v => clamp(v, F[1], F[3] - h), fx = v => clamp(v, F[0], F[2] - w), cy = (S[1] + S[3]) / 2 - h / 2, cx = (S[0] + S[2]) / 2 - w / 2;
-      const sides = [[S[2] + GAP, fy(cy), F[2] - S[2]], [S[0] - GAP - w, fy(cy), S[0] - F[0]]].sort((p, q) => q[2] - p[2]);
-      const spots = [...sides, [fx(cx), S[1] - GAP - h], [fx(cx), S[3] + GAP]].map(([x, y]) => [x, y, [x, y, x + w, y + h]]);
+      // right first, then left, above, below: a fixed order, so a subject that sways or a shaking camera does not flip the card
+      const spots = [[S[2] + GAP, fy(cy)], [S[0] - GAP - w, fy(cy)], [fx(cx), S[1] - GAP - h], [fx(cx), S[3] + GAP]].map(([x, y]) => [x, y, [x, y, x + w, y + h]]);
       const inside = q => q[0] >= F[0] - 0.5 && q[2] <= F[2] + 0.5 && q[1] >= F[1] - 0.5 && q[3] <= F[3] + 0.5;
-      const cost = q => over(q, S) + taken.reduce((s, t) => s + over(q, [t[0] - 16, t[1] - 16, t[2] + 16, t[3] + 16]), 0);
+      const cost = q => over(q, S) + busy.reduce((s, t) => s + over(q, [t[0] - 16, t[1] - 16, t[2] + 16, t[3] + 16]), 0);
       let pick = spots.find(([, , q]) => inside(q) && cost(q) === 0);
       if (!pick) {   // no free spot beside the subject (it fills the frame): the least covering spot pulled inside the frame
         const pulled = spots.map(([x, y]) => { const a = fx(x), b = fy(y); return [a, b, [a, b, a + w, b + h]]; });
