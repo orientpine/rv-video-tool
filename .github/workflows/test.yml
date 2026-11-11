@@ -63,8 +63,34 @@ jobs:
             ~/.cache/ms-playwright
           key: ${{ runner.os }}-${{ runner.arch }}-rv-playwright-${{ steps.dependencies.outputs.playwright }}-${{ hashFiles('scripts/test.sh') }}
       - name: system tools
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto-cjk
+        # The runner's /etc/apt/apt-mirrors.txt lists azure.archive.ubuntu.com first. When that name does not
+        # resolve, apt waits about 20 s for every file before it tries the next mirror; ffmpeg is about a hundred
+        # files, so the job sat here until it was cancelled. Drop the Azure entry when it does not resolve or an
+        # attempt fails, give up on a slow mirror sooner, and try three times within a bounded step.
+        timeout-minutes: 10
+        run: |
+          packages=(ffmpeg fonts-noto-cjk)
+          if dpkg -s "${packages[@]}" > /dev/null 2>&1; then echo "already installed: ${packages[*]}"; exit 0; fi
+          printf 'Acquire::Retries "3";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n' |
+            sudo tee /etc/apt/apt.conf.d/80rv-network > /dev/null
+          drop_azure() {
+            if [ -f /etc/apt/apt-mirrors.txt ] && grep -q 'azure\.archive\.ubuntu\.com' /etc/apt/apt-mirrors.txt; then
+              echo "::warning::apt: $1; using the other mirrors in /etc/apt/apt-mirrors.txt"
+              sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
+            fi
+          }
+          getent hosts azure.archive.ubuntu.com > /dev/null || drop_azure "azure.archive.ubuntu.com does not resolve"
+          for attempt in 1 2 3; do
+            if sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "${packages[@]}"; then
+              exit 0
+            fi
+            drop_azure "attempt $attempt failed"
+            sleep 10
+          done
+          exit 1
       - name: chromium
+        # --with-deps runs apt-get as well; it uses the mirror list and timeouts set in the step above.
+        timeout-minutes: 10
         run: uv run -q --no-project --with playwright python -m playwright install --with-deps chromium
       - name: software rendering
         run: |
