@@ -1,0 +1,1 @@
+혼합 폐플라스틱을 수소 플라즈마로 에틸렌·벤젠 원료로 바꾸는 한국기계연구원 주도 사업단 연구 소개 · 66.3초 · 원문 https://www.kimm.re.kr/sub0504/view/id/20852 · 소리 만들기: `rv tts <사본>` 뒤 `uv run --no-project --with numpy python <사본>/audio/score.py <사본>`

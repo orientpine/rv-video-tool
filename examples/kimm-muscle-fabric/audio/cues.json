@@ -1,0 +1,69 @@
+{
+ "events": {
+  "intro": 0.0,
+  "fail": 6.9399999999999995,
+  "bulky": 13.0667,
+  "heavy": 15.15,
+  "thread": 20.3,
+  "coil": 25.7,
+  "weave": 29.97,
+  "current": 31.3,
+  "contract": 33.58,
+  "lift": 36.4,
+  "raise": 40.5,
+  "home": 49.4667,
+  "place": 58.230000000000004,
+  "again": 60.3,
+  "title": 65.7
+ },
+ "cues": [
+  {
+   "t": 6.09,
+   "file": "audio/sfx_tremble.wav",
+   "gain_lu": -13,
+   "why": "tremble"
+  },
+  {
+   "t": 15.15,
+   "file": "audio/sfx_servo.wav",
+   "gain_lu": -12,
+   "why": "servo"
+  },
+  {
+   "t": 29.97,
+   "file": "audio/sfx_loom.wav",
+   "gain_lu": -14,
+   "why": "loom"
+  },
+  {
+   "t": 31.3,
+   "file": "audio/sfx_zap.wav",
+   "gain_lu": -15,
+   "why": "zap"
+  },
+  {
+   "t": 33.58,
+   "file": "audio/sfx_tighten.wav",
+   "gain_lu": -14,
+   "why": "tighten"
+  },
+  {
+   "t": 40.5,
+   "file": "audio/sfx_lift.wav",
+   "gain_lu": -11,
+   "why": "lift"
+  },
+  {
+   "t": 58.23,
+   "file": "audio/sfx_place.wav",
+   "gain_lu": -12,
+   "why": "place"
+  },
+  {
+   "t": 65.3,
+   "file": "audio/sfx_whoosh.wav",
+   "gain_lu": -18,
+   "why": "whoosh"
+  }
+ ]
+}

@@ -25,6 +25,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Every examples/<name>: script check and one still frame, no video render.
+          - group: examples
+            tests: examples
           # Measured on ubuntu-24.04 with software rendering: human 10 min, motion 19.7 min,
           # match 2 min; rv_best alone about 18 min and the layout check in new_checks
           # over 14 min, so those two run in groups of their own.

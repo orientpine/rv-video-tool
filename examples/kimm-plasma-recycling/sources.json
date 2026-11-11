@@ -1,0 +1,27 @@
+{
+  "license": "Public-source facts only. All geometry, canvas textures, lighting and animation are original procedural rv visuals. No photographs, institute logos or downloaded images are used. Music and effects are synthesized by rv.",
+  "seen": "2026-11-08",
+  "sources": [
+    {"title": "한국기계연구원 보도자료", "date": "2025-09-03", "url": "https://www.kimm.re.kr/sub0504/view/id/20852", "role": "primary", "retrieval": "Owner supplied verified quotations; independently fetched complete release with HTTP 200 on 2026-11-08."},
+    {"title": "연합뉴스 혼합 폐플라스틱 재활용 기술", "date": "2025-09-03", "url": "https://www.yna.co.kr/view/AKR20250903058500063", "role": "corroborating", "retrieval": "Opened 2026-11-08 for text and equipment context; no image copied."}
+  ],
+  "numbers": [
+    {"id": "rate", "show": ["1% 미만", "1%", "일 퍼센트", "일 퍼센트 미만"], "src": "https://www.kimm.re.kr/sub0504/view/id/20852", "kind": "fetched", "quote": "화학적 재활용률은 경제성 문제로 1% 미만"},
+    {"id": "old-temperature", "show": ["450~600℃", "사백오십에서 육백 도"], "src": "https://www.kimm.re.kr/sub0504/view/id/20852", "kind": "fetched", "quote": "일반적인 플라스틱 열분해는 약 450~600℃에서 진행되는데"},
+    {"id": "old-mixture", "show": ["백여 종", "100여 종"], "src": "https://www.kimm.re.kr/sub0504/view/id/20852", "kind": "fetched", "quote": "백여 종 이상의 화학물질이 혼합된 상태의 물질이 생성"},
+    {"id": "old-useful", "show": ["20~30%", "이십에서 삼십 퍼센트"], "src": "https://www.kimm.re.kr/sub0504/view/id/20852", "kind": "fetched", "quote": "실제 활용 가능한 화학물질은 전체의 20~30%에 불과"},
+    {"id": "hydrogen", "show": ["100% 수소", "100%", "백 퍼센트"], "src": "https://www.kimm.re.kr/sub0504/view/id/20852", "kind": "fetched", "quote": "세계 최초로 100% 수소를 사용하는 고온 플라즈마 토치를 개발"},
+    {"id": "temperature", "show": ["1,000~2,000℃", "천에서 이천 도"], "src": "https://www.kimm.re.kr/sub0504/view/id/20852", "kind": "fetched", "quote": "혼합 폐플라스틱을 1,000~2,000℃의 초고온에서 0.01초 이내에 분해"},
+    {"id": "speed", "show": ["0.01초", "영 점 영일 초"], "src": "https://www.kimm.re.kr/sub0504/view/id/20852", "kind": "fetched", "quote": "0.01초 이내에 분해"},
+    {"id": "yield", "show": ["70~80% 이상", "70~80%", "칠십에서 팔십 퍼센트"], "src": "https://www.kimm.re.kr/sub0504/view/id/20852", "kind": "fetched", "quote": "전체 생성물의 70~80% 이상을 재활용 가능한 특정 원료인 에틸렌과 벤젠으로 선택적 전환"},
+    {"id": "purity", "show": ["99% 이상", "99%", "구십구 퍼센트"], "src": "https://www.kimm.re.kr/sub0504/view/id/20852", "kind": "fetched", "quote": "정제 과정 후에는 99% 이상의 고순도 원료"},
+    {"id": "year", "show": ["2026년", "이천이십육 년"], "src": "https://www.kimm.re.kr/sub0504/view/id/20852", "kind": "fetched", "quote": "2026년부터 국내 실증 사이트에서 장기 운전 검증"}
+  ],
+  "claims": [
+    {"id": "sorting", "src": "https://www.kimm.re.kr/sub0504/view/id/20852", "kind": "fetched", "quote": "플라스틱을 엄격하게 재질별로 나누고 라벨을 제거해야 하는 과정 없이 화학적으로 재활용할 수 있는 기술을 국내 연구진이 세계 최초로 개발"},
+    {"id": "routes", "src": "https://www.kimm.re.kr/sub0504/view/id/20852", "kind": "fetched", "quote": "기존의 폐플라스틱은 소각, 소각 후 열회수, 물리적 재활용, 화학적 재활용의 형태로 처리"},
+    {"id": "consortium", "src": "https://www.kimm.re.kr/sub0504/view/id/20852", "kind": "fetched", "quote": "한국기계연구원 주관 플라즈마 활용 폐유기물 고부가가치 기초원료화 사업단"},
+    {"id": "carbon", "src": "https://www.kimm.re.kr/sub0504/view/id/20852", "kind": "fetched", "quote": "탄소 생성을 억제하기 위해 100% 수소 기반 운전"}
+  ],
+  "visual_note": "The yard, incinerator and factory are original explanatory sets, not surveyed KIMM facilities. Factory hall is a demonstration-process visualization, not a claim of commercial operation. Molecular ball-and-stick models show connectivity; scale, transport speed, tank levels and slow-motion are illustrative. Ethylene and benzene are gases/products represented by symbolic level gauges, not asserted liquid storage conditions. 70~80% refers to total products, not feedstock mass or an energy saving. Chemical recycling rate is the press release's contextual statistic, not a new 2026 measurement. Future scene is explicitly a target scenario; the 2026 long-run validation statement is an announcement from 2025, not a claim that validation has finished."
+}

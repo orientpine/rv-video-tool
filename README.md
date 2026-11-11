@@ -61,6 +61,27 @@ The checks on projects/demo are slow. Make them faster without lowering any chec
 
 The agent finishes with `RV_CHECKS PASS` (strict mode) and points you to `out/<name>.mp4`, the subtitles and the thumbnail. Watch the video yourself; the checks catch defects, not taste. It asks you only for what it can't decide: a number without a source, conflicting wishes, a tool bug, or anything that leaves your machine.
 
+## Examples
+
+Each example is a project folder like `examples/hello`: `script.json`, `scenes/` and `shared/`; the research examples also carry `sources.json` with the public page behind every number and claim, `audio/` with the script that writes their music and sound effects, and a one-line `README.md`. Videos and sound files are not kept in git: the finished KIMM videos and their subtitles are attached to the release that first ships them.
+
+Copy an example before building it. `rv still` draws a few moments as PNG files in `<copy>/build/stills/` (about a minute, no video); `rv make` builds the whole video and runs the checks. The KIMM examples write their sound before `rv still` or `rv make`, which mix it: `rv tts` makes the narration and the timeline, and `audio/score.py` reads them and writes `audio/*.wav` (the same files the released video used).
+
+```
+cp -r ~/.local/share/rv-video-tool/examples/kimm-morphing-wheel my-wheel
+rv tts my-wheel
+uv run --no-project --with numpy python my-wheel/audio/score.py my-wheel
+rv still my-wheel 20 44
+rv make my-wheel
+```
+
+| Example | Length | What it shows |
+|---|---|---|
+| `hello` | 93 s | A bench, a plate and a probe in three scenes: captions over a still camera, a zoom as the probe touches the plate, a lower angle. |
+| `kimm-morphing-wheel` | 66.1 s | KIMM morphing wheel: a wheelchair stops at an 18 cm step at a doorway; a wheel whose stiffness changes like a droplet's surface tension (wire spokes pull the chain blocks into a hard circle or let them go soft) wraps the edge and climbs it (working-principle recreation). |
+| `kimm-plasma-recycling` | 66.3 s | KIMM-led consortium: a pile of mixed waste plastic, the limits of 450-600 °C pyrolysis, and a 100% hydrogen plasma torch that breaks plastic down in 0.01 s into ethylene and benzene feedstock. |
+| `kimm-muscle-fabric` | 68.2 s | KIMM muscle fabric: auto-woven 25 µm shape-memory-alloy coil yarn lets 10 g of fabric lift 10-15 kg; an 840 g shoulder-assist robot widened shoulder range of motion by 57% or more, and a cup goes back on the kitchen shelf. |
+
 ## Commands
 
 ```

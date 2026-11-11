@@ -1,0 +1,179 @@
+{
+  "license": "Facts and numbers are quoted from public press releases; no images, logos or photos are copied; all visuals are drawn by rv.",
+  "seen": "2026-11-08",
+  "references": [
+    {
+      "title": "KIMM press release",
+      "date": "2024-09-02",
+      "src": "https://www.kimm.re.kr/sub0504/view/id/20386",
+      "url": "https://www.kimm.re.kr/sub0504/view/id/20386",
+      "what": "v1에서 확인한 보도자료 수치와 논문 서지",
+      "seen": "2026-11-08"
+    },
+    {
+      "title": "Variable-stiffness-morphing wheel inspired by the surface tension of a liquid droplet",
+      "date": "2024-08-14",
+      "journal": "Science Robotics",
+      "volume": 9,
+      "issue": 93,
+      "src": "https://www.science.org/doi/10.1126/scirobotics.adl2067",
+      "url": "https://www.science.org/doi/10.1126/scirobotics.adl2067",
+      "what": "v1에서 확인한 보도자료 수치와 논문 서지",
+      "seen": "2026-11-08"
+    },
+    {
+      "url": "https://www.korea.net/NewsFocus/Sci-Tech/view?articleId=257798",
+      "what": "보도사진과 설명의 투휠 휠체어 프레임, 노란 유연 구조체와 검은 체인 블록. 사진은 참고만 하고 원본 메시로 제작.",
+      "seen": "2026-11-08"
+    },
+    {
+      "url": "https://koreanet-cms-dev.s3.us-west-1.amazonaws.com/en_20240912095507308_1kt933v254fu.jpg",
+      "what": "단면사진: 외주 검은 체인, 황금색 유연 지지부, 은색 중앙 허브의 색과 구조 참고. 코드로 다시 그림.",
+      "seen": "2026-11-08"
+    },
+    {
+      "url": "https://www.mdpi.com/2076-3417/11/21/10136",
+      "what": "비공기압 타이어의 연속 트레드와 허니컴 셀 지지 구조 형태를 참고하여 limits의 기존 기술 휠을 따로 그림. 성능 수치 인용은 하지 않음.",
+      "seen": "2026-11-08"
+    }
+  ],
+  "numbers": [
+    {
+      "id": "step",
+      "show": [
+        "18cm"
+      ],
+      "src": "https://www.kimm.re.kr/sub0504/view/id/20386",
+      "kind": "fetched",
+      "quote": "투휠 기반 휠체어 시스템은 ... 바위나 18cm 높이의 계단을 극복할 수 있다"
+    },
+    {
+      "id": "ratio",
+      "show": [
+        "1.3배"
+      ],
+      "src": "https://www.kimm.re.kr/sub0504/view/id/20386",
+      "kind": "fetched",
+      "quote": "4륜 기반 이동체에도 적용하여 ... 휠 반경의 1.3배 높이의 장애물까지 안정적으로 극복"
+    },
+    {
+      "id": "paper",
+      "show": [
+        "2024년 8월호",
+        "2024년",
+        "8월호"
+      ],
+      "src": "https://www.science.org/doi/10.1126/scirobotics.adl2067",
+      "kind": "fetched",
+      "quote": "Science Robotics 14 Aug 2024 Vol 9 Issue 93; 「사이언스 로보틱스(Science Robotics)」 8월호의 표지논문으로 게재"
+    }
+  ],
+  "claims": [
+    {
+      "text": "휠체어 앞에 계단이 있고 단단한 바퀴가 멈추는 모습은 문제를 설명하는 작동 원리 재현이다.",
+      "src": "https://www.kimm.re.kr/sub0504/view/id/20386",
+      "quote": "일반 주행 시에는 ... 바퀴로 작동하다가 장애물을 넘을 때는 바퀴가 말랑해져서 장애물의 높낮이나 모양에 따라 휠을 자유롭게 변형",
+      "id": "v1-claim-1",
+      "show": [],
+      "kind": "fetched"
+    },
+    {
+      "text": "한국기계연구원은 바퀴의 단단함을 바꾸는 방법을 찾았습니다.",
+      "src": "https://www.kimm.re.kr/sub0504/view/id/20386",
+      "quote": "액체 방울의 표면장력 원리를 모사해 강성이 자유자재로 변하는 모핑 휠을 세계 최초로 개발",
+      "id": "v1-claim-2",
+      "show": [],
+      "kind": "fetched"
+    },
+    {
+      "text": "모핑 휠은 물방울의 표면장력에서 답을 찾았습니다.",
+      "src": "https://www.kimm.re.kr/sub0504/view/id/20386",
+      "quote": "액체 방울의 표면장력 원리를 모사해 강성이 자유자재로 변하는 모핑 휠을 세계 최초로 개발",
+      "id": "v1-claim-3",
+      "show": [],
+      "kind": "fetched"
+    },
+    {
+      "text": "허브와 바깥 체인 블록은 바퀴살 와이어로 연결됩니다.",
+      "src": "https://www.kimm.re.kr/sub0504/view/id/20386",
+      "quote": "모핑 휠은 스마트 체인 블록과 유연 구조체로 구성돼 있다. 휠의 최외곽은 스마트 체인 블록으로 구성되며, 스마트 체인 블록의 표면장력을 제어하는 와이어 스포크(wire spoke) 구조가 휠의 허브 구조와 연결",
+      "id": "v1-claim-4",
+      "show": [],
+      "kind": "fetched"
+    },
+    {
+      "text": "와이어를 당기면 바깥 블록이 단단한 원이 됩니다.",
+      "src": "https://www.kimm.re.kr/sub0504/view/id/20386",
+      "quote": "와이어 스포크를 이용해 블록들을 안쪽으로 강하게 당기는 경우 ... 안정적인 원형을 유지 ... 반대로 와이어 스포크 구조가 느슨해지는 경우 낮은 강성으로 변화",
+      "id": "v1-claim-5",
+      "show": [],
+      "kind": "fetched"
+    },
+    {
+      "text": "와이어를 풀면 바퀴가 말랑해집니다.",
+      "src": "https://www.kimm.re.kr/sub0504/view/id/20386",
+      "quote": "와이어 스포크를 이용해 블록들을 안쪽으로 강하게 당기는 경우 ... 안정적인 원형을 유지 ... 반대로 와이어 스포크 구조가 느슨해지는 경우 낮은 강성으로 변화",
+      "id": "v1-claim-6",
+      "show": [],
+      "kind": "fetched"
+    },
+    {
+      "text": "평지에서는 단단한 원형으로 달립니다.",
+      "src": "https://www.kimm.re.kr/sub0504/view/id/20386",
+      "quote": "고속의 평지 주행 시에는 일반적인 휠과 동일한 강성을 유지하다가 장애물이 있는 경우에만 실시간으로 휠을 말랑하게",
+      "id": "v1-claim-7",
+      "show": [],
+      "kind": "fetched"
+    },
+    {
+      "text": "계단에 닿는 순간 말랑해진 바퀴가 모서리를 감싸 오릅니다.",
+      "src": "https://www.kimm.re.kr/sub0504/view/id/20386",
+      "quote": "일반 주행 시에는 ... 바퀴로 작동하다가 장애물을 넘을 때는 바퀴가 말랑해져서 장애물의 높낮이나 모양에 따라 휠을 자유롭게 변형",
+      "id": "v1-claim-8",
+      "show": [],
+      "kind": "fetched"
+    },
+    {
+      "text": "사이언스 로보틱스 표지논문입니다.",
+      "src": "https://www.kimm.re.kr/sub0504/view/id/20386",
+      "quote": "「사이언스 로보틱스(Science Robotics)」 8월호의 표지논문으로 게재",
+      "id": "v1-claim-9",
+      "show": [],
+      "kind": "fetched"
+    },
+    {
+      "id": "soft-limits",
+      "show": [],
+      "kind": "fetched",
+      "text": "늘 말랑한 휠은 평지에서도 변형되어 효율·안정성·소음에 한계가 있다.",
+      "src": "https://www.kimm.re.kr/sub0504/view/id/20386",
+      "quote": "비공기압 타이어처럼 휠 내부를 유연 구조체로 구성하는 기술은 기존에도 있었다. 하지만 기존 기술은 평지 주행 시에도 휠에 지속적인 큰 ... 발생하여 주행 효율과 안정성이 낮아지고 소음도 커지는 한계"
+    },
+    {
+      "id": "future-use",
+      "show": [],
+      "kind": "fetched",
+      "text": "배송 로봇과 도시 입구는 향후 활용을 설명하는 목표 시나리오다.",
+      "src": "https://www.kimm.re.kr/sub0504/view/id/20386",
+      "quote": "향후 장애물 극복이 가능한 휠체어 및 다양한 이동 로봇, 탑승형 운송 수단 등 광범위하게 활용"
+    },
+    {
+      "id": "independent-living",
+      "show": [],
+      "kind": "fetched",
+      "text": "하지 장애인의 독립생활 지원 연구",
+      "src": "https://www.kimm.re.kr/sub0504/view/id/20386",
+      "quote": "하지 장애인의 독립생활 지원 로봇"
+    },
+    {
+      "id": "hub-drive",
+      "show": [],
+      "kind": "fetched",
+      "text": "허브 구조의 거리가 바뀌면 연결된 와이어 스포크가 당겨지거나 느슨해진다(원리 장면의 '허브 구동판'과 그 움직임의 근거).",
+      "src": "https://www.kimm.re.kr/sub0504/view/id/20386",
+      "quote": "허브 구조가 회전하거나 거리가 변하게 되면, 이와 연결된 와이어 스포크 구조가 강하게 당겨지거나 느슨하게 바뀌면서 스마트 체인 블록 구조의 표면장력이 변화하게 된다.",
+      "where": "한국기계연구원 보도자료 2024-09-02, 본문 5번째 문단(모핑 휠 구성 설명). 논문 본문은 유료라 쪽·그림 번호는 확인 못함",
+      "seen": "2026-11-08"
+    }
+  ]
+}

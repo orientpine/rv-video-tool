@@ -1,0 +1,159 @@
+{
+ "license": "Public press-release facts quoted for attribution. All geometry, procedural textures, music and effects are original or rv synthesized. No copied photos, logos or third-party images.",
+ "seen": "2026-11-08",
+ "sources": [
+  {
+   "id": "kimm",
+   "src": "https://www.kimm.re.kr/sub0504/view/id/20923",
+   "published": "2025-10-29",
+   "title": "한국기계연구원 근육옷감 자동 직조기 및 의복형 웨어러블 로봇",
+   "access": "Fetched 2026-11-08 in supplied source record; quotations cross-checked against read-only v1 sources.json."
+  },
+  {
+   "id": "yonhap",
+   "src": "https://www.yna.co.kr/view/AKR20251029064400063",
+   "published": "2025-10-29",
+   "title": "근육 옷감 자동 직조기 보도",
+   "access": "Corroborating source supplied by assignment."
+  }
+ ],
+ "references": [
+  {
+   "url": "https://www.kimm.re.kr/sub0504/view/id/20923",
+   "what": "공식 본문 재확인. 초록 직조기, 좁은 직물 출력, 상하 롤러와 종광 배치. 장면은 도면 재현이 아닌 공정 설명.",
+   "seen": "2026-11-08"
+  },
+  {
+   "url": "https://www.kimm.re.kr/_files/board/20251029//8e7129c25527efacd024fc992d7961de.jpg",
+   "what": "자동 직조기 공식 사진을 직접 봄. 전면 권취 롤러, 중앙 좁은 직물, 상부 세로 실 공급과 종광, 녹색 프레임. 사진을 저장하거나 영상에 사용하지 않음.",
+   "seen": "2026-11-08"
+  },
+  {
+   "url": "https://www.sartexo.com/en/technology",
+   "what": "연구팀 기술 소개. 직물이 구동기이고 부드러운 착용복으로 쓰이는 방식.",
+   "seen": "2026-11-08"
+  },
+  {
+   "url": "https://www.sartexo.com/images/process/fabric-muscle-texture-1200.webp",
+   "what": "코일이 길이 방향으로 나란히 배치되고 가는 가로 실로 연결되는 실제 직물 확대 사진. 매크로의 코일·천연사·가로실 구분에 참고.",
+   "seen": "2026-11-08"
+  },
+  {
+   "url": "https://www.sartexo.com/images/research/performance-test.webp",
+   "what": "실험실 보조복의 어두운 직물 어깨 덮개와 팔 밴드, 직조기·시료 릴 배경 참고. 실제 사람 외형·사진·상표는 복제하지 않음.",
+   "seen": "2026-11-08"
+  }
+ ],
+ "numbers": [
+  {
+   "id": "wire",
+   "show": [
+    "25㎛",
+    "25마이크로미터",
+    "25",
+    "사분의 일",
+    "이십오"
+   ],
+   "src": "https://www.kimm.re.kr/sub0504/view/id/20923",
+   "kind": "fetched",
+   "quote": "머리카락 1/4 수준 굵기인 직경 25㎛의 형상기억합금 와이어를 코일 형태로 가공한 실을 이용해 근육옷감을 연속으로 만드는 기술"
+  },
+  {
+   "id": "fabric",
+   "show": [
+    "10g",
+    "10 g",
+    "10",
+    "십 그램"
+   ],
+   "src": "https://www.kimm.re.kr/sub0504/view/id/20923",
+   "kind": "fetched",
+   "quote": "근육옷감은 10g의 무게로 10~15㎏을 들어올릴 수 있어"
+  },
+  {
+   "id": "load",
+   "show": [
+    "10~15kg",
+    "10~15 kg",
+    "십에서 십오"
+   ],
+   "src": "https://www.kimm.re.kr/sub0504/view/id/20923",
+   "kind": "fetched",
+   "quote": "근육옷감은 10g의 무게로 10~15㎏을 들어올릴 수 있어"
+  },
+  {
+   "id": "whole",
+   "show": [
+    "2kg 미만",
+    "2kg",
+    "2",
+    "이 킬로그램"
+   ],
+   "src": "https://www.kimm.re.kr/sub0504/view/id/20923",
+   "kind": "fetched",
+   "quote": "세계 최초로 팔꿈치·어깨·허리 3관절을 동시에 보조하는 2kg 미만의 경량 의복형 웨어러블 로봇을 개발해 근육 사용량을 40% 이상 감소"
+  },
+  {
+   "id": "robot",
+   "show": [
+    "840g",
+    "840",
+    "팔백사십"
+   ],
+   "src": "https://www.kimm.re.kr/sub0504/view/id/20923",
+   "kind": "fetched",
+   "quote": "세계 최고 수준인 840g 무게의 초경량 어깨 보조 로봇을 구현해 근육 약화 환자도 일상에서 부담 없이 착용하고 휴대"
+  },
+  {
+   "id": "range",
+   "show": [
+    "57% 이상",
+    "57%",
+    "57",
+    "오십칠 퍼센트"
+   ],
+   "src": "https://www.kimm.re.kr/sub0504/view/id/20923",
+   "kind": "fetched",
+   "quote": "듀센 근이영양증 등 근육 약화 환자를 대상으로 서울대학교병원에서 초경량 어깨 보조 로봇 임상실험을 시행한 결과 어깨 움직임 범위가 57% 이상 개선"
+  },
+  {
+   "id": "date",
+   "show": [
+    "2025년 10월 29일",
+    "2025-10-29",
+    "2025",
+    "10월",
+    "29일"
+   ],
+   "src": "https://www.kimm.re.kr/sub0504/view/id/20923",
+   "kind": "fetched",
+   "quote": "보도자료 게시일 2025-10-29 (한국기계연구원 근육옷감 자동 직조기 및 의복형 웨어러블 로봇)"
+  }
+ ],
+ "claims": [
+  {
+   "id": "limitation",
+   "src": "https://www.kimm.re.kr/sub0504/view/id/20923",
+   "kind": "fetched",
+   "quote": "기존 웨어러블 로봇은 무겁고 소음이 큰 모터나 공압 구동기를 적용해 팔꿈치·어깨·허리 관절을 모두 보조하기에는 장치가 지나치게 커지고 무거워, 실제로는 일부 관절만 제한적으로 보조하는 수준 ... 가격·무게·소음·착용 불편 문제로 대중화가 쉽지 않았다. 특히 어깨 관절은 움직임이 복잡해 능동 보조가 더욱 어려웠다"
+  },
+  {
+   "id": "core",
+   "src": "https://www.kimm.re.kr/sub0504/view/id/20923",
+   "kind": "fetched",
+   "quote": "금속 대신 천연사를 중심 실로 사용하고 근육옷감의 구조와 제작 공정을 새롭게 개발했으며 직조기의 구조도 개선"
+  },
+  {
+   "id": "independence",
+   "src": "https://www.kimm.re.kr/sub0504/view/id/20923",
+   "kind": "fetched",
+   "quote": "환자가 스스로 생활할 수 있는 독립성을 높여"
+  },
+  {
+   "id": "visuals",
+   "src": "https://www.kimm.re.kr/sub0504/view/id/20923",
+   "kind": "design",
+   "quote": "Kitchen cup task, schematic loom, test rig, electrical glow and garment are explanatory original visualizations, not clinical footage or exact engineering drawings. No current, heating temperature, displacement, contraction ratio or universal patient outcome is claimed. Premium edition: golden-hour kitchen, product-studio macro, loom and test rig are original procedural renders; the final kitchen scene is labeled 목표 시나리오."
+  }
+ ]
+}

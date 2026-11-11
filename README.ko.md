@@ -61,6 +61,27 @@ projects/demo 검사가 느려. 검사 기준은 하나도 낮추지 말고 빠�
 
 에이전트는 `RV_CHECKS PASS`(strict 모드)로 끝내고 `out/<name>.mp4`·자막·썸네일 위치를 알려 준다. 영상은 직접 보고 판단한다. 검사는 결함을 잡을 뿐 취향까지 보지는 않는다. 에이전트가 묻는 것은 혼자 정할 수 없는 것뿐이다. 출처 없는 숫자, 서로 부딪치는 요청, 도구 버그, 이 컴퓨터 밖으로 나가는 일.
 
+## 예제
+
+예제는 `examples/hello` 같은 프로젝트 폴더다: `script.json`, `scenes/`, `shared/`. 연구 예제에는 숫자와 주장마다 공개 출처를 적은 `sources.json`, 배경음·효과음을 만드는 스크립트가 든 `audio/`, 한 줄 `README.md` 가 더 있다. 영상과 소리 파일은 git 에 넣지 않는다: KIMM 예제의 완성 영상과 자막은 이 예제가 처음 들어간 릴리스의 자산으로 올린다.
+
+예제는 복사해서 빌드한다. `rv still` 은 몇 순간만 PNG 로 `<사본>/build/stills/` 에 그리고(1분 안팎, 영상 없음), `rv make` 는 영상 전체를 만들고 검사까지 돌린다. KIMM 예제는 소리를 섞는 `rv still`·`rv make` 전에 소리를 먼저 만든다: `rv tts` 가 내레이션과 시간표를 만들고, `audio/score.py` 가 그것을 읽어 `audio/*.wav` 를 쓴다(릴리스 영상에 쓴 것과 같은 파일).
+
+```
+cp -r ~/.local/share/rv-video-tool/examples/kimm-morphing-wheel my-wheel
+rv tts my-wheel
+uv run --no-project --with numpy python my-wheel/audio/score.py my-wheel
+rv still my-wheel 20 44
+rv make my-wheel
+```
+
+| 예제 | 길이 | 보여 주는 것 |
+|---|---|---|
+| `hello` | 93초 | 작업대·판·탐침 장면 셋: 카메라를 세운 채 바뀌는 자막, 탐침이 판에 닿을 때 다가가기, 낮은 각도. |
+| `kimm-morphing-wheel` | 66.1초 | 한국기계연구원 모핑 휠: 건물 입구 18cm 턱에 멈춘 휠체어. 물방울 표면장력처럼 단단함이 바뀌는 바퀴(바퀴살 와이어가 체인 블록을 단단한 원으로 당기거나 말랑하게 풀어 줌)가 모서리를 감싸 오른다(작동 원리 재현). |
+| `kimm-plasma-recycling` | 66.3초 | 한국기계연구원 사업단: 뒤섞인 폐플라스틱 산, 450~600℃ 열분해의 한계, 그리고 100% 수소 플라즈마가 0.01초 안에 플라스틱을 에틸렌·벤젠 원료로 분해한다. |
+| `kimm-muscle-fabric` | 68.2초 | 한국기계연구원 근육옷감: 25㎛ 형상기억합금 코일실을 자동으로 짜 10g 옷감이 10~15kg을 들고, 840g 어깨 보조 로봇은 움직임 범위를 57% 이상 넓혀 부엌 선반에 컵을 다시 올린다. |
+
 ## 명령
 
 ```

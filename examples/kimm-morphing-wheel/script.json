@@ -1,0 +1,206 @@
+{
+  "name": "kimm_morphing_wheel_premium",
+  "voice": "ko-KR-InJoonNeural",
+  "rate": "+4%",
+  "checks": "strict",
+  "site": "office",
+  "look": {
+    "preset": "cinema",
+    "mb": {
+      "samples": 8,
+      "shutter": 0.5
+    }
+  },
+  "intro_s": 4.6,
+  "lead_s": 0.25,
+  "tail_s": 0.35,
+  "thumb_t": 40.5,
+  "scenes": [
+    {
+      "name": "doorstep",
+      "site": "office",
+      "look": "cinema",
+      "extra_s": 2.6
+    },
+    {
+      "name": "drop",
+      "site": "office",
+      "look": "cinema",
+      "lead_s": 1,
+      "extra_s": 1.6,
+      "transition": {
+        "type": "dip",
+        "dur": 1,
+        "depth": 0.9
+      }
+    },
+    {
+      "name": "core",
+      "site": "office",
+      "look": "cinema",
+      "lead_s": 2.6,
+      "extra_s": 1.8,
+      "transition": {
+        "type": "dip",
+        "dur": 0.8,
+        "depth": 0.9
+      }
+    },
+    {
+      "name": "rise",
+      "site": "office",
+      "look": "cinema",
+      "lead_s": 2.8,
+      "extra_s": 2.4,
+      "transition": {
+        "type": "dip",
+        "dur": 0.8,
+        "depth": 0.9
+      }
+    },
+    {
+      "name": "horizon",
+      "site": "office",
+      "look": "cinema",
+      "lead_s": 1.2,
+      "extra_s": 5.4,
+      "transition": {
+        "type": "dip",
+        "dur": 0.8,
+        "depth": 0.85
+      }
+    }
+  ],
+  "lines": [
+    {
+      "scene": "doorstep",
+      "text": "건물 입구, 높이 18cm 턱 하나.",
+      "keywords": [
+        "18cm"
+      ]
+    },
+    {
+      "scene": "doorstep",
+      "text": "바퀴는 여기서 멈춥니다.",
+      "keywords": [
+        "멈춥니다"
+      ]
+    },
+    {
+      "scene": "drop",
+      "text": "한국기계연구원은 물방울에서 답을 찾았습니다.",
+      "keywords": [
+        "물방울"
+      ]
+    },
+    {
+      "scene": "drop",
+      "text": "표면장력이 잡으면 동그랗고, 느슨하면 말랑합니다.",
+      "keywords": [
+        "표면장력",
+        "느슨하면"
+      ]
+    },
+    {
+      "scene": "core",
+      "text": "바퀴살 와이어를 당기면 체인 블록이 단단한 원이 되고,",
+      "keywords": [
+        "당기면"
+      ]
+    },
+    {
+      "scene": "core",
+      "text": "와이어를 풀어 주면 바퀴가 말랑해집니다.",
+      "keywords": [
+        "풀어"
+      ]
+    },
+    {
+      "scene": "rise",
+      "text": "턱에 닿는 순간, 바퀴가 모서리를 감싸 오릅니다.",
+      "keywords": [
+        "닿는 순간",
+        "감싸",
+        "오릅니다"
+      ]
+    },
+    {
+      "scene": "rise",
+      "text": "휠체어로 18cm 계단을 넘었습니다.",
+      "keywords": [
+        "18cm"
+      ]
+    },
+    {
+      "scene": "horizon",
+      "text": "네 바퀴 이동체는 바퀴 반지름의 1.3배 높이도 넘었습니다.",
+      "keywords": [
+        "1.3배"
+      ]
+    },
+    {
+      "scene": "horizon",
+      "text": "사이언스 로보틱스 2024년 8월호 표지논문입니다.",
+      "keywords": [
+        "표지논문"
+      ]
+    }
+  ],
+  "sound": {
+    "music": "audio/score.wav",
+    "music_lu": -13,
+    "duck_db": 7,
+    "auto_cues": false,
+    "cues": [
+      {
+        "t": 0.2,
+        "sfx": "audio/sfx_roll.wav",
+        "gain_lu": -21,
+        "why": "roll"
+      },
+      {
+        "t": 9.83,
+        "sfx": "audio/sfx_bump.wav",
+        "gain_lu": -9,
+        "why": "bump"
+      },
+      {
+        "t": 15.273,
+        "sfx": "audio/sfx_drip.wav",
+        "gain_lu": -12,
+        "why": "drip"
+      },
+      {
+        "t": 28.63,
+        "sfx": "audio/sfx_tighten.wav",
+        "gain_lu": -12,
+        "why": "tighten"
+      },
+      {
+        "t": 32.66,
+        "sfx": "audio/sfx_loosen.wav",
+        "gain_lu": -13,
+        "why": "loosen"
+      },
+      {
+        "t": 40.29,
+        "sfx": "audio/sfx_wrap.wav",
+        "gain_lu": -11,
+        "why": "wrap"
+      },
+      {
+        "t": 42.96,
+        "sfx": "audio/sfx_land.wav",
+        "gain_lu": -10,
+        "why": "land"
+      },
+      {
+        "t": 51.333,
+        "sfx": "audio/sfx_door.wav",
+        "gain_lu": -18,
+        "why": "door"
+      }
+    ]
+  },
+  "aspect": "2.35:1"
+}
