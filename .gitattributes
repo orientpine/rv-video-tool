@@ -1,0 +1,4 @@
+# kit/human_body.js is generated mesh data (scripts/human_body.py), one base64 line of about 400 KB. Patches show it
+# as binary, so a commit that regenerates it does not repeat the old line (already public) in the pre-push patch
+# scan; the pushed tree, this file included, is still scanned in full by scripts/scan-public.sh.
+kit/human_body.js -diff
