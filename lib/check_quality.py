@@ -180,12 +180,14 @@ FRAME = r"""mutate => {
   const c=getComputedStyle(e).backgroundColor.match(/[\d.]+/g); let op=1;
   for(let a=e;a;a=a.parentElement) op*=+getComputedStyle(a).opacity;
   return c&&(c.length<4?1:+c[3])*op>=.5;});
- const W=240,H=135,grid=new Uint8Array(W*H); let big={name:'',area:0};
+ // the union of the card boxes, counted per pixel (an 8 px grid rounded outwards added up to 14 px to each side of every box:
+ // about a quarter more for a 40 px name tag, so readable tags hit the limit early)
+ const W=1920,H=1080,grid=new Uint8Array(W*H); let big={name:'',area:0};
  for(const e of cards){const r=e.getBoundingClientRect();
   const a=Math.max(0,Math.min(1920,r.right)-Math.max(0,r.left))*Math.max(0,Math.min(1080,r.bottom)-Math.max(0,r.top));
   if(a>big.area) big={name:(e.textContent.trim().replace(/\s+/g,' ').slice(0,40)),area:a};
-  for(let y=Math.max(0,Math.floor(r.top/8));y<Math.min(H,Math.ceil(r.bottom/8));y++)
-   for(let x=Math.max(0,Math.floor(r.left/8));x<Math.min(W,Math.ceil(r.right/8));x++) grid[y*W+x]=1;}
+  const x0=Math.max(0,Math.round(r.left)),x1=Math.min(W,Math.round(r.right));
+  for(let y=Math.max(0,Math.round(r.top));y<Math.min(H,Math.round(r.bottom));y++) grid.fill(1,y*W+x0,y*W+Math.max(x0,x1));}
  // Small text pushed into a picture corner (owner: text at the screen edge, small, does not belong to the scene): an outermost
  // text panel within 10% of a side and 15% of the top or bottom of the picture whose reading size is under 32 px. Reading size =
  // its largest text when that is a 72 px+ headline or the panel has one size, else its second largest (a card's caption).
@@ -351,7 +353,8 @@ def main(a):
             warn("NO_PEOPLE", name, f"{span} beat={beat} people_max=0 -> 누가 곤란한지/누가 좋아졌는지 보이게 KIT.fx.human")
         if worst["card"] > a.card:
             warn("CARD", name, f"t={worst['t']:.2f} card_cover={worst['card']:.3f} limit={a.card} card={worst['cardName']!r} "
-                 "-> 카드 기본값(KIT.info.numCard)으로, 숫자 하나에 카드 하나, 한 번에 한두 장")
+                 "-> 한 번에 보이는 글자 판을 줄임(카드는 차례로, 이름표는 설명하는 동안만), 글자를 작게 하지 말 것: "
+                 "기본 카드 ≈ 3%(2.35:1 은 4%), 40 px 이름표 ≈ 1%")
         edge = [(r["t"], f) for r in mine for f in r.get("edge", [])]
         if edge:
             warn("TEXT_EDGE", name, f"t={edge[0][0]:.2f} {edge[0][1]} (작은 글자가 화면 구석에, {len(edge)} samples) "

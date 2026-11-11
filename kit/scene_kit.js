@@ -53,7 +53,7 @@
         textNode.style.display = leaderSvg.style.display = alpha > 0.001 ? "block" : "none";
         const measured = textNode.getBoundingClientRect(), width = measured.width || 200, height = measured.height || 50;
         const textX = clamp(anchorX + offsetX, Math.ceil(40 + width / 2 + 0.5), Math.floor(1880 - width / 2 - 0.5));
-        const textY = clamp(anchorY + offsetY, Math.ceil(130 + height + 0.5), Math.floor(870 - 0.5));
+        const textY = clamp(anchorY + offsetY, Math.ceil(130 + height + 0.5), Math.floor(captionTop() - 0.5));
         for (const [attribute, coordinate] of Object.entries({x1: anchorX, y1: anchorY, x2: textX, y2: textY})) {
           leaderLine.setAttribute(attribute, coordinate);
         }
@@ -200,6 +200,16 @@
     return {pts, labels};
   }
   const SAFE = {x0: 40, x1: 1880, y0: 130, y1: 870};   // KIT.label 안전 영역(위 단계 띠·아래 자막)
+  let capTop = null;
+  function captionTop() {   // bottom of the text area: 870 px, or above the tallest caption box when script.json "caption" moves or grows it
+    if (capTop != null) return capTop;
+    const box = document.querySelector("#cap .box"), holder = document.getElementById("cap");
+    if (!window.CAPTION || !box) return (capTop = SAFE.y1);
+    const kept = box.textContent; let h = 0;   // every caption of the video, measured once in the real box (same fonts, same width)
+    for (const c of ((window.DATA && DATA.timeline && DATA.timeline.captions) || [])) if (c.text) { box.textContent = c.text; h = Math.max(h, box.getBoundingClientRect().height); }
+    box.textContent = kept;
+    return (capTop = Math.min(SAFE.y1, 1080 - (parseFloat(getComputedStyle(holder).bottom) || 56) - h - 8));
+  }
   // avoid 항목: [x0, y0, x1, y1] px · 카드 DOM 요소 · {box: 요소}(numCard·label 이 돌려주는 것). 요소는 숨김(display:none)이어도 잠깐 켜서 잰다.
   // 장면 overlay 가 아직 안 보여 크기 0 으로 재지면 null(다음 render 에서 다시)
   function measure(el) {   // 화면 상자: 자신이나 조상(장면 overlay)이 display:none 이어도 잠깐 켜고, 들어오는 중 transform 은 빼고 잰다(어느 시각에 재도 같게)
@@ -461,7 +471,7 @@
     const labels = (window.__KIT_LABELS || []).filter(l => ov.contains(l.box) && shownIn(l.box));
     const cam = lastCam || (labels.find(l => l.camera) || {}).camera || null;
     const P = window.PICTURE || {x: 0, y: 0, w: 1920, h: 1080};
-    const F = [Math.max(P.x + MARGIN.x, SAFE.x0), Math.max(P.y + MARGIN.y, SAFE.y0), Math.min(P.x + P.w - MARGIN.x, SAFE.x1), Math.min(P.y + P.h - MARGIN.y, SAFE.y1)];
+    const F = [Math.max(P.x + MARGIN.x, SAFE.x0), Math.max(P.y + MARGIN.y, SAFE.y0), Math.min(P.x + P.w - MARGIN.x, SAFE.x1), Math.min(P.y + P.h - MARGIN.y, captionTop())];
     const taken = [];   // what is already on screen in this overlay: tags, cards, pictures and panels the scene placed (not default cards)
     for (const el of ov.children) if (!el.dataset.rvAuto && !(el instanceof SVGElement) && shownIn(el)) {
       const r = el.getBoundingClientRect();   // a layer as big as half the frame (a vignette, a bar set) is background, not a thing to avoid
@@ -490,7 +500,7 @@
       taken.push(pick[2]);
     }
   }
-  const info = {TYPE, ACC, PANEL, INK, MUTE, source, numCard, picture, clear, settle};
+  const info = {TYPE, ACC, PANEL, INK, MUTE, source, numCard, picture, clear, settle, captionTop};
 
   // ── 보여 주는 방식(3단계 보강): 기준 A·B 가 쓰는 투시·분해·크기 대비·앞 물체 깊이·박자 컷. 모두 t 의 순수 함수로 쓰고 render 마다 다시 정한다
   // 투시·단면: root 아래 메시 재질에 자르는 면을 달아 카메라 쪽 벽을 걷어 냄. cut.set(amount, normal, offset) — amount 0 이면 안 자름

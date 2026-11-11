@@ -96,10 +96,10 @@ assert measurement in s
 assert s.count(measurement) == 1, "fractional measurement target must occur once"
 s = s.replace(measurement, 'const width = textNode.offsetWidth || 200, height = textNode.offsetHeight || 50;', 1)
 print("MUTATION_APPLIED rounded label measurement")
-top = 'const textY = clamp(anchorY + offsetY, Math.ceil(130 + height + 0.5), Math.floor(870 - 0.5));'
+top = 'const textY = clamp(anchorY + offsetY, Math.ceil(130 + height + 0.5), Math.floor(captionTop() - 0.5));'
 assert top in s
 assert s.count(top) == 1, "top clamp target must occur once"
-open(p, "w").write(s.replace(top, 'const textY = clamp(anchorY + offsetY, 130 + height, 870);', 1))
+open(p, "w").write(s.replace(top, 'const textY = clamp(anchorY + offsetY, 130 + height, captionTop());', 1))
 print("MUTATION_APPLIED top inward rounding removed")
 EOF
 grep -q "height = textNode.offsetHeight" "$W/tool/kit/scene_kit.js" || bad "변이를 못 넣음"

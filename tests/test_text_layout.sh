@@ -8,6 +8,7 @@
 #  3 explicit: left/top kept, top only -> right 64 px (as before), size 26 kept
 #  4 order: frame A, then B, then A again == A on a fresh page; KIT.info.clear on a card settled elsewhere == on a fresh card
 #  5 between scenes: KIT.fx.reset forgets the camera, so a frame with no camSet puts the card beside the middle box
+#  6 script.json caption raised (bottom 400): a default card moves above the tallest caption box (measured)
 set -uo pipefail
 TOOL="$(cd "$(dirname "$0")/.." && pwd)"
 W="$(mktemp -d)"; trap 'rm -rf "$W"' EXIT
@@ -16,8 +17,9 @@ cat > "$W/page.html" <<EOF
 <!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;width:1920px;height:1080px;overflow:hidden;--ui:sans-serif}</style>
 <script src="file://$THREE"></script><script src="file://$TOOL/kit/scene_kit.js"></script></head><body>
 <div id="ov" style="position:absolute;left:0;top:0;width:1920px;height:1080px"></div>
+<div id="cap" style="position:absolute;left:0;right:0;bottom:56px;display:flex;justify-content:center"><div class="box" style="max-width:1560px;font:600 44px/1.36 sans-serif;padding:14px 36px 16px;white-space:pre-line"></div></div>
 <script>
-window.DATA = {timeline: {modules: {}, order: [], captions: []}, words: {lines: []}};
+window.DATA = {timeline: {modules: {}, order: [], captions: [{t: 0, text: "자막 상자 위로 카드가 비켜 놓임"}]}, words: {lines: []}};
 window.SOURCES = {numbers: [{id: "w", show: ["25"], kind: "fetched", src: "https://www.example.org/a/b/12345"}]};
 const ov = document.getElementById("ov"), scene = new THREE.Scene(), box = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.4, .4));
 scene.add(box); const cam = new THREE.PerspectiveCamera(40, 16 / 9, .05, 100);
@@ -83,6 +85,11 @@ async def main():
         check("top only: right 64 px as before", e["b"][:2] == ["64px", "300px"] and e["b"][2] in ("", "auto"), e["b"])
         await b.close()
         b2, p2, errors2 = await page(pw)
+        raised = await p2.evaluate("""(() => { window.CAPTION = {bottom: 400}; document.getElementById("cap").style.bottom = "400px";
+          const f = frame(0); return {...f, top: KIT.info.captionTop()}; })()""")
+        want = 1080 - 400 - (44 * 1.36 + 30) - 8   # one 44 px line in the box, 8 px gap
+        check("caption raised to 400 px: the card moves up above its box", raised["card"][3] <= raised["top"] + .5 and abs(raised["top"] - want) < 1, [raised["card"], raised["top"], round(want, 1)])
+        await p2.evaluate("delete window.CAPTION")
         fresh = await p2.evaluate("cleared()")
         check("clear on a settled card == on a fresh card", settled == fresh, [settled, fresh])
         await b2.close()

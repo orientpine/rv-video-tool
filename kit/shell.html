@@ -44,6 +44,12 @@ html,body { margin:0; width:1920px; height:1080px; overflow:hidden; background:v
   const TL = window.TIMELINE;
   const stage = document.getElementById("stage"), stepsEl = document.getElementById("steps");
   const caption = document.querySelector("#cap .box"), fade = document.getElementById("fade");
+  if (window.CAPTION) {   // script.json "caption": {size, bottom, width} in px (lib/build.py checks the ranges)
+    const c = window.CAPTION;
+    if (c.size != null) caption.style.fontSize = `${c.size}px`;
+    if (c.width != null) caption.style.maxWidth = `${c.width}px`;
+    if (c.bottom != null) document.getElementById("cap").style.bottom = `${c.bottom}px`;
+  }
   // script.json "badge": {"text", "scenes"}: one label drawn once above the scenes, so it stays still through the
   // transitions between listed scenes instead of fading out and back in with each scene's own copy.
   const badge = document.getElementById("badge"), badgeScenes = window.BADGE && (window.BADGE.scenes || null);

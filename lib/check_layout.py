@@ -455,6 +455,8 @@ async def measure(pw, a, shard, shards):
     await p.goto(Path(a.html).resolve().as_uri(), wait_until="load")
     await p.evaluate("Promise.resolve(window.renderReady)")
     total = await p.evaluate("window.DATA.timeline.total_s")
+    # text area bottom: 870 px, or above the tallest caption box when script.json "caption" moves or grows it (KIT.info.captionTop)
+    cap_top = await p.evaluate("() => window.KIT && KIT.info && KIT.info.captionTop ? KIT.info.captionTop() : 870")
     await warm_canvas(p, await p.context.new_cdp_session(p), min(1, total / 2))
     if a.mutate:
         await p.evaluate(MUTATE, a.mutate)
@@ -526,8 +528,8 @@ async def measure(pw, a, shard, shards):
                 bad("clip", f"rect={row['r']} scroll/client={row['sw']}/{row['cw']}")
             if not row["chrome"]:
                 for box in [row["r"], *row["cards"]]:
-                    if box[0] < 40 or box[1] < 130 or box[2] > 1880 or box[3] > 870:
-                        bad("safe", f"rect={box}; required x=40..1880 y=130..870")
+                    if box[0] < 40 or box[1] < 130 or box[2] > 1880 or box[3] > cap_top:
+                        bad("safe", f"rect={box}; required x=40..1880 y=130..{cap_top:g}")
                         break
             if row["id"] in fading:
                 continue
