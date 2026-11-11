@@ -519,7 +519,7 @@
   //           t0, touch, press, release, t1, depth = .012, hand = "r"}}
   const HUMAN_MOTION = (() => {
     const Vc = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z), Q = () => new THREE.Quaternion();
-    const X = Vc(1, 0, 0), Y = Vc(0, 1, 0);
+    const X = Vc(1, 0, 0), Y = Vc(0, 1, 0), Z = Vc(0, 0, 1);
     const rot = (axis, a) => Q().setFromAxisAngle(axis, a);
     const step = (a, b, x) => { const u = clamp((x - a) / (b - a), 0, 1); return u * u * (3 - 2 * u); };
     const mjerk = (a, b, x) => { const u = clamp((x - a) / (b - a), 0, 1); return u * u * u * (10 - 15 * u + 6 * u * u); };
@@ -610,17 +610,25 @@
       return pts[pts.length - 1].clone();
     }
     // From a (palm at rest) to b (approach point) in world space: where the straight way runs into an obstacle, lift
-    // the worst point over it (along world up), twice at most. extra: points carried with the palm (a held object).
+    // the worst point over it (along world up), three times at most; under an obstacle (a shelf board above the
+    // shoulder) lifting would go into it, so the point steps out sideways past its nearest edge instead.
+    // extra: points carried with the palm (a held object).
     function route(a, b, obs, extra = []) {
       const pts = [a.clone(), b.clone()], up = Vc(0, 1, 0);
-      for (let pass = 0; pass < 2 && obs.length; pass++) {
-        let worst = 0, at = null, seg = 0;
+      for (let pass = 0; pass < 3 && obs.length; pass++) {
+        let worst = 0, at = null, seg = 0, hit = null;
         for (let i = 1; i < pts.length; i++) for (let k = 1; k < 12; k++) {
           const p = pts[i - 1].clone().lerp(pts[i], k / 12);
-          for (const [off, r] of [[Vc(), .06], ...extra]) { const c = clearance(p.clone().add(off), obs) - r - .03; if (c < worst) { worst = c; at = p; seg = i; } }
+          for (const [off, r] of [[Vc(), .06], ...extra]) { const q = p.clone().add(off), c = clearance(q, obs) - r - .03;
+            if (c < worst) { worst = c; at = p; seg = i; hit = {q, r}; } }
         }
         if (!at) break;
-        pts.splice(seg, 0, at.clone().addScaledVector(up, -worst + .04));
+        const o = obs.reduce((m, x) => clearance(hit.q, [x]) < clearance(hit.q, [m]) ? x : m), l = hit.q.clone().applyMatrix4(o.inv);
+        const top = Vc(0, o.box.max.y, 0).applyMatrix4(o.m).y, under = hit.q.y < Vc(0, o.box.min.y, 0).applyMatrix4(o.m).y && hit.q.y < top;
+        if (!under || l.x < o.box.min.x || l.x > o.box.max.x || l.z < o.box.min.z || l.z > o.box.max.z) { pts.splice(seg, 0, at.clone().addScaledVector(up, -worst + .04)); continue; }
+        const exits = [[l.x - o.box.min.x, Vc(-1, 0, 0)], [o.box.max.x - l.x, Vc(1, 0, 0)], [l.z - o.box.min.z, Vc(0, 0, -1)], [o.box.max.z - l.z, Vc(0, 0, 1)]].sort((u, v) => u[0] - v[0]);
+        const dir = exits[0][1].transformDirection(o.m).setY(0).normalize();
+        pts.splice(seg, 0, at.clone().addScaledVector(dir, exits[0][0] * o.k + hit.r + .07));
       }
       return pts;
     }
@@ -702,7 +710,7 @@
       set();
       return {curl_deg: +((th[0] + th[1] + th[2]) * 180 / Math.PI).toFixed(1), tip_gap_mm: tris.length ? +(gap(2) * 1000).toFixed(2) : null};
     }
-    function act(g, t, {walk, look, press, grip, place, sit} = {}, {R, M, joints, tips, deform, fingers, trunk}) {
+    function act(g, t, {walk, look, press, grip, place, sit, trunk: pose} = {}, {R, M, joints, tips, deform, fingers, trunk}) {
       // Undo last frame's automatic step toward a hand goal unless the scene has placed the body again since.
       const ap = g.userData.autoPlace;
       if (ap && g.position.equals(ap.pos) && g.rotation.y === ap.yaw) { g.position.copy(ap.base); g.rotation.y = ap.baseYaw; }
@@ -713,6 +721,11 @@
       const TH = V("knee_r", "hip_r").length(), SH = V("ankle_r", "knee_r").length(), ANK = R.ankle_r[1];
       const UA = V("elbow_r", "shoulder_r").length(), FA = V("wrist_r", "elbow_r").length() + Vc(...M.tip_r).sub(V("wrist_r")).length();
       const sideSign = {r: 1, l: -1};
+      // The scene's own trunk pose (spec.trunk = {bend, side, twist} in radians, or a number = bend; bend > 0 leans the
+      // chest forward): it replaces act's automatic lean, the arms and head ride on it and the hands reach from there.
+      const tp = pose === undefined || pose === null ? null : typeof pose === "number" ? {bend: pose} : pose;
+      const qB = tp && rot(Y, tp.twist || 0).multiply(rot(X, tp.bend || 0)).multiply(rot(Z, tp.side || 0));
+      const shoulderAt = f => qB ? V("spine").add(V("shoulder_" + f, "spine").applyQuaternion(qB)) : V("shoulder_" + f);
       if (!walk && !sit && (grip || place)) autoPlace();
       let s = 0, p = null, fr = {z: 0, lift: 0, pitch: 0, ground: 1}, fl = fr, vnorm = 0;
       if (walk) {
@@ -754,7 +767,7 @@
       const reachW = x => x.s.t0 === undefined ? 1 : mjerk(x.s.t0 - .2, x.s.touch, t) * (1 - (x.s.release === undefined ? 0 : mjerk(x.s.release, x.s.t1 ?? x.s.release + 1, t)));
       const gw = Math.max(0, ...goals.map(reachW));
       const lean = .05 * vnorm + .09 * Math.max(rw, .6 * gw) + .012 * Math.sin(2 * Math.PI * t / 3.9) * (1 - vnorm);
-      const qT = rot(Y, -.55 * yaw).multiply(rot(X, lean)), torsoPos = sit ? J("spine").position.clone() : pelvisPos.clone().add(V("spine", "pelvis"));
+      const qT = rot(Y, -.55 * yaw).multiply(qB || rot(X, lean)), torsoPos = sit ? J("spine").position.clone() : pelvisPos.clone().add(V("spine", "pelvis"));
       J("spine").position.copy(torsoPos); J("spine").quaternion.copy(qT);
       const carry = (o, off) => o.position.copy(torsoPos).add(off.clone().applyQuaternion(qT));
       let qN = Q();
@@ -809,7 +822,7 @@
         const base = g.position.clone(), baseYaw = g.rotation.y, moves = [], why = [];
         let yaw = baseYaw;
         for (const s of specs) {
-          const f = s.hand || "r", sg = sideSign[f], Sw = g.localToWorld(V("shoulder_" + f));
+          const f = s.hand || "r", sg = sideSign[f], Sw = g.localToWorld(shoulderAt(f));
           const P = goalEstimate(s, Sw);
           if (!P) continue;
           const toP = P.clone().sub(Sw), local = toP.clone().applyQuaternion(g.getWorldQuaternion(Q()).invert());
@@ -838,20 +851,21 @@
         if (moves.length) { g.rotation.y = yaw; shift(dw); }
         // Standing room: the trunk, head and legs keep 60 mm off the furniture round them (a shelf edge against the chest
         // looks wrong even when nothing goes through); step back from the goal, as far as the arm still reaches.
-        const goalsW = specs.map(s => goalEstimate(s, g.localToWorld(V("shoulder_" + (s.hand || "r"))))).filter(Boolean);
+        const goalsW = specs.map(s => goalEstimate(s, g.localToWorld(shoulderAt(s.hand || "r")))).filter(Boolean), s0f = specs[0].hand || "r";
         let root = g; while (root.parent) root = root.parent;
         const held = new Set(); for (const s of specs) for (const o of [s.target, s.hold]) if (o) o.traverse(x => held.add(x));
         const env = [];
         root.traverse(o => { if (o.isMesh && o.visible && !held.has(o)) { let h = false; for (let p = o; p; p = p.parent) if (p.userData.rvHuman) { h = true; break; } if (!h) env.push(o); } });
         const room = () => { const c = g.localToWorld(V("spine")), tris = surfaceSet(env.filter(o => !o.userData.rvSkin), c, 1.1 * k);
-          if (!tris.length) return Infinity; let m = Infinity; for (const p of trunk) m = Math.min(m, signedDist(g.localToWorld(p.clone()), tris)); return m; };
+          if (!tris.length) return Infinity; let m = Infinity, sp = V("spine");
+          for (const p of trunk) m = Math.min(m, signedDist(g.localToWorld(qB && p.upper ? p.clone().sub(sp).applyQuaternion(qB).add(sp) : p.clone()), tris)); return m; };
         let gap = goalsW.length ? room() : Infinity;
         if (gap < .06 * k) {
           const O = g.getWorldPosition(Vc()), P0 = goalsW.reduce((s, p) => s.add(p), Vc()).divideScalar(goalsW.length);
           const away = O.clone().sub(P0).setY(0); if (away.lengthSq() < 1e-8) away.set(0, 0, -1).applyQuaternion(g.getWorldQuaternion(Q())); away.normalize();
           let backed = 0;
           for (let i = 0; i < 6 && gap < .06 * k; i++) {
-            const sh = g.localToWorld(V("shoulder_" + (specs[0].hand || "r")));
+            const sh = g.localToWorld(shoulderAt(specs[0].hand || "r"));
             const spare = .95 * LM - sh.distanceTo(goalsW[0]);   // how much further the arm can go
             const step = Math.min(.06 * k - gap + .005 * k, spare);
             if (step <= .002 * k) break;
@@ -859,11 +873,48 @@
           }
           if (backed > 0) { why.push("room"); dw.add(away.clone().multiplyScalar(backed)); moves.push(dw); }
         }
+        // The surface points are sparse: a thin board (a shelf over the shoulders) can pass between them through the neck or
+        // head. The column from the spine pivot to the top of the head keeps 10 cm (a head's radius and a little) off it too.
+        const headTop = V("head").add(Vc(0, .13, 0)), column = () => { const sp = V("spine"), tris = surfaceSet(env.filter(o => !o.userData.rvSkin), g.localToWorld(sp.clone()), 1.1 * k);
+          if (!tris.length) return Infinity; let m = Infinity;
+          for (let i = 0; i <= 8; i++) { const p = sp.clone().lerp(headTop, i / 8); m = Math.min(m, Math.abs(signedDist(g.localToWorld(qB ? p.sub(sp).applyQuaternion(qB).add(sp) : p), tris))); }
+          return m; };
+        // Still crowded (stepping back from a deep shelf above the shoulders walks in under it): try spots round the goal,
+        // every 15 deg, each facing it and reaching it as above (or with the arm further out); take the nearest with room,
+        // else the roomiest.
+        // setting something on a board above the shoulder: the shoulder stands outside the board (12 cm), in front of it,
+        // so the arm comes up in front of the edge; under it the arm has to pass the head to get over the edge
+        const highOn = specs.map(s => s.hold && s.on && new THREE.Box3().setFromObject(s.on)).find(b => b && b.max.y > g.localToWorld(shoulderAt(s0f)).y);
+        const underHigh = () => { if (!highOn) return false; const sh = g.localToWorld(shoulderAt(s0f)), m = .12 * k;
+          return sh.x > highOn.min.x - m && sh.x < highOn.max.x + m && sh.z > highOn.min.z - m && sh.z < highOn.max.z + m; };
+        const ok = (r, c) => r >= .06 * k && c >= .1 * k && !underHigh();
+        let col = goalsW.length ? column() : Infinity;
+        if (goalsW.length && !ok(gap, col)) {
+          const f = specs[0].hand || "r", sg = sideSign[f], P = goalsW[0], O0 = g.getWorldPosition(Vc());
+          const Wb = g.parent ? g.parent.localToWorld(base.clone()) : base.clone(), y0 = O0.y, from = {at: O0.clone(), yw: g.rotation.y, r: gap, c: col};
+          const dy = P.y - g.localToWorld(shoulderAt(f)).y, worst = (r, c) => Math.min(r, c - .04 * k);
+          let pick = null;
+          for (const reachK of [.8, .86, .92]) for (let i = 0; i < 24; i++) {
+            const hd = Math.max(.3 * k, Math.sqrt(Math.max(0, (reachK * LM) ** 2 - dy * dy)));
+            const yw = i * Math.PI / 12, a = sg * .3, sh = shoulderAt(f).multiplyScalar(k).setY(0);
+            const off = sh.add(Vc(hd * Math.sin(a), 0, hd * Math.cos(a))).applyAxisAngle(Y, yw), at = Vc(P.x - off.x, y0, P.z - off.z);
+            g.rotation.y = yw; shift(at.clone().sub(g.getWorldPosition(Vc())));
+            if (g.localToWorld(shoulderAt(f)).distanceTo(P) > .95 * LM) continue;
+            const r = room(), c = column(), d = at.distanceTo(Wb) + .1 * k * reachK;
+            const better = !pick || (ok(r, c) ? !ok(pick.r, pick.c) || d < pick.d : !ok(pick.r, pick.c) && worst(r, c) > worst(pick.r, pick.c));
+            if (better) pick = {r, c, d, at, yw};
+          }
+          const to = pick && (ok(pick.r, pick.c) || worst(pick.r, pick.c) > worst(gap, col)) ? pick : from;
+          g.rotation.y = to.yw; shift(to.at.clone().sub(g.getWorldPosition(Vc())));
+          gap = to.r; col = to.c;
+          if (to === pick) { yaw = to.yw; why.push("room-spot"); dw.copy(to.at).sub(Wb).setY(0); moves.push(dw); }
+        }
         if (!moves.length) return;
         g.userData.autoPlace = {base, baseYaw, pos: g.position.clone(), yaw: g.rotation.y, moved_m: +dw.length().toFixed(3), turned_deg: +((yaw - baseYaw) * 180 / Math.PI).toFixed(1), why,
-          room_mm: Number.isFinite(gap) ? +(gap * 1000).toFixed(1) : null};
+          room_mm: Number.isFinite(gap) ? +(gap * 1000).toFixed(1) : null, head_room_mm: Number.isFinite(col) ? +(col * 1000).toFixed(1) : null};
       }
       function goalEstimate(s, Sw) {   // world point the palm will go to, before the arm moves
+        if (s.at && s.on && s.hold) { const p = vec(s.at); p.y = new THREE.Box3().setFromObject(s.on).max.y + .1; return p; }   // place: at sets x/z, the object goes on top of on
         if (s.at) return vec(s.at);
         if (s.target) { const b = new THREE.Box3().setFromObject(s.target); return b.isEmpty() ? null : b.getCenter(Vc()); }
         if (s.on) { const top = new THREE.Box3().setFromObject(s.on); return Vc(clamp(Sw.x, top.min.x, top.max.x), top.max.y + .1, clamp(Sw.z, top.min.z, top.max.z)); }
@@ -880,13 +931,26 @@
         const Hr = palm.getWorldPosition(Vc()), Sw = W(S);
         const handRest = restQ.clone().multiply(el.quaternion).multiply(restWr);
         // goal point P, outward normal N (from the surface toward the hand), finger direction F; all world space
-        let P, N, obj = null, rest = null, off = null, extra = [], thumbF = null, roomy = false, trayHold = false;
+        let P, N, obj = null, rest = null, off = null, extra = [], thumbF = null, roomy = false, trayHold = false, wideHold = false;
         // a small thing among others (a cup on a tray with jars and a front lip): what stands beside it is in the way by default
         if (kind === "grip" && !s.avoid && s.target.parent && !s.target.parent.isScene) {
           const sz = new THREE.Box3().setFromObject(s.target).getSize(Vc());
           if (Math.max(sz.x, sz.y, sz.z) <= .3) s = {...s, avoid: s.target.parent.children.filter(c => c !== s.target && c.visible), nearby: true};
         }
         const obs = obstacles(s.avoid ?? (kind === "place" ? [s.on] : []));
+        const kk = g.matrixWorld.getMaxScaleOnAxis();
+        // hand orientation for palm normal -n, fingers F (world): g-local, finger roots in a line along the object
+        const goalQ = (n, F, tilt) => { const inv = new THREE.Matrix4().copy(g.matrixWorld).invert(), nl = n.clone().transformDirection(inv).negate(), fl = F.clone().transformDirection(inv);
+          const basis = (a, b) => new THREE.Matrix4().makeBasis(a, b, Vc().crossVectors(a, b));
+          const q = Q().setFromRotationMatrix(basis(nl, fl).multiply(basis(Vc(-sg, 0, 0), Vc(0, -1, 0)).transpose()));
+          if (tilt && fingers && fingers[f]) q.multiply(fingers[f].tilt); return q; };
+        // how far the arm stays off the obstacles with the palm at Pw on face n of a carried object, best elbow swivel
+        const armClear = (Pw, n) => { const T = Lc(Pw).sub(palmOff.clone().applyQuaternion(goalQ(n, up.clone().cross(n).multiplyScalar(-sg).normalize(), true)));
+          if (T.distanceTo(S) > UA + FW) return -1;
+          const ax = T.clone().sub(S).normalize(), base = Vc(sg * .55, -1, -.35); let best = -Infinity;
+          for (let a = -2.2; a <= 2.2001; a += .2) { const {E} = twoBone(S, T, UA, FW, base.clone().applyAxisAngle(ax, a));
+            best = Math.max(best, Math.min(segClear(W(S), W(E), obs, .055), segClear(W(E), W(T), obs, .045))); }
+          return best; };
         if (kind === "grip") {
           if (s.at) { P = vec(s.at); N = s.normal ? vec(s.normal).normalize() : Sw.clone().sub(P).normalize(); }
           else {
@@ -952,26 +1016,80 @@
           } else spot = vec(s.at);
           rest = spot;
           N = Sw.clone().sub(spot).setY(0).normalize();
-          P = spot.clone().add(center).setY(spot.y - bottom + size.y * .45).addScaledVector(N, r + .004);
+          wideHold = Math.max(size.x, size.z) > .08 * kk && Math.max(size.x, size.y, size.z) <= .3 * kk;   // a mug, not a bottle
+          // the palm on the object's own side on face n (a ray from outside), not on its box: a mug's handle widens the box
+          const c0 = obj.getWorldPosition(Vc());
+          const palmAt = n => { const o = c0.clone().add(center).setY(c0.y - bottom + size.y * (wideHold ? .5 : .45)).addScaledVector(n, 1);
+            const hit = new THREE.Raycaster(o, n.clone().negate(), 0, 2).intersectObject(obj, true).find(h => h.object.isMesh);
+            return hit ? spot.clone().add(hit.point.sub(c0)).addScaledVector(n, .004) : spot.clone().add(center).setY(spot.y - bottom + size.y * .45).addScaledVector(n, r + .004); };
+          // the arm has to clear the surface it sets the object on (a shelf board at the shoulder or above): when the face toward
+          // the shoulder leaves the forearm or upper arm in the board at the drop, the palm takes the nearest face whose arm clears
+          if (s.on && armClear(palmAt(N), N) < .005) {
+            let best = null;
+            for (const i of [1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6, 7, -7, 8]) { const n = N.clone().applyAxisAngle(up, i * Math.PI / 8), c = armClear(palmAt(n), n);
+              if (!best || (c >= .005 ? best.c < .005 : best.c < .005 && c > best.c)) best = {n, c}; }
+            if (best && best.c > armClear(palmAt(N), N)) N = best.n;
+          }
+          P = palmAt(N);
           off = P.clone().sub(spot);   // palm minus the object's origin, while held
-          extra = [[Vc(0, -bottom + .01, 0).sub(off).add(Vc(center.x, 0, center.z)), r], [Vc(0, size.y - bottom - .01, 0).sub(off).add(Vc(center.x, 0, center.z)), r]];
+          extra = [[Vc(0, -bottom + .01, 0).sub(off).add(Vc(center.x, 0, center.z)), r + .025], [Vc(0, size.y - bottom - .01, 0).sub(off).add(Vc(center.x, 0, center.z)), r + .025]];   // + the fingers round it
         }
         let F = thumbF || (kind === "place" ? up.clone().cross(N).multiplyScalar(-sg) : P.clone().sub(Sw));
         F.addScaledVector(N, -F.dot(N)); if (F.lengthSq() < 1e-8) F = up.clone().addScaledVector(N, -N.y); F.normalize();
+        const handGoal = goalQ(N, F, kind === "grip" || wideHold);   // hand frame: rest palm normal -X (right) / +X (left), fingers -Y
+        // a carried object is held in the turned hand from the start: the hand waits where the hanging arm puts that palm
+        const Hs = wideHold ? W(Lc(Hr).add(palmOff.clone().applyQuaternion(handGoal)).sub(palmOff.clone().applyQuaternion(handRest))) : Hr;
         // way there and back
         const pre = kind === "place" ? P.clone().addScaledVector(up, .07) : P.clone().addScaledVector(N, .09);
-        const there = route(Hr, pre, obs, extra).concat([P]);
+        // a carried object: a planned way (planCarry) that keeps hand and object off the obstacles and the arm able to follow
+        const carryBox = obj ? new THREE.Box3().setFromObject(obj).translate(off.clone().negate().sub(obj.getWorldPosition(Vc()))) : null;   // the object's box relative to the palm
+        const way = (a, b) => kind === "place" && obs.length ? planCarry(a, b) || route(a, b, obs, extra) : route(a, b, obs, extra);
+        // A* on a 4 cm grid round the shoulder: the hand (6 cm) and the object's own box (+2 cm for the fingers round it) 2 cm off
+        // every obstacle, the hand between 0.6 and 0.95 of the arm from the shoulder and 17 cm off the spine; shortcuts after.
+        function planCarry(a, b) {
+          const Sw0 = W(S), sp0 = W(V("pelvis")), sp1 = W(V("neck")), LMw = (UA + FW) * kk, h = .04 * kk, R0 = .95 * LMw;
+          const boxGap = (p, o) => { const lo = Vc(Infinity, Infinity, Infinity), hi = Vc(-Infinity, -Infinity, -Infinity), c = Vc();
+            for (let i = 0; i < 8; i++) { c.set(i & 1 ? carryBox.max.x : carryBox.min.x, i & 2 ? carryBox.max.y : carryBox.min.y, i & 4 ? carryBox.max.z : carryBox.min.z).add(p).applyMatrix4(o.inv); lo.min(c); hi.max(c); }
+            const g3 = ["x", "y", "z"].map(ax => Math.max(lo[ax] - o.box.max[ax], o.box.min[ax] - hi[ax]));
+            return g3.every(v => v < 0) ? Math.max(...g3) * o.k : Math.hypot(...g3.map(v => Math.max(0, v))) * o.k; };
+          const seg = new THREE.Line3(sp0, sp1), q = Vc();
+          const free = p => { const d = p.distanceTo(Sw0); if (d < .6 * LMw || d > R0) return false;
+            if (seg.closestPointToPoint(p, true, q).distanceTo(p) < .17 * kk) return false;
+            if (clearance(p, obs) < .08 * kk) return false;
+            if (carryBox) for (const o of obs) if (boxGap(p, o) < .04 * kk) return false;
+            return true; };
+          const n = Math.ceil(R0 / h), key = (i, j, l) => ((i + n) * (2 * n + 1) + (j + n)) * (2 * n + 1) + (l + n), at = (i, j, l) => Sw0.clone().add(Vc(i * h, j * h, l * h));
+          const cell = p => p.clone().sub(Sw0).divideScalar(h).round();
+          const snap = p => { const c0 = cell(p); let best = null;
+            for (let r = 0; r <= 3 && !best; r++) for (let i = -r; i <= r; i++) for (let j = -r; j <= r; j++) for (let l = -r; l <= r; l++) { const c = c0.clone().add(Vc(i, j, l)), w = at(c.x, c.y, c.z);
+              if (Math.abs(c.x) <= n && Math.abs(c.y) <= n && Math.abs(c.z) <= n && free(w) && (!best || w.distanceTo(p) < best.d)) best = {c, d: w.distanceTo(p)}; }
+            return best && best.c; };
+          const A = snap(a), B = snap(b); if (!A || !B) return null;
+          const okc = new Map(), isFree = (i, j, l) => { const kx = key(i, j, l); if (!okc.has(kx)) okc.set(kx, Math.abs(i) <= n && Math.abs(j) <= n && Math.abs(l) <= n && free(at(i, j, l))); return okc.get(kx); };
+          const open = [[0, A.x, A.y, A.z]], gs = new Map([[key(A.x, A.y, A.z), 0]]), from = new Map(), Bk = key(B.x, B.y, B.z);
+          let found = false, guard = 0;
+          while (open.length && guard++ < 20000) {
+            let bi = 0; for (let i = 1; i < open.length; i++) if (open[i][0] < open[bi][0]) bi = i;
+            const [, i, j, l] = open.splice(bi, 1)[0], kx = key(i, j, l); if (kx === Bk) { found = true; break; }
+            for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) for (let dl = -1; dl <= 1; dl++) { if (!di && !dj && !dl) continue;
+              const ni = i + di, nj = j + dj, nl = l + dl; if (!isFree(ni, nj, nl)) continue;
+              const nk = key(ni, nj, nl), g2 = gs.get(kx) + Math.hypot(di, dj, dl);
+              if (g2 < (gs.get(nk) ?? Infinity)) { gs.set(nk, g2); from.set(nk, [i, j, l]); open.push([g2 + Math.hypot(ni - B.x, nj - B.y, nl - B.z), ni, nj, nl]); } } }
+          if (!found) return null;
+          const cells = [[B.x, B.y, B.z]]; for (let c = [B.x, B.y, B.z]; key(...c) !== key(A.x, A.y, A.z); ) { c = from.get(key(...c)); cells.unshift(c); }
+          const pts = [a.clone(), ...cells.map(c => at(...c)), b.clone()];
+          const clear = (u, v) => { for (let s2 = 0; s2 <= 1.0001; s2 += h / 2 / Math.max(u.distanceTo(v), 1e-6)) if (!free(u.clone().lerp(v, Math.min(1, s2)))) return false; return true; };
+          const out = [pts[0]]; let i0 = 0;
+          while (i0 < pts.length - 1) { let j0 = pts.length - 1; while (j0 > i0 + 1 && !clear(pts[i0], pts[j0])) j0--; out.push(pts[j0]); i0 = j0; }
+          return out;
+        }
+        const there = way(Hs, pre).concat([P]);
         const touch = s.touch, t0 = s.t0 ?? touch - 1, release = s.release ?? (kind === "place" ? touch + .15 : undefined), t1 = s.t1 ?? (release ?? touch) + 1;
         const go = mjerk(t0, touch, t), back = release === undefined ? 0 : mjerk(release, t1, t);
-        const away = P.clone().addScaledVector(N, .09), home = [P, away].concat(route(away, Hr, obs).slice(1));
+        const away = P.clone().addScaledVector(N, .09), home = [P, away].concat(way(away, Hs).slice(1));
         const H = back > 0 ? along(home, back) : along(there, go);
         const held = kind === "place" && t < touch;
         const turn = kind === "place" ? 1 - step(.3, 1, back) : step(0, .35, go) * (1 - step(.65, 1, back));
-        // hand frame: rest palm normal -X (right) / +X (left), fingers -Y; goal palm normal -N, fingers F (g-local)
-        const inv = new THREE.Matrix4().copy(g.matrixWorld).invert(), nl = N.clone().transformDirection(inv).negate(), fl = F.clone().transformDirection(inv);
-        const basis = (a, b) => new THREE.Matrix4().makeBasis(a, b, Vc().crossVectors(a, b));
-        const handGoal = Q().setFromRotationMatrix(basis(nl, fl).multiply(basis(Vc(-sg, 0, 0), Vc(0, -1, 0)).transpose()));
-        if (kind === "grip" && fingers && fingers[f]) handGoal.multiply(fingers[f].tilt);   // finger roots in a line along the object
         let handQ = handRest.clone().slerp(handGoal, turn);
         let want = Lc(H); const obsL = obs.length;
         const axisOf = T => T.clone().sub(S).normalize();
@@ -998,31 +1116,40 @@
           g.updateWorldMatrix(true, true);
           T.add(want.clone().sub(Lc(palm.getWorldPosition(Vc()))));
         } };
+        // a carried object keeps its place when the hand backs off it (lift, along N) so the fingers fit round it
+        let grasp = null, roll = 0, lift = 0, anchor = "palm"; const liftV = Vc();   // liftV: where the hand moved off (world)
         const carry = () => { if (obj) {
-          const to = held ? palm.getWorldPosition(Vc()).sub(off) : rest;
+          const to = held ? W(want).sub(off).sub(liftV) : rest;   // where the palm was sent, less what it backed off: the object stays put while the hand settles
           obj.position.copy(obj.parent ? obj.parent.worldToLocal(to.clone()) : to); obj.updateWorldMatrix(false, true);
         } };
         solve(); carry();
         // fingers: close around the target (grip) or the carried object (place), stopping on it and on the avoid boxes
         const fw = kind === "grip" ? step(touch - .45, touch, t) * (1 - (release === undefined ? 0 : step(release, release + .3, t)))
           : held ? 1 : 1 - step(touch, touch + .3, t);
-        let grasp = null, roll = 0, lift = 0, anchor = "palm";
         const hand = fingers && fingers[f];
         if (hand && hand.list.length && fw > 0) {
           const k = g.matrixWorld.getMaxScaleOnAxis();
           // neighbours found on their own (s.nearby) steer the arm only: the hand closes on its target and on what the scene named
-          const tris = surfaceSet([kind === "grip" ? s.target : obj, ...(s.nearby ? [] : s.avoid ?? (kind === "place" ? [s.on] : []))], palm.getWorldPosition(Vc()), .25 * k);
-          if (tris.length && kind === "grip") {   // roll the hand about its palm point, fingers toward the object, until the finger roots touch it
+          const inHand = kind === "grip" ? s.target : obj, hb = new THREE.Box3().setFromObject(inHand), hs = hb.getSize(Vc()), hc = hb.getCenter(Vc());
+          let own = surfaceSet([inHand], palm.getWorldPosition(Vc()), .25 * k);
+          // a mug-sized hollow thing (wider than 8 cm): its outer skin only, so a rolled palm cannot pass the wall into it
+          const wide = Math.max(hs.x, hs.z) > .08 * k && Math.max(hs.x, hs.y, hs.z) <= .3 * k;
+          if (wide) own = own.filter(({tri, nrm}) => tri.getMidpoint(Vc()).sub(hc).dot(nrm) > 0);
+          const tris = own.concat(surfaceSet(s.nearby ? [] : s.avoid ?? (kind === "place" ? [s.on] : []), palm.getWorldPosition(Vc()), .25 * k));
+          // a carried object rides with the palm: its grip (roll, back-off) is set against it alone, the same all the way, so
+          // the hand does not turn into it near the surface it goes on; the fingers still stop on that surface
+          const rt = kind === "place" ? own : tris, behind = kind === "place" ? [] : tris;   // behind: what open fingers must not swing into (a carried object's way is planned clear)
+          if (tris.length && (kind === "grip" || wideHold)) {   // roll the hand about its palm point, fingers toward the object, until the finger roots touch it
             const Pm = palm.getWorldPosition(Vc()), Qw = wr.getWorldQuaternion(Q());
             const onHand = (v, q) => v.clone().sub(hand.palm).multiplyScalar(k).applyQuaternion(q).add(Pm);
             // a thick palm rolled around a tall or thin object would go into it: it backs off along N instead (lift)
             let pm0 = null;
             const at = phi => { const q = Qw.clone().multiply(rot(hand.rollAxis, phi));
-              let pm = Infinity; for (const v of hand.palmPts) pm = Math.min(pm, signedDist(onHand(v, q), tris));
+              let pm = Infinity; for (const v of hand.palmPts) pm = Math.min(pm, signedDist(onHand(v, q), rt));
               if (pm0 === null) pm0 = -.0005;   // palm skin at most half a millimetre into the surface
               const lift = Math.min(.03 * k, Math.max(0, pm0 - pm));
-              let fm = Infinity; for (const v of hand.fingerPts) fm = Math.min(fm, signedDist(onHand(v, q), tris) + lift);
-              return {root: signedDist(onHand(hand.root, q), tris) + lift, lift, fm}; };
+              let fm = Infinity; if (behind.length) for (const v of hand.fingerPts) fm = Math.min(fm, signedDist(onHand(v, q), behind) + lift);
+              return {root: signedDist(onHand(hand.root, q), rt) + lift, lift, fm}; };
             let best = 0, bestRoot = Infinity, prev = 0;
             for (let phi = 0; phi <= 1.1001; phi += .05) {
               const r = at(phi);
@@ -1038,30 +1165,33 @@
             const rootGap = at(best).root;
             // a thin bar the rolled hand cannot reach (the open fingers would hit what is behind it): when the fingers fit
             // behind it, lay the finger roots on it instead of the palm and let the fingers close round it
-            if (kind === "grip" && thumbF && roomy && !trayHold && rootGap > .005) {   // (a cup in a tray keeps the palm on it: roots-first drops the wrist to the tray floor)
+            // (a wide object, more than 8 cm through, a big mug: the rolled palm wraps it, as when it is carried)
+            const thin = () => new THREE.Box3().setFromObject(s.target).getSize(Vc()).multiply(N).manhattanLength() <= .08 * k;
+            if (kind === "grip" && thumbF && roomy && !trayHold && rootGap > .005 && thin()) {   // (a cup in a tray keeps the palm on it: roots-first drops the wrist to the tray floor)
               anchor = "fingers"; roll = 0;
               const rootW = onHand(hand.root, Qw);
               lift = 0; want = Lc(H.clone().add(Pm.clone().sub(rootW).multiplyScalar(fw)).addScaledVector(N, .002 * fw)); solve(); carry();
             } else {
-              roll = best * fw; lift = at(best).lift * fw;
+              roll = best * fw; lift = at(best).lift * fw; liftV.copy(N).multiplyScalar(lift);
               if (roll > 1e-4 || lift > 1e-5) { handQ = handQ.clone().multiply(rot(hand.rollAxis, roll)); want = Lc(H.clone().addScaledVector(N, lift)); solve(); carry(); }
             }
           }
           grasp = {};
-          for (const fd of hand.list) grasp[fd.finger] = closeFinger(fd, tris, fw);
+          for (const fd of hand.list) grasp[fd.finger] = closeFinger(fd, kind === "place" ? own : tris, fw);   // a carried object: the fingers hold it, nothing else
           // knuckles bulge as the fingers bend: measure the real skin, back the hand off by what went in, close again
-          for (let pass = 0; pass < 3 && tris.length && kind === "grip" && lift < .012; pass++) {
+          for (let pass = 0; pass < (wide ? 4 : 3) && tris.length && (kind === "grip" || wideHold) && lift < (wide && roll > 0 ? .06 * k : .012); pass++) {   // a palm rolled round a mug may back off further, until it is clear
             deform();
-            let pen = 0; const v = Vc();
+            let pen = 0; const v = Vc(), q = Vc(), out = N.clone();
             for (const o of g.children) if (o.isMesh && o.userData.rvPart === "hand_" + f) {
               const a = o.geometry.attributes.position;
-              for (let i = 0; i < a.count; i += 2) pen = Math.max(pen, -signedDist(v.fromBufferAttribute(a, i).applyMatrix4(o.matrixWorld), tris));
+              for (let i = 0; i < a.count; i += wide ? 1 : 2) { const d = -signedDist(v.fromBufferAttribute(a, i).applyMatrix4(o.matrixWorld), rt, q);
+                if (d > pen) { pen = d; if (wide) out.copy(q).sub(v).normalize(); } }   // round a mug: the deepest point's own way out
             }
             if (pen < .0012) break;
-            lift += pen + .0004;
-            want.add(N.clone().transformDirection(new THREE.Matrix4().copy(g.matrixWorld).invert()).multiplyScalar((pen + .0004) / g.matrixWorld.getMaxScaleOnAxis()));
+            lift += pen + .0004; liftV.addScaledVector(out, pen + .0004);
+            want.add(out.transformDirection(new THREE.Matrix4().copy(g.matrixWorld).invert()).multiplyScalar((pen + .0004) / g.matrixWorld.getMaxScaleOnAxis()));
             solve(); carry();
-            for (const fd of hand.list) grasp[fd.finger] = closeFinger(fd, tris, fw);
+            for (const fd of hand.list) grasp[fd.finger] = closeFinger(fd, kind === "place" ? own : tris, fw);   // a carried object: the fingers hold it, nothing else
           }
         }
         g.userData.reach = g.userData.reach || {};
@@ -1315,7 +1445,8 @@
     }
     // Standing trunk, head and legs as about 160 surface points (rest pose = standing), for the room the body keeps.
     const trunk = (() => { const all = [];
-      for (const p of BODY.parts) if (p.kind === "main" && /^(spine|pelvis|neck|head|hip|knee)/.test(p.pivot)) { const a = new Float32Array(bytes(p.pos)); for (let i = 0; i < a.length; i += 3) all.push(new THREE.Vector3(a[i], a[i + 1], a[i + 2])); }
+      for (const p of BODY.parts) if (p.kind === "main" && /^(spine|pelvis|neck|head|hip|knee)/.test(p.pivot)) { const a = new Float32Array(bytes(p.pos)), upper = /^(spine|neck|head)/.test(p.pivot);   // upper: turns with spec.trunk
+        for (let i = 0; i < a.length; i += 3) { const v = new THREE.Vector3(a[i], a[i + 1], a[i + 2]); v.upper = upper; all.push(v); } }
       const step = Math.max(1, Math.floor(all.length / 160)); return all.filter((_, i) => i % step === 0); })();
     g.act = (t, spec) => HUMAN_MOTION.act(g, t, spec, {R, M, joints, tips, deform, fingers, trunk});
     // Seated legs: by default the shins open forward until the soles sit SIT_DROP below the seat contact, the old
