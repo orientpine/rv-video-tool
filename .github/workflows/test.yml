@@ -63,11 +63,13 @@ jobs:
             ~/.cache/ms-playwright
           key: ${{ runner.os }}-${{ runner.arch }}-rv-playwright-${{ steps.dependencies.outputs.playwright }}-${{ hashFiles('scripts/test.sh') }}
       - name: system tools
-        # The runner's /etc/apt/apt-mirrors.txt lists azure.archive.ubuntu.com first. When that name does not
-        # resolve, apt waits about 20 s for every file before it tries the next mirror; ffmpeg is about a hundred
-        # files, so the job sat here until it was cancelled. Drop the Azure entry when it does not resolve or an
-        # attempt fails, and try three times; each attempt's index update and download have their own limit, the
-        # install itself then runs from the downloaded files.
+        # apt reads the mirrors from /etc/apt/apt-mirrors.txt (azure.archive.ubuntu.com, then archive and security).
+        # When the runner's resolver cannot answer these names, apt waits about 20 s for every file before the next
+        # mirror; ffmpeg is about a hundred files, so the job sat here until it was cancelled. Drop the Azure entry
+        # when it does not resolve or an attempt fails; map archive and security in /etc/hosts to the address a
+        # public resolver gives (DNS over HTTPS to 1.1.1.1, no lookup needed) when the runner cannot resolve them;
+        # try three times, with a limit on each attempt's index update and download; the install itself then runs
+        # from the downloaded files.
         timeout-minutes: 10
         run: |
           packages=(ffmpeg fonts-noto-cjk)
@@ -80,7 +82,21 @@ jobs:
               sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
             fi
           }
-          getent hosts azure.archive.ubuntu.com > /dev/null || drop_azure "azure.archive.ubuntu.com does not resolve"
+          pin() {
+            timeout 10 getent hosts "$1" > /dev/null && return 0
+            ip=$(curl -fsS --max-time 10 -H 'accept: application/dns-json' "https://1.1.1.1/dns-query?name=$1&type=A" |
+              jq -r '[.Answer[]? | select(.type == 1) | .data][0] // empty') || ip=
+            if [ -n "$ip" ]; then
+              echo "::warning::$1 does not resolve on this runner; /etc/hosts maps it to $ip (from 1.1.1.1)"
+              echo "$ip $1" | sudo tee -a /etc/hosts > /dev/null
+            else
+              echo "::warning::$1 does not resolve on this runner or through 1.1.1.1"
+            fi
+          }
+          timeout 10 getent hosts azure.archive.ubuntu.com > /dev/null ||
+            drop_azure "azure.archive.ubuntu.com does not resolve"
+          pin archive.ubuntu.com
+          pin security.ubuntu.com
           for attempt in 1 2 3; do
             if sudo timeout 120 apt-get update &&
               sudo timeout 240 apt-get install -y --download-only "${packages[@]}"; then
