@@ -1092,8 +1092,7 @@
             // a thin bar the rolled hand cannot reach (the open fingers would hit what is behind it): when the fingers fit
             // behind it, lay the finger roots on it instead of the palm and let the fingers close round it
             // (a wide object, more than 8 cm through, a big mug: the rolled palm wraps it, as when it is carried)
-            const thin = () => new THREE.Box3().setFromObject(s.target).getSize(Vc()).multiply(N).manhattanLength() <= .08 * k;
-            if (kind === "grip" && thumbF && roomy && !trayHold && rootGap > .005 && thin()) {   // (a cup in a tray keeps the palm on it: roots-first drops the wrist to the tray floor)
+            if (kind === "grip" && thumbF && roomy && !trayHold && rootGap > .005 && !wide) {   // (a cup in a tray keeps the palm on it: roots-first drops the wrist to the tray floor)
               anchor = "fingers"; roll = 0;
               const rootW = onHand(hand.root, Qw);
               lift = 0; want = Lc(H.clone().add(Pm.clone().sub(rootW).multiplyScalar(fw)).addScaledVector(N, .002 * fw)); solve(); carry();
