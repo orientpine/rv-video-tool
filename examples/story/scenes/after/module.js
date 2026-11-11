@@ -17,11 +17,9 @@ SCENES.after = (() => {
       window.HL = t >= take && t < take + 1.5 ? "컵" : "";
       K.P.update(t); K.steam.update(t, 1);
       K.place(0);
-      // Her hand goes to the cup on the lowered shelf, and the cup comes up and towards her.
-      const reach = KIT.smooth(take - 0.8, take + 0.4, t), lift = KIT.smooth(take + 0.4, take + 1.8, t);
-      cup.position.copy(home).add(new THREE.Vector3(0, 0.12 * lift, 0.18 * lift));
-      const target = cup.getWorldPosition(new THREE.Vector3()).lerp(new THREE.Vector3(K.mina.position.x, 1.0, K.mina.position.z), 1 - reach);
-      K.mina.pose("point", {target});
+      // Her hand takes the cup on the lowered shelf: the kit stands her at a natural reach and closes her fingers on it.
+      cup.position.copy(home);
+      K.mina.act(t, {grip: {target: cup, t0: take - 0.6, touch: take + 0.4}});
       KIT.fx.pulse(K.shelf.root, t, {period: 1.4, amount: 0.7});
       KIT.camSet(cam, view);
       R.render(K.scene, cam);

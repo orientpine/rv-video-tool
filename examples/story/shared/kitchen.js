@@ -17,8 +17,8 @@ window.KITCHEN = function (NAME, THREE, renderer) {
   const mina = KIT.fx.human(scene, 1.62, {site: KIT.place.site("kitchen"), color: 0x6f8fa6});
   mina.name = "mina";
   const stand = new THREE.Vector3(...P.spots.stand);
-  function place(offset = 0) {   // Mina at the standing spot (shifted along the wall), facing the wall
-    mina.visible = true; mina.position.copy(stand).addScaledVector(side, offset); mina.rotation.y = Math.atan2(-n.x, -n.z);
+  function place(offset = 0, back = 0) {   // Mina at the standing spot (shifted along the wall, and back from it), facing the wall
+    mina.visible = true; mina.position.copy(stand).addScaledVector(side, offset).addScaledVector(n, back); mina.rotation.y = Math.atan2(-n.x, -n.z);
   }
   function view(dx = 0.6, dy = 1.45, back = 3.2, fov = 42, lookY = -0.15) {
     const look = new THREE.Vector3(...wall.at).addScaledVector(n, 0.3); look.y += lookY;

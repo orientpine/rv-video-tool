@@ -423,6 +423,10 @@ MESH_CHECK = "() => {\n" + LEGACY_HUMAN + "\nconst PERSON_NAME=" + PERSON_NAME +
     const dimensions=[Math.abs(size.x),Math.abs(size.y),Math.abs(size.z)];
     return Math.min(...dimensions)>=(thinOk ? .005 : .02*Math.max(...dimensions));
   }
+  // KIT.place background: its furniture is one merged mesh ("set") under a root marked userData.rvEnv. A person against
+  // that union has no meaningful depth (a hand 1153 mm 'inside' the kitchen set), and those scenes were not measured
+  // before KIT.fx preRender passed the scene hook through; people are measured against the scene's own objects.
+  const placeSet = o => { for (let p = o; p; p = p.parent) if (p.userData && p.userData.rvEnv && p.userData.rvPlace) return true; return false; };
   function enclosesEnvironment(s,humanBounds,viewpoints) {
     // A camera inside a volume, or a volume surrounding the whole person, is
     // an environment shell, not a penetrated machine component. AABB overlap
@@ -503,7 +507,7 @@ MESH_CHECK = "() => {\n" + LEGACY_HUMAN + "\nconst PERSON_NAME=" + PERSON_NAME +
         const body = meshes(h).filter(o => h.userData.rvHuman ? o.userData.rvPart : solid(o));
         let scene = h; while (scene.parent) scene = scene.parent;
         const humanBounds=bounds(h), viewpoints=[...(cameras.get(scene)||[])].map(point);
-        const machine = meshes(scene).filter(o => !humanOf(o)&&penetrationSolid(o)&&bounds(o).intersectsBox(humanBounds))
+        const machine = meshes(scene).filter(o => !humanOf(o)&&!placeSet(o)&&penetrationSolid(o)&&bounds(o).intersectsBox(humanBounds))
           .map(o=>({o,shapes:shapes(o).filter(s=>!enclosesEnvironment(s,humanBounds,viewpoints))}))
           .filter(d=>d.shapes.length);
         for (const part of body) for (const {o:other,shapes:otherShapes} of machine) {
@@ -519,6 +523,27 @@ MESH_CHECK = "() => {\n" + LEGACY_HUMAN + "\nconst PERSON_NAME=" + PERSON_NAME +
           const name = (h.userData.rvHuman?'':(h.name||'legacy human')+' / ')+label(part)+' / '+label(other);
           if (Math.max(depth, through) > .01 + 1e-8) add('human penetration',
             name+(through > depth ? ' (열린 면을 뚫음)' : ''),Math.max(depth, through)*1000,10,h.uuid);
+        }
+        // 사람 붙음: 서 있는 사람의 몸통·골반·머리·다리가 선반·책상 같은 물체에 40 mm 안쪽으로 붙으면 FAIL(뚫지 않아도 부자연스럽다:
+        // 컵을 잡는 사람의 가슴이 선반 모서리에 닿아 있던 장면). 안은 사람은 좌석·등받이에 닿는 게 정상이라 빼고,
+        // 손이 쥐고 있는 물체(손 표면 4 mm 안)는 몸 가까이 들릴 수 있어 뺀다.
+        if (h.userData.rvHuman && h.userData.pose !== 'sit') {
+          const near = humanBounds.clone().expandByScalar(.06), MIN = .04;
+          const trunk = body.filter(o => /^(torso|pelvis|head|thigh|shin)/.test(o.userData.rvPart) && o.userData.rvSkin);
+          const hands = body.filter(o => /^hand/.test(o.userData.rvPart));
+          const others = meshes(scene).filter(o => !humanOf(o) && !placeSet(o) && penetrationSolid(o) && bounds(o).intersectsBox(near))
+            .map(o => ({o, shapes: shapes(o).filter(s => !enclosesEnvironment(s, humanBounds, viewpoints))})).filter(d => d.shapes.length)
+            .filter(({o, shapes: os}) => { const sz = bounds(o).getSize(V());   // a cup in the hand may be close; a shelf may not
+              return Math.max(sz.x, sz.y, sz.z) >= .4 || !hands.some(hd => shapes(hd).some(a => os.some(b => a.box.clone().expandByScalar(.004).intersectsBox(b.box) && pair(a, b) < .004))); });
+          for (const part of trunk) for (const {o: other, shapes: os} of others) {
+            let gap = Infinity;
+            for (const a of shapes(part)) for (const b of os) {
+              if (!a.box.clone().expandByScalar(MIN).intersectsBox(b.box)) continue;
+              gap = Math.min(gap, pair(a, b));
+            }
+            if (gap < MIN) add('human crowding', label(part) + ' / ' + label(other) + ' ' + (Math.max(0, gap) * 1000).toFixed(1) + ' mm',
+              (MIN - Math.max(0, gap)) * 1000, 0, h.uuid);
+          }
         }
       }
       for (const d of declarations().seats) {
