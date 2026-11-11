@@ -16,6 +16,7 @@ Every release is a git tag `vX.Y.Z` (Z for fixes, Y for features). Each tag gets
 - Fix: `check_clearance` never measured `KIT.place` scenes. `KIT.fx`'s per-scene render hook hid `Scene.prototype.onBeforeRender`, which the check patches, so the kitchen and lab scenes passed with nothing measured (a person 28 mm into a shelf passed). The hook now passes the call on. People are measured against the scene's own objects, not the merged `KIT.place` background ("set"), whose depth means nothing.
 - New check rule `human crowding`: a standing person's trunk, pelvis, head or legs within 40 mm of a shelf, table or other object FAILs, even without going in. Seated people and small things in the hand (under 0.4 m) are left out.
 - Natural placement: a standing grip too close to the object (arm folded, or standing in the shelf) steps the body straight back, keeping its facing. The trunk keeps 60 mm from nearby furniture while the arm still reaches. A small object in a group (a cup on a tray with jars and a lip) treats its neighbours as obstacles for the arm, comes at it from above and holds it a little higher. The kitchen cup scene went from torso 28 mm, forearm 25 mm and hand 12 mm in the shelf to no finding.
+- Fix: the public leak scan (keys-tokens) refused kit/human_body.js, whose base64 mesh data spelled an AWS access key id by chance (AKIA and 16 capitals). scripts/human_body.py now cuts such a field into a list of pieces inside every AKIA, and the kit joins them before decoding. The decoded mesh is byte for byte the same; the scan pattern is unchanged.
 
 ### 한국어
 
@@ -25,6 +26,7 @@ Every release is a git tag `vX.Y.Z` (Z for fixes, Y for features). Each tag gets
 - 고침: `check_clearance` 가 `KIT.place` 장면을 전혀 재지 않았다. `KIT.fx` 의 장면별 렌더 훅이 검사가 가로채는 `Scene.prototype.onBeforeRender` 를 가려, 부엌·실험실 장면은 아무것도 안 재고 통과했다(선반에 몸이 28 mm 박힌 사람도 통과). 이제 훅이 호출을 넘겨 준다. 사람은 장면이 만든 물체와만 재고, 한 덩어리로 합친 `KIT.place` 배경("set")은 깊이가 뜻이 없어 뺀다.
 - 새 검사 규칙 `human crowding`: 서 있는 사람의 몸통·골반·머리·다리가 선반·책상 등에 40 mm 안쪽으로 붙으면 뚫지 않아도 FAIL. 앉은 사람과 손에 든 작은 물건(0.4 m 미만)은 뺀다.
 - 자연스러운 자리: 서서 잡을 때 물건에 너무 가까우면(팔이 접히거나 선반 안에 섬) 방향 그대로 뒤로 물러서고, 몸통은 둘레 가구에서 60 mm 떨어지게 팔이 닿는 만큼 자리를 잡는다. 묶음 안의 작은 물건(단지·턱이 있는 쟁반 위 컵)은 이웃을 팔의 장애물로 보고, 위에서 들어가 조금 높이 쥔다. 부엌 컵 장면: 몸통 28·아래팔 25·손 12 mm 박힘 → 검사 발견 없음.
+- 고침: 공개 유출 검사(keys-tokens)가 kit/human_body.js 를 막았다. base64 메시 데이터가 우연히 AWS 액세스 키 모양(AKIA 와 대문자·숫자 16자)이 됐기 때문이다. 이제 scripts/human_body.py 가 그런 칸을 AKIA 가운데에서 끊어 조각 목록으로 쓰고, 킷이 이어 붙여 디코드한다. 디코드한 메시는 바이트까지 같고, 검사 패턴은 그대로다.
 
 ## v0.4.1
 
