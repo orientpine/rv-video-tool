@@ -191,7 +191,7 @@ html,body { margin:0; width:1920px; height:1080px; overflow:hidden; background:v
       outgoingLayer.style.display = "block";
       KIT.fx.emphasis.mode = looks[previous.name] !== "cinema" ? looks[previous.name] : null;
       window.__LOOK_FRAME = Math.round(FPS * end);
-      await draw(previous, end);
+      await draw(previous, end); KIT.info.settle(previous.overlay);
       context.drawImage(renderer.domElement, 0, 0);
       if (cloned) cloned.remove();
       cloned = outgoingLayer.cloneNode(true); blend.appendChild(cloned);
@@ -203,7 +203,7 @@ html,body { margin:0; width:1920px; height:1080px; overflow:hidden; background:v
     } else blend.style.display = "none";
     window.__LOOK_FRAME = Math.round(time * FPS);
     KIT.fx.emphasis.mode = looks[selected.name] && looks[selected.name] !== "cinema" ? looks[selected.name] : null;
-    await draw(selected, time);
+    await draw(selected, time); KIT.info.settle(selected.overlay);   // default number cards beside this frame's subject
 
     let text = "";
     for (const item of timeline.captions || []) if (item.t <= time) text = item.text;

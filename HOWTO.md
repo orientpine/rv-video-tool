@@ -101,7 +101,7 @@ my-project/
 - 한 화면에 읽을 것은 3덩어리 이하. 주제와 상관없는 장비·무늬는 부조·안개·심도로 흐리게.
 
 ### Numbers and sources (sources.json)
-`numbers[]` 마다 `id` · `show` · `src` · `kind` (`fetched` | `design` | `label`) · `quote`. 나레이션에 표에 없는 숫자가 있으면 **빌드가 멈춘다**. 화면 숫자는 `KIT.info.numCard(ov, {id, i, caption, sub})` 로 표에서만 가져온다(출처 꼬리표 자동). 기본 카드는 작고(숫자 64 px, 너비 ≤ 440 px) 오른쪽 위(`right: 64, top: 150`)에 있어 가운데 주인공을 가리지 않는다. `left`·`top` 을 주면 그 자리, `size: "l"` 은 예전 큰 카드(숫자 96 px, 숫자 하나만 보여 주는 장면에서만). 카드들이 화면의 6% 넘게 덮으면 `QUALITY_CARD`. 글자 4단은 `KIT.info.TYPE` (96 · 44 · 34 · 26).
+`numbers[]` 마다 `id` · `show` · `src` · `kind` (`fetched` | `design` | `label`) · `quote`. 나레이션에 표에 없는 숫자가 있으면 **빌드가 멈춘다**. 화면 숫자는 `KIT.info.numCard(ov, {id, i, caption, sub})` 로 표에서만 가져온다(출처 꼬리표 자동). 기본 카드는 멀리서도 읽히는 크기(숫자 80 · 설명 36 · 출처 24 px, 너비 ≤ 520 px, 한 장 ≈ 화면 4.5%)이고, 자리를 안 주면 매 프레임 그 프레임 카메라로 주인공 옆 빈 자리에 놓인다(`KIT.info.settle`, 합성기가 render 뒤에 부름): 주인공 = `o.near` 물체 > `KIT.fx.focus` 한 것 > 보이는 이름표 대상 > 화면 가운데 30%. 주인공 화면 상자 오른쪽·왼쪽(빈 쪽이 넓은 쪽 먼저)·위·아래에 48 px 띄우고, 그림 가장자리에서 가로 96·세로 48 px 안쪽, 다른 글자와 안 겹치게. 화면 구석에 작게 붙지 않는다. `left`·`top`·`right` 를 주면 그 자리 그대로, `size: "l"` 은 큰 카드(숫자 96 px, 숫자 하나만 보여 주는 장면에서만). 카드를 `KIT.shot.free`·`KIT.shot.action` 의 avoid 나 `KIT.info.clear` 에 넘기면 그때 잰 자리에 멈춘다(카메라를 그 자리에 맞춰 짰으므로). 이름표(`KIT.label`)는 기본 40 px. 크기·자리를 따로 줘서 작은 글자가 그림 구석에 붙으면 `QUALITY_TEXT_EDGE`. 카드들이 화면의 6% 넘게 덮으면 `QUALITY_CARD`. 글자 4단은 `KIT.info.TYPE` (96 · 44 · 34 · 26).
 
 ## 4. KIT helpers (kit/scene_kit.js, kit/process.js)
 | 하고 싶은 것 | 부품 |
@@ -128,7 +128,7 @@ my-project/
 | 글자가 떠 있는 동안 빈 자리에서 대상이 움직이게(4-2) | 구도 `KIT.shot.free(NAME, {from, at: 대상, avoid: [카드]})` · 강조 `KIT.fx.pulse(대상, t, {on})` · 작동 `KIT.process.spin(부품, {turns})` · 흐름 `KIT.process.exhaust(부모, {path})` |
 | 움직임으로 보이기 힘든 뜻(4-2) | 풍부한 정지 그림 `KIT.info.picture(ov, {src: "자산 이름", left, top, width, height})` → `show(KIT.win(t, a, b, 0.5))` |
 | 앞을 스치는 기둥(깊이감) | `post = KIT.fx.prop(scene)` |
-| 숫자 카드(값은 출처표에서만) | `KIT.info.numCard(ov, {id: "synthetic-size", i: 1, caption: "…"})` (기본 작게 오른쪽 위) |
+| 숫자 카드(값은 출처표에서만) | `KIT.info.numCard(ov, {id: "synthetic-size", i: 1, caption: "…"})` (기본: 주인공 옆 빈 자리, 숫자 80 px) |
 | 실제 장소(배경·깊이·빛·공기·주변 움직임) | `const P = KIT.place(NAME, scene, {seed, time: "day"\|"golden"\|"dusk"\|"night", stage: [x,0,z], clear: 2.5})` → render 에서 `P.update(t)`. 종류는 `scenes[].place`(없으면 `opts.kind`). `P.stage`·`P.spots`·`P.ground`. 사람 복식 `KIT.place.site(kind)` |
 | 결이 있는 재질(콘크리트·아스팔트·도장 금속·플라스틱·나무·타일·천·유리) | `KIT.place.mat("metal", {color, seed})` — 단색 재질 대신 |
 
@@ -194,7 +194,7 @@ pic.show(KIT.win(t, c, d, 0.5));                               // 정지 그림:
 - `KIT.info.picture(ov, {src, left, top, width, height, fit, caption})` → `{box, img, show(a)}`: 그림은 장면 `deps.json` 의 `"assets": {"이름": "파일.svg|png|jpg"}` 로 넣는다(영상 파일에 묶임). 글자(카드·자막)와 안 겹치는 자리에. rv 는 그림을 만들지 않는다: 장면 작성자가 그 뜻에 맞게 그리거나 출처·저작권이 분명한 그림을 넣는다.
 - 판정(결과 보기 전에 정한 값): 글자 구간 = 한 장면에서 카드·이름표·자막이 떠 있고 카메라가 첫 프레임에서 2 cm 안에 서 있는 동안(장면 전환 구간 빼고, 글자 사이 0.5 s 이하 틈은 잇고, 2 s 이상만). 단계 칩·표지는 가리기만 하고 구간을 만들지 않는다. 구간마다 0.25 s 간격으로 3D 그림만(글자·카드 없이, 카메라 고정) 160×90 으로 찍고 그 구간에 뜬 모든 글자 상자(카드 바탕, 없으면 글자)를 가린다. 가려지지 않은 화소의 0.5% 이상이 마지막으로 움직인 표본보다 12/255 넘게 바뀌면 움직임. 움직임 없는 가장 긴 통이 2 s 이상이면 `TEXT_MOTION … FAIL`. 화면이 80% 넘게 가려지면 `EXEMPT covered`. 선언한 `ui-only` 구간(글자에 일부러 멈춤)과 풍부한 정지 그림이 떠 있는 표본은 멈춤으로 안 센다(구간 전체면 `EXEMPT declared_hold`·`EXEMPT picture`).
 - 정지 그림 판정 `PICTURE`: 다 보이는(불투명도 ≥ .95) 시간 3 s 이상(너무 짧으면 어색함), 화면 8% 이상, 풍부함 = 그림의 30% 이상이 가장 많은 색과 다르고 색 칸(채널당 4 bit) 24개 이상이 각각 0.2% 이상(빈 판·글자만 있는 그림은 한 색이 거의 다고 칸이 적다). 하나라도 어기면 `FAIL short|small|poor`, 그런 그림은 글자 구간에서도 움직임 대신으로 안 센다.
-- **글자와 물체가 같이 있을 때 가려진 느낌 없게**: 카드·패널이 설명 대상이나 움직이는 물체의 보이는 화소 10~90% 를 덮으면(가장자리에서 잘려 보임) `check_layout` 이 `cut` 으로 잡는다(5절). 카드는 `KIT.info.clear(카드, {from: 그 구간 카메라 {p, l, fov}, objects: [물체…]})` 를 init 에서(물체를 그 구간 자세로 놓고) 불러 물체들의 화면 상자(각 변 10% 넓힘)와 안 겹치는 자리(지금 자리 → 안전 영역 네 구석 → 위 가운데)로 옮기거나, 대상을 `KIT.shot.free` 로 카드 밖에 둔다. 돌거나 떠다니는 무리는 모두 objects 에 넣는다. 일부러 카드 뒤에 깔은 배경 장식은 `KIT.fx.decor(물체)` 로 선언하면 빠진다. 정지 그림 위에 카드가 2% 넘게 겹쳐도 `cut`.
+- **글자와 물체가 같이 있을 때 가려진 느낌 없게**: 카드·패널이 설명 대상이나 움직이는 물체의 보이는 화소 10~90% 를 덮으면(가장자리에서 잘려 보임) `check_layout` 이 `cut` 으로 잡는다(5절). 카드는 `KIT.info.clear(카드, {from: 그 구간 카메라 {p, l, fov}, objects: [물체…]})` 를 init 에서(물체를 그 구간 자세로 놓고) 불러 물체들의 화면 상자(각 변 10% 넓힘)와 안 겹치는 자리(지금 자리 → 물체 상자 오른쪽·왼쪽·위·아래 48 px → 안전 영역 네 구석 → 위 가운데)로 옮기거나, 대상을 `KIT.shot.free` 로 카드 밖에 둔다. 돌거나 떠다니는 무리는 모두 objects 에 넣는다. 일부러 카드 뒤에 깔은 배경 장식은 `KIT.fx.decor(물체)` 로 선언하면 빠진다. 정지 그림 위에 카드가 2% 넘게 겹쳐도 `cut`.
 - 보기: `examples/text-motion`(장면 하나. `scenes/device/mode.json` 이 `{"mode": "still"}` 이면 같은 장면을 부품 없이 — FAIL, `"kit"` 이면 위 부품으로 — PASS).
 - 못 잡는 것: 움직임이 뜻과 맞는지(아무거나 돌려도 통과), 그림이 글의 뜻을 그렸는지. 화면 0.5% 넘게 바뀌면 작은 깜빡임도 움직임으로 센다 — 뜻은 사람이 본다.
 
@@ -219,6 +219,7 @@ pic.show(KIT.win(t, c, d, 0.5));                               // 정지 그림:
   - `QUALITY_SPARSE` 화면 0.1% 이상인 따로인 물체(장면 자식, 장소·큰 세트는 그 자식)가 중앙값 10 미만.
   - `QUALITY_NO_PEOPLE` 영상 전체에 `KIT.fx.human` 0, 또는 사람이 나오는 영상에서 problem·after 장면에 사람 없음.
   - `QUALITY_CARD` 카드(불투명 글자 판, rv 자막·단계 칩·배지·`KIT.info.picture` 는 빼고)가 화면 6% 초과. → 기본 numCard, 카드 수 줄이기.
+  - `QUALITY_TEXT_EDGE` 글자 판(카드·꼬리표·이름표)이 그림 구석(옆 10%·위아래 15% 안)에 작게(읽는 글자 32 px 미만: 72 px 이상 큰 숫자가 있으면 그 숫자, 아니면 두 번째로 큰 글자) 붙음. → `left`·`top`·크기를 빼고 `KIT.info.numCard`·`KIT.label` 기본값으로.
   - `QUALITY_TEXT_HIDDEN` 3D 글자 판(캔버스 글자를 붙인 납작한 메시)에 카메라에서 7x3 광선을 쏴 15% 넘게 다른 실물이 먼저 맞으면(깊이 기준). 같은 KIT.process 계기 부품(바늘)은 빼고, `KIT.sign`·`KIT.label` 은 늘 위라 안 셈. → `KIT.sign` 이나 `KIT.label`, 아니면 가리는 물체·카메라를 옮김.
   - `QUALITY_FAKE_FX` 연기·증기·불꽃·단면 이름의 납작한 판, 또는 화면 2% 넘는 납작한 반투명 판(장소·사람·KIT.fx 것 제외). → `KIT.fx.smoke`·`steam`·`flame`·`section`.
   - `QUALITY_STORY`·`QUALITY_PLACE` → 3절 Story and place.

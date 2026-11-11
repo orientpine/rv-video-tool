@@ -9,6 +9,8 @@ seconds inside each scene (away from transitions) and reports per scene:
   QUALITY_SPARSE     fewer than --objects distinct things on screen (a set is many objects at several depths)
   QUALITY_NO_PEOPLE  no KIT.fx.human in the whole video, or none in a scene whose beat is "problem" or "after"
   QUALITY_CARD       cards (opaque text panels, not captions or pictures) cover more than --card of the frame
+  QUALITY_TEXT_EDGE  a text panel (card, tag) sits small in a corner of the picture: within 10% of a side and 15% of the top
+                     or bottom, reading size under 32 px (the kit defaults put cards beside the subject at 80/36/24 px)
   QUALITY_STORY      script.json scenes[].beat missing, or the beats lack problem / inside / result / after, or "problem" not first
   QUALITY_FAKE_FX    a flat plate named smoke/steam/flame/section, or a large flat translucent panel, instead of KIT.fx.smoke/
                      steam/flame/section (a smoke plate, a glass box standing in for a cut)
@@ -184,6 +186,19 @@ FRAME = r"""mutate => {
   if(a>big.area) big={name:(e.textContent.trim().replace(/\s+/g,' ').slice(0,40)),area:a};
   for(let y=Math.max(0,Math.floor(r.top/8));y<Math.min(H,Math.ceil(r.bottom/8));y++)
    for(let x=Math.max(0,Math.floor(r.left/8));x<Math.min(W,Math.ceil(r.right/8));x++) grid[y*W+x]=1;}
+ // Small text pushed into a picture corner (owner: text at the screen edge, small, does not belong to the scene): an outermost
+ // text panel within 10% of a side and 15% of the top or bottom of the picture whose reading size is under 32 px. Reading size =
+ // its largest text when that is a 72 px+ headline or the panel has one size, else its second largest (a card's caption).
+ const P0=window.PICTURE||{x:0,y:0,w:1920,h:1080}; out.edge=[];
+ for(const e of cards.filter(e=>!cards.some(o=>o!==e&&o.contains(e)))){
+  const r=e.getBoundingClientRect();
+  const sizes=[e,...e.querySelectorAll('*')].filter(x=>visible(x)&&[...x.childNodes].some(n=>n.nodeType===3&&n.textContent.trim()))
+   .map(x=>parseFloat(getComputedStyle(x).fontSize)).sort((a,b)=>b-a);
+  if(!sizes.length) continue;
+  const read=sizes[0]>=72||sizes.length<2?sizes[0]:sizes[1];
+  const side=Math.min(r.left-P0.x,P0.x+P0.w-r.right)<.1*P0.w, end=Math.min(r.top-P0.y,P0.y+P0.h-r.bottom)<.15*P0.h;
+  if(read<32&&side&&end) out.edge.push(`${JSON.stringify(e.textContent.trim().replace(/\s+/g,' ').slice(0,24))} ${Math.round(read)}px at [${[r.left,r.top,r.right,r.bottom].map(Math.round)}]`);
+ }
  const PIC=window.PICTURE||{w:1920,h:1080}; out.card=grid.reduce((s,x)=>s+x,0)/(W*H)*(1920*1080)/(PIC.w*PIC.h); out.cardName=big.name;
  return out;
 }"""
@@ -336,7 +351,11 @@ def main(a):
             warn("NO_PEOPLE", name, f"{span} beat={beat} people_max=0 -> 누가 곤란한지/누가 좋아졌는지 보이게 KIT.fx.human")
         if worst["card"] > a.card:
             warn("CARD", name, f"t={worst['t']:.2f} card_cover={worst['card']:.3f} limit={a.card} card={worst['cardName']!r} "
-                 "-> 카드 기본값(KIT.info.numCard 작게·한쪽)으로, 숫자 하나에 카드 하나")
+                 "-> 카드 기본값(KIT.info.numCard)으로, 숫자 하나에 카드 하나, 한 번에 한두 장")
+        edge = [(r["t"], f) for r in mine for f in r.get("edge", [])]
+        if edge:
+            warn("TEXT_EDGE", name, f"t={edge[0][0]:.2f} {edge[0][1]} (작은 글자가 화면 구석에, {len(edge)} samples) "
+                 "-> left/top/size 를 빼고 KIT.info.numCard·KIT.label 기본값으로(주인공 옆 빈 자리, 읽히는 크기)")
         hidden = [(r["t"], f) for r in mine for f in r.get("hidden", [])]
         if hidden:
             first = {}

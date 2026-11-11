@@ -40,7 +40,9 @@ THIN_SCENE='SCENES.NAME = (() => { let R, s, cam; return {duration: 4,
     box.position.y = .5; s.add(box);
     const card = document.createElement("div"); card.textContent = "18cm wheel step";
     card.style.cssText = "position:absolute;left:1100px;top:150px;width:600px;height:330px;background:#0a161e;color:#fff;font:700 96px sans-serif";
-    ov.append(card);
+    const tag = document.createElement("div"); tag.textContent = "design target";   // small text in the top left corner: TEXT_EDGE
+    tag.style.cssText = "position:absolute;left:60px;top:150px;padding:10px 18px;background:#0a161e;color:#fff;font:600 24px sans-serif";
+    ov.append(card, tag);
     cam = new THREE.PerspectiveCamera(45, 16 / 9, .1, 100); cam.position.set(0, 2, 6); cam.lookAt(0, .5, 0); },
   render(t) { R.render(s, cam); }}; })();'
 
@@ -52,8 +54,8 @@ FULL_SCENE='SCENES.NAME = (() => { let R, s, cam, P, man; return {duration: 4,
     floor.rotation.x = -Math.PI / 2; floor.position.set(P.stage[0], 0.002, P.stage[2]); s.add(floor);   // textured floor: not a name board
     const blob = new THREE.Mesh(new THREE.CircleGeometry(0.8, 24), new THREE.MeshBasicMaterial({color: 0, transparent: true, opacity: .28}));
     blob.rotation.x = -Math.PI / 2; blob.position.set(P.stage[0], 0.004, P.stage[2] + 1); s.add(blob);   // shadow disc: not a fake panel
-    const card = document.createElement("div"); card.textContent = "design target";
-    card.style.cssText = "position:absolute;right:64px;top:150px;padding:14px 22px;background:#0a161e;color:#fff;font:700 28px sans-serif";
+    const card = document.createElement("div"); card.textContent = "design target";   // readable, beside the middle (not small in a corner)
+    card.style.cssText = "position:absolute;left:1300px;top:420px;padding:14px 22px;background:#0a161e;color:#fff;font:700 36px sans-serif";
     ov.append(card);
     cam = new THREE.PerspectiveCamera(45, 16 / 9, .1, 200);
     cam.position.set(P.stage[0] + 1.5, 1.7, P.stage[2] + 6); cam.lookAt(P.stage[0], 1, P.stage[2]); },
@@ -117,12 +119,14 @@ check() {   # name, expected exit, extra args
 }
 
 check thin 1
-for rule in EMPTY SPARSE CARD PLACE; do
+for rule in EMPTY SPARSE CARD PLACE TEXT_EDGE; do
   grep -q "^QUALITY_$rule scene=a " "$W/thin.log"; grep -q "^QUALITY_$rule scene=b " "$W/thin.log"
 done
 grep -q '^QUALITY_NO_PEOPLE scene=(video)' "$W/thin.log"
 grep -q '^QUALITY_STORY scene=(video) scenes\[\].beat' "$W/thin.log"
 grep -q "^QUALITY_CARD scene=a t=.* card='18cm wheel step'" "$W/thin.log"
+grep -q '^QUALITY_TEXT_EDGE scene=a t=.* "design target" 24px at \[60,150,' "$W/thin.log"
+! grep -q '^QUALITY_TEXT_EDGE .*18cm wheel step' "$W/thin.log"   # big (96 px) text is not small, wherever it sits
 
 check full 0
 grep -q '^QUALITY_CHECK PASS warnings=0' "$W/full.log"
