@@ -170,7 +170,7 @@ SCENES.probe = (() => {
 - `KIT.camSet(cam, {p, l, fov})` 는 카메라를 놓는다. `bench` 와 `slide` 장면은 고정 값으로 부른다. 가장 자주 쓸 또 하나의 샷, 글자가 바뀌는 동안 세워 둔 카메라다.
 - `KIT.label(overlay, text, {target})` 는 이름표를 달고, `place(cam, point, dx, dy, alpha)` 로 프레임마다 자리를 잡는다. 예시는 이름표를 서서히 나타내지 않고 켜고 끈다. 그래야 대비 검사가 반쯤 투명한 이름표를 재지 않는다.
 - 그 밖에: `KIT.shot.track(NAME, {t, dur, subject})` 는 이름 있는 움직이는 물체를 따라가고, `KIT.shot.declare(NAME, [{t, end, kind, subject}])` 는 샷을 손으로 선언하고(`"action"`, `"ui-only"`), `KIT.shot.establish / pushIn / orbit` 은 `KIT.camAt` 에 줄 열쇠를 만든다. 투시, 분해, 사람, 공정 단계, 숫자 카드는 [HOWTO.md](HOWTO.md) 4절.
-- 실제 영상은 `examples/story` 에서 시작한다: 네 박자(`scenes[].beat`: problem 문제 장면, inside 기술 속, result 결과 순간, after 바뀐 모습), 장면마다 장소(`scenes[].place` + `KIT.place(NAME, scene)`: 보도·공장·재활용장·진료실·부엌·연구실, 깊이·빛·공기·배경 움직임까지 모두 절차 생성), `KIT.fx.human` 사람, 작은 숫자 카드(`KIT.info.numCard`, 기본 오른쪽 위).
+- 실제 영상은 `examples/story` 에서 시작한다: 네 박자(`scenes[].beat`: problem 문제 장면, inside 기술 속, result 결과 순간, after 바뀐 모습), 장면마다 장소(`scenes[].place` + `KIT.place(NAME, scene)`: 보도·공장·재활용장·진료실·부엌·연구실, 깊이·빛·공기·배경 움직임까지 모두 절차 생성), `KIT.fx.human` 사람, 숫자 카드(`KIT.info.numCard`: 기본은 주인공 옆 빈 자리, 읽히는 크기 80·36·24 px).
 
 ## `rv check` 가 잡는 것
 

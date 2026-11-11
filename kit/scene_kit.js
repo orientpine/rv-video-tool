@@ -31,7 +31,7 @@
     anchorDot.setAttribute("r", "7"); anchorDot.setAttribute("fill", leaderColor);
     leaderSvg.append(leaderLine, anchorDot);
     const textNode = document.createElement("div");
-    textNode.style.cssText = `position:absolute;white-space:nowrap;font:700 ${options.size || 36}px/1.2 var(--ui);color:${options.ink || "#F7F9F9"};background:${leaderColor};padding:8px 16px;transform:translate(-50%,-100%)`;
+    textNode.style.cssText = `position:absolute;white-space:nowrap;font:700 ${options.size || 40}px/1.2 var(--ui);color:${options.ink || "#F7F9F9"};background:${leaderColor};padding:8px 16px;transform:translate(-50%,-100%)`;
     textNode.textContent = content;
     layer.append(leaderSvg, textNode);
     const record = {box: textNode, target: options.target || null, world: new THREE.Vector3(), camera: null};
@@ -46,7 +46,7 @@
           textNode.style.background = nextColor;
         }
       },
-      place(view, point, offsetX, offsetY, alpha) {
+      place(view, point, offsetX = 0, offsetY = -70, alpha = 1) {   // offsets omitted: the tag sits just above its point
         record.world.copy(point); record.camera = view;
         projected.copy(point).project(view);
         const anchorX = (projected.x + 1) * 960, anchorY = (1 - projected.y) * 540;
@@ -127,12 +127,13 @@
   // 손 흔들림: 서로 나누어지지 않는 주파수 사인 합(결정론, 저주파 0.2~0.9 Hz)
   const wob = (t, s) => Math.sin(t * 1.31 + s) * 0.5 + Math.sin(t * 2.97 + s * 1.7) * 0.3 + Math.sin(t * 5.23 + s * 2.3) * 0.2;
   const _prev = {};
+  let lastCam = null;   // the camera of the frame being drawn (KIT.info.settle places default number cards beside its subject)
   function camSet(cam, s, o = {}) {
     const sh = o.shake ?? 0, t = o.t ?? 0;
     cam.position.set(s.p[0] + sh * wob(t, 1), s.p[1] + sh * wob(t, 2) * 0.6, s.p[2] + sh * wob(t, 3));
     cam.fov = s.fov; cam.aspect = 1920 / 1080; cam.updateProjectionMatrix();
     const lx = s.l[0] + sh * 0.6 * wob(t, 4), ly = s.l[1] + sh * 0.6 * wob(t, 5), lz = s.l[2] + sh * 0.6 * wob(t, 6);
-    cam.lookAt(lx, ly, lz); cam.updateMatrixWorld(true);
+    cam.lookAt(lx, ly, lz); cam.updateMatrixWorld(true); lastCam = cam;
     cam.userData.focus = o.focus ?? Math.hypot(cam.position.x - s.l[0], cam.position.y - s.l[1], cam.position.z - s.l[2]);
     cam.userData.focusFrom = o.focus != null ? "scene" : "look";   // "look" = 바라보는 점까지 거리(기본값) → look.js 가 주인공(KIT.fx.focus·자동)을 먼저 따름. o.focus 를 준 장면은 그 값 그대로
     window.CAMSTATE = {p: [cam.position.x, cam.position.y, cam.position.z].map(x => +x.toFixed(4)), l: s.l.map(x => +x.toFixed(4)), fov: +s.fov.toFixed(3), focus: +cam.userData.focus.toFixed(3)};
@@ -216,6 +217,7 @@
     for (const a of [].concat(avoid || [])) {
       const el = a && a.nodeType === 1 ? a : a && a.box && a.box.nodeType === 1 ? a.box : null;
       if (!el) { if (Array.isArray(a) && a.length === 4) out.push(a); continue; }
+      delete el.dataset.rvAuto;   // a scene that frames its camera round a default card keeps that card where it was measured
       const r = measure(el);
       if (!(r.width > 0 && r.height > 0)) { if (strict) return null; console.warn("KIT: avoid 요소 크기 0 — 빼고 잼"); continue; }
       out.push([r.left, r.top, r.right, r.bottom]);
@@ -354,21 +356,31 @@
     return n;
   }
   // 숫자 카드: 값은 출처표에서만(id + show 순번). 출처 꾸리표는 자동(fetched = "출처: …", design = "설계 목표")
-  // 기본은 작게(숫자 64 px, 너비 ≤ 440 px ≈ 화면 4%) 오른쪽 위: 가운데 주인공을 안 가림(check_quality QUALITY_CARD 6%).
-  // left/top 을 주면 그 자리, right 를 주면 오른쪽에서. size: "l" 은 예전 큰 카드(숫자 96 px, 한 장면에 숫자 하나뿐일 때만)
+  // 기본 크기는 1080p 에서 멀리서도 읽히게(숫자 80 · 설명 36 · 출처 24 px, 너비 ≤ 520 px, 한 장 ≈ 화면 4.5%: check_quality QUALITY_CARD 6% 안).
+  // 기본 자리: 매 프레임 그 프레임 카메라로 주인공 옆 빈 자리(KIT.info.settle: o.near > KIT.fx.focus > 보이는 이름표 대상 > 화면 가운데) —
+  //   주인공을 안 가리고, 화면 가장자리에서 96 px 넘게 떨어지고, 다른 글자와 안 겹침. 화면 구석에 작게 붙지 않는다.
+  // left/top/right 를 주면 그 자리 그대로. size: "l" 은 큰 카드(숫자 96 px, 한 장면에 숫자 하나뿐일 때만)
+  // a web address as a source shows its site only (kimm.re.kr): a full URL wraps to three lines under a readable caption
+  const CARD_BG = "rgba(10,22,30,.94)";   // near opaque: a pillar edge or passing light motes behind the card do not show through the text
+  const srcText = s => { try { return /^https?:\/\//.test(s) ? new URL(s).hostname.replace(/^www\./, "") : s; } catch (e) { return s; } };
   function numCard(ov, o) {
     const n = source(o.id), val = n ? n.show[o.i || 0] : "?", big = o.size === "l";
-    const T = big ? TYPE : {num: 64, body: 28, tag: 20};
+    const T = big ? TYPE : {num: 80, body: 36, tag: 24};
     const cardBox = document.createElement("div");
     cardBox.dataset.rvCue = "tone";   // lib/cues.py: 카드가 나타나는 순간 짧은 톤
-    const x = o.left != null ? `left:${o.left}px` : `right:${o.right ?? 64}px`;
-    cardBox.style.cssText = `position:absolute;${x};top:${o.top ?? 150}px;background:${PANEL};border-left:${big ? 8 : 6}px solid ${ACC};` +
-      `padding:${big ? "22px 34px 20px" : "14px 22px 12px"};max-width:${big ? 760 : 440}px;opacity:0;font-family:var(--ui)`;
+    const auto = o.left == null && o.right == null && o.top == null;
+    const x = o.left != null ? `left:${o.left}px` : o.right != null ? `right:${o.right}px` : `left:${AUTO_LEFT}px`;
+    cardBox.style.cssText = `position:absolute;${x};top:${o.top ?? 150}px;background:${CARD_BG};border-left:${big ? 8 : 6}px solid ${ACC};` +
+      `padding:${big ? "22px 34px 20px" : "14px 22px 12px"};max-width:${big ? 760 : 520}px;opacity:0;font-family:var(--ui)`;
     cardBox.innerHTML = `<div style="font:700 ${T.num}px/1 var(--ui);color:${ACC};letter-spacing:-2px">${val}</div>` +
       (o.caption ? `<div style="font:700 ${T.body}px/1.3 var(--ui);color:${INK};margin-top:${big ? 12 : 8}px">${o.caption}</div>` : "") +
       (o.sub ? `<div style="font:600 ${T.tag + 4}px/1.3 var(--ui);color:${INK};margin-top:6px">${o.sub}</div>` : "") +
-      `<div style="font:500 ${T.tag}px/1.3 var(--ui);color:${MUTE};margin-top:${big ? 12 : 8}px;overflow-wrap:anywhere">${n && n.kind === "fetched" ? "출처: " + n.src : "설계 목표"}</div>`;
+      `<div style="font:500 ${T.tag}px/1.3 var(--ui);color:${MUTE};margin-top:${big ? 12 : 8}px;overflow-wrap:anywhere">${n && n.kind === "fetched" ? "출처: " + srcText(n.src) : "설계 목표"}</div>`;
     ov.append(cardBox);
+    if (auto) {   // before the first settle (or when a scene frames its camera round it): right of the centre box, half way down
+      cardBox.dataset.rvAuto = "1"; autoCards.push({box: cardBox, ov, near: o.near});
+      cardBox.style.top = `${Math.round(540 - measure(cardBox).height / 2)}px`;
+    }
     return {box: cardBox, show(a, rise = 24) { cardBox.style.opacity = a.toFixed(3); cardBox.style.transform = `translateY(${((1 - a) * rise).toFixed(1)}px)`; }};
   }
   // 정지 그림(HOWTO 4-2): 움직임으로 보여 주기 힘든 뜻은 그 뜻을 풍부하게 그린 그림으로. src = deps.json assets 의 이름(ASSETS) 또는 data:/url.
@@ -406,20 +418,76 @@
     }
     const pad = o.pad ?? .1, px = (x1 - x0) * pad, py = (y1 - y0) * pad; x0 -= px; x1 += px; y0 -= py; y1 += py;
     const r = measure(el), w = r.width, h = r.height, ov = measure(el.offsetParent || el.parentElement);
-    const spots = [[r.left - ov.left, r.top - ov.top], ...(o.spots || [[SAFE.x0 + 40, SAFE.y0 + 40], [SAFE.x1 - 40 - w, SAFE.y0 + 40],
+    // default spots: beside the objects first (right, left, above, below, gap 48 px, inside the safe area), the corners only last
+    const cy = (y0 + y1) / 2 - h / 2, cx = (x0 + x1) / 2 - w / 2, fy = v => clamp(v, SAFE.y0 + 40, SAFE.y1 - 24 - h), fx = v => clamp(v, SAFE.x0 + 56, SAFE.x1 - 56 - w);
+    const beside = [[x1 + 48, fy(cy)], [x0 - 48 - w, fy(cy)], [fx(cx), y0 - 48 - h], [fx(cx), y1 + 48]]
+      .filter(([l, t]) => l >= SAFE.x0 + 56 && l + w <= SAFE.x1 - 56 && t >= SAFE.y0 && t + h <= SAFE.y1);
+    const spots = [[r.left - ov.left, r.top - ov.top], ...(o.spots || [...beside, [SAFE.x0 + 40, SAFE.y0 + 40], [SAFE.x1 - 40 - w, SAFE.y0 + 40],
       [SAFE.x0 + 40, SAFE.y1 - 24 - h], [SAFE.x1 - 40 - w, SAFE.y1 - 24 - h], [960 - w / 2, SAFE.y0 + 40]])];
     const hit = ([l, t]) => Math.max(0, Math.min(l + w, x1) - Math.max(l, x0)) * Math.max(0, Math.min(t + h, y1) - Math.max(t, y0));
     const best = spots.reduce((a, b) => hit(b) < hit(a) ? b : a);
     const pick = spots.find(q => hit(q) === 0) || best;
-    el.style.left = `${Math.round(pick[0])}px`; el.style.top = `${Math.round(pick[1])}px`; el.style.right = "auto";
+    el.style.left = `${Math.round(pick[0])}px`; el.style.top = `${Math.round(pick[1])}px`; el.style.right = "auto"; delete el.dataset.rvAuto;
     if (hit(pick) > 0) console.warn("KIT.info.clear: 카드를 물체와 안 겹치게 둘 자리가 없음 — 가장 덜 겹치는 자리");
     return {left: pick[0], top: pick[1], fits: hit(pick) === 0};
   }
-  const info = {TYPE, ACC, PANEL, INK, MUTE, source, numCard, picture, clear};
+  // Default number cards (no left/top/right) are placed after the scene drew its frame: kit/shell.html calls KIT.info.settle(overlay)
+  // after every render, so the card uses that frame's final camera (a pure function of t, like every pose).
+  const AUTO_LEFT = 960 + 0.15 * 1920 + 48, autoCards = [], MARGIN = {x: 96, y: 48}, GAP = 48;
+  function screenBox(objs, cam) {   // union of the objects' world boxes on screen, clipped to the frame; null when none is in front
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    const b = new THREE.Box3(), v = new THREE.Vector3();
+    for (const obj of objs) {
+      if (!obj || !obj.isObject3D) continue;
+      obj.updateMatrixWorld(true); b.setFromObject(obj); if (b.isEmpty()) continue;
+      for (let j = 0; j < 8; j++) {
+        v.set(j & 1 ? b.max.x : b.min.x, j & 2 ? b.max.y : b.min.y, j & 4 ? b.max.z : b.min.z).applyMatrix4(cam.matrixWorldInverse);
+        if (-v.z <= cam.near) continue; v.applyMatrix4(cam.projectionMatrix);
+        const x = (v.x + 1) / 2 * 1920, y = (1 - v.y) / 2 * 1080;
+        x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+      }
+    }
+    if (!(x1 > x0 && y1 > y0)) return null;
+    const c = [clamp(x0, 0, 1920), clamp(y0, 0, 1080), clamp(x1, 0, 1920), clamp(y1, 0, 1080)];
+    return c[2] > c[0] && c[3] > c[1] ? c : null;
+  }
+  const shownIn = el => el.style.display !== "none" && +(el.style.opacity || 1) > 0.001;
+  function settle(ov) {
+    const mine = autoCards.filter(c => c.ov === ov && c.box.dataset.rvAuto && shownIn(c.box));
+    if (!mine.length) return;
+    const labels = (window.__KIT_LABELS || []).filter(l => ov.contains(l.box) && shownIn(l.box));
+    const cam = lastCam || (labels.find(l => l.camera) || {}).camera || null;
+    const P = window.PICTURE || {x: 0, y: 0, w: 1920, h: 1080};
+    const F = [Math.max(P.x + MARGIN.x, SAFE.x0), Math.max(P.y + MARGIN.y, SAFE.y0), Math.min(P.x + P.w - MARGIN.x, SAFE.x1), Math.min(P.y + P.h - MARGIN.y, SAFE.y1)];
+    const taken = [];   // text already on screen in this overlay: tags and cards placed by the scene or earlier in this pass
+    for (const l of labels) { const r = l.box.getBoundingClientRect(); if (r.width > 0) taken.push([r.left, r.top, r.right, r.bottom]); }
+    for (const el of ov.querySelectorAll("[data-rv-cue]")) if (!el.dataset.rvAuto && shownIn(el)) { const r = measure(el); taken.push([r.left, r.top, r.right, r.bottom]); }
+    const over = (a, b) => Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0])) * Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]));
+    for (const c of mine) {
+      const near = [].concat(c.near || []).filter(Boolean);
+      const subj = near.length ? near : emphasis.extra.size ? [...emphasis.extra] : labels.map(l => l.target).filter(Boolean);
+      const S = (cam && subj.length && screenBox(subj, cam)) || [960 - 0.15 * 1920, 540 - 0.15 * 1080, 960 + 0.15 * 1920, 540 + 0.15 * 1080];
+      const r = measure(c.box), w = r.width, h = r.height, ox = r.left - parseFloat(c.box.style.left), oy = r.top - parseFloat(c.box.style.top);   // overlay origin on screen
+      const fy = v => clamp(v, F[1], F[3] - h), fx = v => clamp(v, F[0], F[2] - w), cy = (S[1] + S[3]) / 2 - h / 2, cx = (S[0] + S[2]) / 2 - w / 2;
+      const sides = [[S[2] + GAP, fy(cy), F[2] - S[2]], [S[0] - GAP - w, fy(cy), S[0] - F[0]]].sort((p, q) => q[2] - p[2]);
+      const spots = [...sides, [fx(cx), S[1] - GAP - h], [fx(cx), S[3] + GAP]].map(([x, y]) => [x, y, [x, y, x + w, y + h]]);
+      const inside = q => q[0] >= F[0] - 0.5 && q[2] <= F[2] + 0.5 && q[1] >= F[1] - 0.5 && q[3] <= F[3] + 0.5;
+      const cost = q => over(q, S) + taken.reduce((s, t) => s + over(q, [t[0] - 16, t[1] - 16, t[2] + 16, t[3] + 16]), 0);
+      let pick = spots.find(([, , q]) => inside(q) && cost(q) === 0);
+      if (!pick) {   // no free spot beside the subject (it fills the frame): the least covering spot pulled inside the frame
+        const pulled = spots.map(([x, y]) => { const a = fx(x), b = fy(y); return [a, b, [a, b, a + w, b + h]]; });
+        pick = pulled.reduce((a, b) => cost(b[2]) < cost(a[2]) ? b : a);
+      }
+      c.box.style.left = `${Math.round(pick[0] - ox)}px`; c.box.style.top = `${Math.round(pick[1] - oy)}px`;
+      c.box.style.right = "auto";
+      taken.push(pick[2]);
+    }
+  }
+  const info = {TYPE, ACC, PANEL, INK, MUTE, source, numCard, picture, clear, settle};
 
   // ── 보여 주는 방식(3단계 보강): 기준 A·B 가 쓰는 투시·분해·크기 대비·앞 물체 깊이·박자 컷. 모두 t 의 순수 함수로 쓰고 render 마다 다시 정한다
   // 투시·단면: root 아래 메시 재질에 자르는 면을 달아 카메라 쪽 벽을 걷어 냄. cut.set(amount, normal, offset) — amount 0 이면 안 자름
-  const live = [];   // 공용 세계에 남는 효과들: 합성기가 장면 render 전마다 reset() 으로 끔(앞 장면 상태에 안 기대게)
+  const live = [{reset() { lastCam = null; }}];   // 공용 세계에 남는 효과들: 합성기가 장면 render 전마다 reset() 으로 끔(앞 장면 상태에 안 기대게)
   function cutaway(R, root) {
     R.localClippingEnabled = true;
     const plane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 1e6), mats = new Set();
