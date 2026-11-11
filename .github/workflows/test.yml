@@ -40,7 +40,7 @@ jobs:
           - group: motion
             tests: action_motion sharp layout_fixes check_error timeline_steps camera_action
           - group: checks
-            tests: clearance_ext detach sfx_cue_skip rv_live_edit shot_parts camera_scene_cut pre_push gh_safe aspect quality text_layout
+            tests: clearance_ext detach sfx_cue_skip rv_live_edit shot_parts camera_scene_cut pre_push gh_safe aspect quality text_layout caption_box
           - group: new_checks
             tests: new_checks
           - group: match

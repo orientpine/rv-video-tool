@@ -154,6 +154,13 @@ def main():
         portions.append("window.ASPECT=" + js_json(f"{aw:g}:{ah:g}") + ";")
     if isinstance(script.get("badge"), dict):   # one label that stays on screen across the listed scenes (kit/shell.html #badge)
         portions.append("window.BADGE=" + js_json(script["badge"]) + ";")
+    if "caption" in script:   # caption box (kit/shell.html #cap): text size, distance from the bottom edge, widest box, px at 1080p
+        cap, limits = script["caption"], {"size": (32, 72), "bottom": (24, 400), "width": (600, 1800)}
+        if not (isinstance(cap, dict) and set(cap) <= set(limits) and all(
+                isinstance(v, (int, float)) and not isinstance(v, bool) and limits[k][0] <= v <= limits[k][1] for k, v in cap.items())):
+            raise SystemExit('script.json "caption" takes {"size": 32..72, "bottom": 24..400, "width": 600..1800} '
+                             f'(px at 1080p, each optional; default 44, 56, 1560); got {cap!r}')
+        portions.append("window.CAPTION=" + js_json(cap) + ";")
     portions.extend([
         "window.SCENE_LOOK=" + js_json(plan["used"]) + ";",
         "window.THEME_PLAN=" + js_json(plan) + ";",

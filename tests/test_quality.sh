@@ -128,6 +128,15 @@ grep -q "^QUALITY_CARD scene=a t=.* card='18cm wheel step'" "$W/thin.log"
 grep -q '^QUALITY_TEXT_EDGE scene=a t=.* "design target" 24px at \[60,150,' "$W/thin.log"
 ! grep -q '^QUALITY_TEXT_EDGE .*18cm wheel step' "$W/thin.log"   # big (96 px) text is not small, wherever it sits
 
+# card cover is the pixel union: a 956x104 card at (3, 5) covers 99424 px = 0.048 of the frame, under a 0.05 limit
+# (an 8 px grid rounded outwards read it as 960x112 = 0.052 and gave QUALITY_CARD)
+EXACT_SCENE="${THIN_SCENE/left:1100px;top:150px;width:600px;height:330px/left:3px;top:5px;width:956px;height:104px}"
+EXACT_SCENE="${EXACT_SCENE/ov.append(card, tag)/ov.append(card)}"
+make_project exact '{"name":"exact","checks":"strict","site":"lab","scenes":[{"name":"a"}],"lines":[]}' "a=$(scene a "$EXACT_SCENE")"
+check exact 1 --card 0.05
+grep -q '^QUALITY_SCENE scene=a .*card_max=0.048 ' "$W/exact.log"
+! grep -q '^QUALITY_CARD ' "$W/exact.log"
+
 check full 0
 grep -q '^QUALITY_CHECK PASS warnings=0' "$W/full.log"
 for s in street inside yard home; do grep -q "^QUALITY_SCENE scene=$s .*people_max=[1-9]" "$W/full.log"; done
