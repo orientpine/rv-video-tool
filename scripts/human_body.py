@@ -16,6 +16,7 @@ Markers ftip_<finger>_<side> are the fingertips (the distal segment's farthest v
 """
 import base64
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -86,7 +87,12 @@ def pivot_of(bone, x):
 
 
 def b64(array):
-    return base64.b64encode(np.ascontiguousarray(array).tobytes()).decode("ascii")
+    """Base64 of the array's bytes. Base64 can spell an AWS access key id by chance (AKIA and 16 capitals), which
+    the public leak scan refuses; such a string is written as a list of pieces cut inside every AKIA (between AK
+    and IA), and the kit joins the pieces before decoding, so the bytes stay the same."""
+    text = base64.b64encode(np.ascontiguousarray(array).tobytes()).decode("ascii")
+    pieces = re.split(r"(?<=AK)(?=IA)", text)
+    return text if len(pieces) == 1 else pieces
 
 
 def main(source, out):

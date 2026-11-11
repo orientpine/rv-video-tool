@@ -1041,7 +1041,9 @@
       pivot(kn, "ankle_" + s, V("ankle_" + s, "knee_" + s));
     }
     // Skin: one ordinary Mesh per body part and surface (main / joint seams), deformed from the pivots.
-    const bytes = s => Uint8Array.from(atob(s), c => c.charCodeAt(0)).buffer;
+    // A base64 field is one string, or a list of pieces where the generator cut a chance AKIA (the leak scan
+    // reads it as an AWS key id); joined they are the same base64.
+    const bytes = s => Uint8Array.from(atob([].concat(s).join("")), c => c.charCodeAt(0)).buffer;
     const pivots = BODY.pivots.map(n => joints[n]);
     const restInv = BODY.pivots.map(n => new THREE.Matrix4().makeTranslation(-R[n][0], -R[n][1], -R[n][2]));
     const surfaceOf = p => /^hand/.test(p.part) ? glove : /^foot/.test(p.part) ? boot : p.pivot === "head" ? skin : cloth;
