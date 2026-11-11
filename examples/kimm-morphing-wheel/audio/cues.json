@@ -1,0 +1,66 @@
+{
+ "events": {
+  "hit": 9.83,
+  "drop": 13.7333,
+  "impact": 15.2833,
+  "loose_drop": 21.15,
+  "core": 24.8667,
+  "pull": 28.63,
+  "release": 32.66,
+  "rise": 37.0333,
+  "contact": 40.29,
+  "top": 42.96,
+  "horizon": 50.1333,
+  "title": 62.983
+ },
+ "cues": [
+  {
+   "t": 0.2,
+   "sfx": "audio/sfx_roll.wav",
+   "gain_lu": -21,
+   "why": "roll"
+  },
+  {
+   "t": 9.83,
+   "sfx": "audio/sfx_bump.wav",
+   "gain_lu": -9,
+   "why": "bump"
+  },
+  {
+   "t": 15.273,
+   "sfx": "audio/sfx_drip.wav",
+   "gain_lu": -12,
+   "why": "drip"
+  },
+  {
+   "t": 28.63,
+   "sfx": "audio/sfx_tighten.wav",
+   "gain_lu": -12,
+   "why": "tighten"
+  },
+  {
+   "t": 32.66,
+   "sfx": "audio/sfx_loosen.wav",
+   "gain_lu": -13,
+   "why": "loosen"
+  },
+  {
+   "t": 40.29,
+   "sfx": "audio/sfx_wrap.wav",
+   "gain_lu": -11,
+   "why": "wrap"
+  },
+  {
+   "t": 42.96,
+   "sfx": "audio/sfx_land.wav",
+   "gain_lu": -10,
+   "why": "land"
+  },
+  {
+   "t": 51.333,
+   "sfx": "audio/sfx_door.wav",
+   "gain_lu": -18,
+   "why": "door"
+  }
+ ]
+}

@@ -1,0 +1,72 @@
+{
+ "events": {
+  "grab_drop": 8.91,
+  "stuck": 8.964,
+  "low_hit": 15.93,
+  "furnace": 19.42,
+  "few_molecules": 23.38,
+  "sweep": 27.8667,
+  "ignite": 31.62,
+  "fall": 35.6,
+  "burst": 36.4,
+  "molecules": 37.55,
+  "yield": 42.49,
+  "ethylene": 44.41,
+  "benzene": 45.06,
+  "purity": 47.63,
+  "pellets": 50.26,
+  "truck": 54.1,
+  "target": 60.42,
+  "title": 62.300000000000004
+ },
+ "cues": [
+  {
+   "t": 8.91,
+   "sfx": "audio/sfx_grab_drop.wav",
+   "gain_lu": -15,
+   "why": "Overhead grab clanks; mixed plastic cascades onto the pile"
+  },
+  {
+   "t": 19.42,
+   "sfx": "audio/sfx_furnace.wav",
+   "gain_lu": -19,
+   "why": "Dirty pyrolysis furnace: rumble and flame"
+  },
+  {
+   "t": 27.867,
+   "sfx": "audio/sfx_sweep.wav",
+   "gain_lu": -21,
+   "why": "Cool shimmer follows the torch light sweep"
+  },
+  {
+   "t": 31.62,
+   "sfx": "audio/sfx_ignite.wav",
+   "gain_lu": -13,
+   "why": "Hydrogen plasma ignition, crackle and decaying airy jet"
+  },
+  {
+   "t": 35.6,
+   "sfx": "audio/sfx_fall.wav",
+   "gain_lu": -19,
+   "why": "Slow-motion flake descends: rising tension into disintegration"
+  },
+  {
+   "t": 36.4,
+   "sfx": "audio/sfx_burst.wav",
+   "gain_lu": -12,
+   "why": "Sparkling crackle as plastic disintegrates in 0.01 seconds"
+  },
+  {
+   "t": 50.26,
+   "sfx": "audio/sfx_pellets.wav",
+   "gain_lu": -17,
+   "why": "Fine pellet pour marks purified products becoming new raw material"
+  },
+  {
+   "t": 54.1,
+   "sfx": "audio/sfx_truck.wav",
+   "gain_lu": -20,
+   "why": "Dawn collection truck passes: engine harmonics and tyres"
+  }
+ ]
+}

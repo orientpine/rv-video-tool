@@ -1,0 +1,210 @@
+{
+ "name": "kimm_muscle_fabric_premium",
+ "voice": "ko-KR-InJoonNeural",
+ "rate": "+9%",
+ "checks": "strict",
+ "site": "office",
+ "look": "cinema",
+ "intro_s": 3.4,
+ "lead_s": 0.25,
+ "tail_s": 0.35,
+ "thumb_t": 5,
+ "scenes": [
+  {
+   "name": "kitchen",
+   "site": "office",
+   "look": "cinema",
+   "extra_s": 1.8
+  },
+  {
+   "name": "bulky",
+   "site": "office",
+   "look": "cinema",
+   "lead_s": 0.8,
+   "extra_s": 1.5,
+   "transition": {
+    "type": "dip",
+    "dur": 1,
+    "depth": 0.9
+   }
+  },
+  {
+   "name": "thread",
+   "site": "office",
+   "look": "cinema",
+   "lead_s": 1,
+   "extra_s": 1.6,
+   "transition": {
+    "type": "dip",
+    "dur": 0.8,
+    "depth": 0.9
+   }
+  },
+  {
+   "name": "lift",
+   "site": "office",
+   "look": "cinema",
+   "lead_s": 1,
+   "extra_s": 1.8,
+   "transition": {
+    "type": "dip",
+    "dur": 0.8,
+    "depth": 0.9
+   }
+  },
+  {
+   "name": "home",
+   "site": "office",
+   "look": "cinema",
+   "lead_s": 1,
+   "extra_s": 5.4,
+   "transition": {
+    "type": "dip",
+    "dur": 1,
+    "depth": 0.85
+   }
+  }
+ ],
+ "lines": [
+  {
+   "scene": "kitchen",
+   "text": "근육이 약해지면, 컵 하나|선반에 올리기도 힘듭니다.",
+   "keywords": [
+    "올리기도"
+   ]
+  },
+  {
+   "scene": "kitchen",
+   "text": "움직임이 복잡한 어깨는|돕기도 어렵습니다.",
+   "keywords": [
+    "어깨는"
+   ]
+  },
+  {
+   "scene": "bulky",
+   "text": "기존 입는 로봇은 무겁고 시끄러운 모터로|일부 관절만 도왔습니다.",
+   "keywords": [
+    "무겁고"
+   ]
+  },
+  {
+   "scene": "thread",
+   "text": "머리카락 사분의 일 굵기,|25마이크로미터 형상기억합금 코일실.",
+   "say": "머리카락 사분의 일 굵기, 이십오 마이크로미터 형상기억합금 코일실.",
+   "keywords": [
+    "코일실"
+   ]
+  },
+  {
+   "scene": "thread",
+   "text": "자동 직조기가 이 실로|근육옷감을 연속으로 짭니다.",
+   "keywords": [
+    "짭니다"
+   ]
+  },
+  {
+   "scene": "thread",
+   "text": "전기를 흘리면 옷감이|근육처럼 줄어듭니다.",
+   "keywords": [
+    "전기를",
+    "줄어듭니다"
+   ]
+  },
+  {
+   "scene": "lift",
+   "text": "10g 옷감이 10~15kg의|추를 들어 올립니다.",
+   "say": "십 그램 옷감이 십에서 십오 킬로그램의 추를 들어 올립니다.",
+   "keywords": [
+    "올립니다"
+   ]
+  },
+  {
+   "scene": "lift",
+   "text": "팔꿈치·어깨·허리를 돕는 로봇도|2kg 미만입니다.",
+   "say": "팔꿈치, 어깨, 허리를 돕는 로봇도 이 킬로그램 미만입니다.",
+   "keywords": [
+    "로봇도"
+   ]
+  },
+  {
+   "scene": "home",
+   "text": "한국기계연구원의 840g 어깨 보조 로봇.",
+   "say": "한국기계연구원의 팔백사십 그램 어깨 보조 로봇.",
+   "keywords": [
+    "어깨"
+   ]
+  },
+  {
+   "scene": "home",
+   "text": "근육 약화 환자 임상에서|어깨 움직임 범위가 57% 이상 개선됐습니다.",
+   "say": "근육 약화 환자 임상에서 어깨 움직임 범위가 오십칠 퍼센트 이상 개선됐습니다.",
+   "keywords": [
+    "임상에서"
+   ]
+  },
+  {
+   "scene": "home",
+   "text": "다시, 내 손으로.",
+   "keywords": [
+    "다시"
+   ]
+  }
+ ],
+ "sound": {
+  "music": "audio/score.wav",
+  "music_lu": -13,
+  "duck_db": 7,
+  "auto_cues": false,
+  "cues": [
+   {
+    "t": 6.09,
+    "sfx": "audio/sfx_tremble.wav",
+    "gain_lu": -13,
+    "why": "tremble"
+   },
+   {
+    "t": 15.15,
+    "sfx": "audio/sfx_servo.wav",
+    "gain_lu": -12,
+    "why": "servo"
+   },
+   {
+    "t": 29.97,
+    "sfx": "audio/sfx_loom.wav",
+    "gain_lu": -14,
+    "why": "loom"
+   },
+   {
+    "t": 31.3,
+    "sfx": "audio/sfx_zap.wav",
+    "gain_lu": -15,
+    "why": "zap"
+   },
+   {
+    "t": 33.58,
+    "sfx": "audio/sfx_tighten.wav",
+    "gain_lu": -14,
+    "why": "tighten"
+   },
+   {
+    "t": 40.5,
+    "sfx": "audio/sfx_lift.wav",
+    "gain_lu": -11,
+    "why": "lift"
+   },
+   {
+    "t": 58.23,
+    "sfx": "audio/sfx_place.wav",
+    "gain_lu": -12,
+    "why": "place"
+   },
+   {
+    "t": 65.3,
+    "sfx": "audio/sfx_whoosh.wav",
+    "gain_lu": -18,
+    "why": "whoosh"
+   }
+  ]
+ },
+ "aspect": "2.35:1"
+}
