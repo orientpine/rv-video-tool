@@ -92,6 +92,11 @@ async def main():
         low = await p2.evaluate("""(() => { const t = KIT.label(ov, "low tag"); t.place(cam, new THREE.Vector3(0, -3, 0), 0, 400, 1);
           return {tag: t.box.getBoundingClientRect().bottom, top: KIT.info.captionTop()}; })()""")
         check("caption raised: a tag pushed down stays above the caption box", low["tag"] <= low["top"] + .5, low)
+        moved = await p2.evaluate("""(() => { const c = KIT.info.numCard(ov, {id: "w", caption: "moved", left: 900, top: 500}); c.show(1);
+          const thing = new THREE.Mesh(new THREE.BoxGeometry(.5, .5, .2)); thing.position.set(0, .75, 0); scene.add(thing); scene.updateMatrixWorld(true);
+          KIT.info.clear(c, {from: {p: [0, 1, 6], l: [0, 1, 0], fov: 40}, objects: [thing]}); scene.remove(thing);
+          return {card: c.box.getBoundingClientRect().bottom, top: KIT.info.captionTop()}; })()""")
+        check("caption raised: KIT.info.clear moves a card beside the object and above the caption box", moved["card"] <= moved["top"] + .5, moved)
         await p2.evaluate("delete window.CAPTION")
         fresh = await p2.evaluate("cleared()")
         check("clear on a settled card == on a fresh card", settled == fresh, [settled, fresh])
