@@ -66,9 +66,9 @@ jobs:
         # apt reads the mirrors from /etc/apt/apt-mirrors.txt (azure.archive.ubuntu.com, then archive and security).
         # When the runner's resolver cannot answer these names, apt waits about 20 s for every file before the next
         # mirror; ffmpeg is about a hundred files, so the job sat here until it was cancelled. Drop the Azure entry
-        # when it does not resolve or an attempt fails; map archive and security in /etc/hosts to the address a
-        # public resolver gives (DNS over HTTPS to 1.1.1.1, no lookup needed) when the runner cannot resolve them;
-        # try three times, with a limit on each attempt's index update and download; the install itself then runs
+        # when it does not resolve or an attempt fails. When the runner cannot resolve archive or security, point
+        # its network interface at public resolvers; only if that does not help either, map them in /etc/hosts to
+        # the address 1.1.1.1 gives over HTTPS (no lookup needed). Try three times, with a limit on each attempt's index update and download; the install itself then runs
         # from the downloaded files.
         timeout-minutes: 10
         run: |
@@ -93,6 +93,13 @@ jobs:
               echo "::warning::$1 does not resolve on this runner or through 1.1.1.1"
             fi
           }
+          resolves() { timeout 10 getent hosts "$1" > /dev/null; }
+          if ! resolves archive.ubuntu.com || ! resolves security.ubuntu.com; then
+            iface=$(ip route show default | awk '{print $5; exit}')
+            echo "::warning::the runner's resolver cannot answer archive/security.ubuntu.com; $iface uses 1.1.1.1 and 8.8.8.8"
+            sudo resolvectl dns "$iface" 1.1.1.1 8.8.8.8 && sudo resolvectl flush-caches ||
+              echo "::warning::resolvectl could not change the resolver of $iface"
+          fi
           timeout 10 getent hosts azure.archive.ubuntu.com > /dev/null ||
             drop_azure "azure.archive.ubuntu.com does not resolve"
           pin archive.ubuntu.com
