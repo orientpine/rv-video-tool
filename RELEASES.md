@@ -6,12 +6,12 @@ Every release is a git tag `vX.Y.Z` (Z for fixes, Y for features). Each tag gets
 
 릴리스는 git 태그 `vX.Y.Z` 하나다(고침 = Z, 기능 = Y). 태그마다 이 파일과 GitHub 릴리스 페이지에 한국어·영어 노트를 쓴다. 설치는 `scripts/install.sh`, 확인은 `scripts/verify.sh`.
 
-## Unreleased
+## v0.6.0
 
 ### English
 
-- `KIT.fx.human` act(): a cup or bottle gripped with the defaults (no `at`, `normal` or `fingers`) is held the way a person holds it: the palm on its side across the reach, the fingers running on from the forearm and round it, the thumb up, the hand leaning with the arm. The wrist stays nearly straight, at most 35 degrees in every frame of the muscle-fabric kitchen, bulky and shelf scenes, where the old default bent it 85 to 133 degrees and put the whole roll of the hand into the wrist (#62: the wrist joint's whole turn, 135 to 177 degrees in those grips, is now 42 to 50; setting a mug on a high shelf still turns the hand about 150 degrees in the wrist, the arm has no forearm twist yet). Every finger closes on the cup whichever way its handle faces: a finger that would cross the cup and end clear now stops on it, the thumb picks the opposed pose that reaches the cup, and the palm moves round the cup when the handle is in the way. A carried mug waits in front of the waist with the elbow bent, and the empty hand goes back to hang at the side after letting go.
-- Setting a mug on a shelf above the shoulder with `place` defaults: the person stands at an arm's reach beside the board instead of under it or with their back to the camera, lifts the mug in front of the board's edge with a near-level hand, slides it over the top and lets go, and draws the open hand out past the edge before lowering it. Nothing goes into the board or the head; the wrist stays under 35 degrees.
+- `KIT.fx.human` act(): a cup or bottle gripped with the defaults (no `at`, `normal` or `fingers`) is held the way a person holds it: the palm on its side across the reach, the fingers running on from the forearm and round it, the thumb up, the hand leaning with the arm. The wrist stays nearly straight, at most 35 degrees in every frame of the muscle-fabric kitchen, bulky and shelf test scenes, where the old default bent it 85 to 133 degrees and put the whole roll of the hand into the wrist (#62: the wrist joint's whole turn, 135 to 177 degrees in those grips, is now 42 to 50; setting a mug on a high shelf still turns the hand about 150 degrees in the wrist, the arm has no forearm twist yet). Every finger closes on the cup whichever way its handle faces: a finger that would cross the cup and end clear now stops on it, the thumb picks the opposed pose that reaches the cup, and the palm moves round the cup when the handle is in the way. A carried mug waits in front of the waist with the elbow bent, and the empty hand goes back to hang at the side after letting go.
+- Setting a mug on a shelf above the shoulder with `place` defaults: the person stands at an arm's reach beside the board instead of under it or with their back to the camera, lifts the mug in front of the board's edge with a near-level hand, slides it over the top and lets go, and draws the open hand out past the edge before lowering it. Nothing goes into the board or the head; in the test shelf scene the wrist stays under 35 degrees (see Known issues).
 - New option `fingers: [x, y, z]` on `grip` and `place`: the way the fingers point. `at`, `normal` and `trunk` keep their meaning (no lean, no new palm side when the scene gives them).
 - Fix (v0.5.0 regression): a mug gripped at a point the scene gives (`at`/`normal`) rolls round it as far as in v0.4.5 again; since v0.5.0 its index finger closed over nothing, 11 to 13 mm off the cup. A carried mug keeps v0.5.0's roll, and a thin bottle carried moves exactly as in v0.5.0.
 - The automatic step to a spot (a shelf where the body has no room) turns the person at most as far as needed and never to a spot where their body stands between the scene's view and the hand (it used to turn them up to 195 degrees, back to the camera, in front of the cup).
@@ -21,10 +21,15 @@ Every release is a git tag `vX.Y.Z` (Z for fixes, Y for features). Each tag gets
 - Fix: see-through triangles on the back of a `KIT.fx.human` hand. When a gripping hand turned far from its forearm (a cup gripped with the trunk bent, about 175 degrees at the wrist), the skin where hand and forearm meet folded inside out and showed small triangular holes up close. Those wrist seam vertices now follow the blended rotation of their joints (dual quaternion) once the joints turn more than 50 degrees apart, fully from 80; every other vertex, and the wrist seam below 50 degrees, follows the same blend of matrices as before. Where a grip measures the hand skin itself (the fingers round a handle), the arm can settle a little differently for it. `tests/test_human_skin.py` looks at every folded hand triangle from outside in each frame of two grip scenes and fails on a hole.
 - `scripts/pre-push`: scans the messages and the added lines of the pushed patches, no longer the removed lines. A commit that took an already public private word out of a file was refused for the very line it removed; the pushed tree is still scanned in full, and a line added and removed again within one push is still caught by the commit that added it. `tests/test_pre_push.sh` has the case.
 
+**Known issues**
+
+- Lifting a mug onto a shelf above the shoulder with `place` defaults: in a furnished scene the wrist still bends 41 degrees or more at the moment the hand lifts the mug over the board (the 35 degrees above are from a bare test shelf). Keeping the arm off the board and keeping the wrist straight pull against each other there.
+- The arm has no forearm twist joint yet (#62): setting a mug on a high shelf still turns the hand about 150 degrees in the wrist joint, and the wrist seam relies on the blended skin rotation above.
+
 ### 한국어
 
-- `KIT.fx.human` act(): 기본값(`at`·`normal`·`fingers` 없음)으로 쥐는 컵·병을 사람처럼 쥔다. 손바닥은 뻗는 방향을 가로지르는 옆면에, 손가락은 아래팔에서 이어져 감싸고, 엄지는 위, 손은 팔을 따라 기운다. 손목이 거의 곧다: 근육옷감 부엌·짐·선반 장면의 모든 프레임에서 35도 이하(옛 기본값은 85~133도였고 손 굴림을 손목이 다 받았다. #62: 그 쥐기들에서 손목 관절 전체 회전 135~177도가 42~50도로. 높은 선반에 놓을 때는 아직 손목에서 약 150도 돈다, 팔뚝 비틀기가 아직 없다). 손잡이가 어느 쪽을 보든 손가락이 다 컵에 닿는다: 컵을 지나쳐 허공에서 끝나던 손가락은 컵에서 멈추고, 엄지는 컵에 닿는 맞섬 자세를 고르고, 손잡이가 막으면 손바닥이 컵 둘레로 비킨다. 들고 가는 머그는 팔꿈치를 굽혀 허리 앞에서 기다리고, 놓은 뒤 빈손은 옆으로 내려와 늘어진다.
-- 어깨 위 선반에 `place` 기본값으로 머그 놓기: 판 밑이나 카메라에 등을 돌린 자리 대신 판 옆 팔 길이 자리에 서서, 판 앞끝 앞에서 손을 거의 수평으로 들어 올리고, 판 위로 밀어 놓은 뒤, 편 손을 판 끝 밖으로 뺀 다음 내린다. 판·머리에 들어가는 곳이 없고 손목은 35도 아래.
+- `KIT.fx.human` act(): 기본값(`at`·`normal`·`fingers` 없음)으로 쥐는 컵·병을 사람처럼 쥔다. 손바닥은 뻗는 방향을 가로지르는 옆면에, 손가락은 아래팔에서 이어져 감싸고, 엄지는 위, 손은 팔을 따라 기운다. 손목이 거의 곧다: 근육옷감 부엌·짐·선반 시험 장면의 모든 프레임에서 35도 이하(옛 기본값은 85~133도였고 손 굴림을 손목이 다 받았다. #62: 그 쥐기들에서 손목 관절 전체 회전 135~177도가 42~50도로. 높은 선반에 놓을 때는 아직 손목에서 약 150도 돈다, 팔뚝 비틀기가 아직 없다). 손잡이가 어느 쪽을 보든 손가락이 다 컵에 닿는다: 컵을 지나쳐 허공에서 끝나던 손가락은 컵에서 멈추고, 엄지는 컵에 닿는 맞섬 자세를 고르고, 손잡이가 막으면 손바닥이 컵 둘레로 비킨다. 들고 가는 머그는 팔꿈치를 굽혀 허리 앞에서 기다리고, 놓은 뒤 빈손은 옆으로 내려와 늘어진다.
+- 어깨 위 선반에 `place` 기본값으로 머그 놓기: 판 밑이나 카메라에 등을 돌린 자리 대신 판 옆 팔 길이 자리에 서서, 판 앞끝 앞에서 손을 거의 수평으로 들어 올리고, 판 위로 밀어 놓은 뒤, 편 손을 판 끝 밖으로 뺀 다음 내린다. 판·머리에 들어가는 곳이 없고, 시험 선반 장면에서 손목은 35도 아래(알려진 문제 참고).
 - `grip`·`place` 새 옵션 `fingers: [x, y, z]`(손가락이 향할 방향). `at`·`normal`·`trunk` 는 뜻 그대로(장면이 주면 기울이지도 손바닥 면을 바꾸지도 않음).
 - 고침(v0.5.0 회귀): 장면이 준 점(`at`/`normal`)에서 쥐는 머그는 v0.4.5 만큼 다시 굴린다. v0.5.0 부터 검지가 허공을 쥐어 컵에서 11~13 mm 떠 있었다. 들고 가는 머그는 v0.5.0 굴림 그대로, 들고 가는 가는 병은 v0.5.0 과 똑같이 움직인다.
 - 자리가 없어 스스로 옮겨 서는 자리(선반)는 필요한 만큼만 돌고, 장면이 보는 쪽과 손 사이에 몸이 서는 자리는 고르지 않는다(예전엔 195도까지 돌아 카메라에 등을 보이고 컵을 가렸다).
@@ -33,6 +38,11 @@ Every release is a git tag `vX.Y.Z` (Z for fixes, Y for features). Each tag gets
 
 - 고침: `KIT.fx.human` 손등에 비쳐 보이던 삼각 구멍. 쥔 손이 팔뚝에서 크게 돌면(몸을 숙여 컵을 쥘 때 손목에서 약 175도) 손과 팔뚝이 만나는 피부가 뒤집혀 가까이서 작은 삼각 구멍으로 보였다. 이제 그 손목 이음 정점은 관절들이 50도 넘게 벌어지면 관절 회전을 섞은 회전(듀얼 쿼터니언)을 따르기 시작해 80도부터 완전히 따른다. 다른 정점과 50도 아래의 손목 이음은 예전과 같은 행렬 혼합을 따른다. 쥐기가 손 피부를 직접 재는 경우(손잡이를 감싸는 손가락)에는 그 때문에 팔이 조금 다르게 앉을 수 있다. `tests/test_human_skin.py` 가 쥐기 장면 두 개의 모든 프레임에서 뒤집힌 손 삼각면을 바깥에서 보고 구멍이 보이면 실패한다.
 - `scripts/pre-push`: 올리는 패치는 메시지와 더한 줄만 검사하고 지운 줄은 보지 않는다. 이미 공개된 비공개 낱말을 파일에서 빼는 커밋이 그 지운 줄 때문에 거절됐다. 올리는 트리는 여전히 전부 검사하고, 한 번에 올리는 커밋 안에서 더했다가 지운 줄은 더한 커밋에서 걸린다. `tests/test_pre_push.sh` 에 그 경우가 있다.
+
+**알려진 문제**
+
+- 어깨 위 선반에 `place` 기본값으로 머그를 올릴 때, 가구가 있는 장면에서는 손이 머그를 판 위로 들어 올리는 순간 손목이 아직 41도 이상 굽는다(위의 35도는 빈 시험 선반 장면 값). 그 순간에는 팔을 판에서 비키는 것과 손목을 곧게 두는 것이 서로 부딪힌다.
+- 팔에 아직 팔뚝 비틀기 관절이 없다(#62): 높은 선반에 머그를 놓을 때 손목 관절에서 손이 약 150도 돌고, 손목 이음 피부는 위의 회전 섞기에 기댄다.
 
 ## v0.5.0
 
