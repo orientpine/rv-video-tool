@@ -901,7 +901,12 @@
         let root = g; while (root.parent) root = root.parent;
         const held = new Set(); for (const s of specs) for (const o of [s.target, s.hold]) if (o) o.traverse(x => held.add(x));
         const env = [];
-        root.traverse(o => { if (o.isMesh && o.visible && !held.has(o)) { let h = false; for (let p = o; p; p = p.parent) if (p.userData.rvHuman) { h = true; break; } if (!h) env.push(o); } });
+        // light shafts, haze and glass (see-through, not depth-writing) and shells round the whole body (a room, a sky) are not
+        // furniture to keep clear of: counted, they left no spot with room and the body stood 10 mm off a shelf (공돌 home)
+        const bodyBox = new THREE.Box3().setFromObject(g);
+        const furniture = o => { const ms = [].concat(o.material || []); if (ms.some(m => m && (m.depthWrite === false || (m.transparent && m.opacity < .6)))) return false;
+          return !new THREE.Box3().setFromObject(o).containsBox(bodyBox); };
+        root.traverse(o => { if (o.isMesh && o.visible && !held.has(o)) { let h = false; for (let p = o; p; p = p.parent) if (p.userData.rvHuman) { h = true; break; } if (!h && furniture(o)) env.push(o); } });
         const room = () => { const c = g.localToWorld(V("spine")), tris = surfaceSet(env.filter(o => !o.userData.rvSkin), c, 1.1 * k);
           if (!tris.length) return Infinity; let m = Infinity, sp = V("spine");
           for (const p of trunk) m = Math.min(m, signedDist(g.localToWorld(qB && p.upper ? p.clone().sub(sp).applyQuaternion(qB).add(sp) : p.clone()), tris)); return m; };
