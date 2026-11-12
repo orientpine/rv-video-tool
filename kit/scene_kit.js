@@ -1036,7 +1036,7 @@
         const Hr = palm.getWorldPosition(Vc()), Sw = W(S);
         const handRest = restQ.clone().multiply(el.quaternion).multiply(restWr);
         // goal point P, outward normal N (from the surface toward the hand), finger direction F; all world space
-        let P, N, obj = null, rest = null, off = null, extra = [], thumbF = null, roomy = false, trayHold = false, wideHold = false;
+        let P, N, obj = null, rest = null, off = null, extra = [], thumbF = null, roomy = false, trayHold = false, wideHold = false, freeStanding = false;
         // a small thing among others (a cup on a tray with jars and a front lip): what stands beside it is in the way by default
         if (kind === "grip" && !s.avoid && s.target.parent && !s.target.parent.isScene) {
           const sz = new THREE.Box3().setFromObject(s.target).getSize(Vc());
@@ -1106,7 +1106,7 @@
               if (inTray && roomy) n = n.clone().addScaledVector(up, .58).normalize();
               trayHold = !!inTray;
               // standing free: the palm goes on its side across the reach, the fingers on along the forearm and round it
-              if (!backed && !inTray && !s.normal) { const a = across(fingersW || forearmTo(c), roll0(size)); if (a) n = a; }
+              if (!backed && !inTray && !s.normal) { const a = across(fingersW || forearmTo(c), roll0(size)); if (a) { n = a; freeStanding = true; } }
               if (!s.normal && !s.fingers && !backed && !inTray && azimuth) n.applyAxisAngle(up, azimuth);
               const Nn = s.normal ? vec(s.normal).normalize() : n;
               // thumb along the object's longest side across N (up for an upright cup), fingers around it
@@ -1170,7 +1170,7 @@
         // the fingers may wrap a little round the thing's axis (a slanted hold), so the hand tips toward the line the arm comes
         // in on: up to a shelf above the shoulder, down to a counter (the hand of a level hold would leave the wrist bent).
         // Not when the scene gave the hand's way (at, normal, fingers).
-        if (!fingersW && !s.normal && !(kind === "grip" && s.at) && (kind === "grip" || wideHold)) {   // (a thin bottle carried moves as in v0.5.0)
+        if (!fingersW && !s.normal && !(kind === "grip" && s.at) && (freeStanding || wideHold)) {   // a cup standing free, or carried (a handle on a door and a thin bottle carried move as in v0.5.0)
           const a = forearmTo(P); a.addScaledVector(N, -a.dot(N));
           if (a.lengthSq() > 1e-8) { a.normalize(); const ang = Math.atan2(Vc().crossVectors(F, a).dot(N), F.dot(a)); F.applyAxisAngle(N, clamp(ang, -SLANT, SLANT));
             // slanted fingers curl up (or down) the thing as they close: the palm goes that much the other way, so the top
