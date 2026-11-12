@@ -88,6 +88,23 @@ PATH="$T/fault-bin:$PATH" RV_TEST_FAIL_GIT=archive \
   check git-archive-failure 1 "$old_remote" 'cannot export pushed tree'
 PATH="$T/fault-bin:$PATH" RV_TEST_FAIL_TAR=1 \
   check tar-failure 1 "$old_remote" 'cannot export pushed tree'
+# The filter that keeps only the added patch lines must refuse when it cannot run, and so must a scan
+# without its pattern file.
+RV_TEST_REAL_GREP="$(command -v grep)"
+export RV_TEST_REAL_GREP
+cat > "$T/fault-bin/grep" <<'EOF'
+#!/usr/bin/env bash
+if [[ "${RV_TEST_FAIL_GREP:-}" == 1 ]]; then
+  for arg; do
+    if [[ "$arg" == '^-' ]]; then echo "synthetic grep failure" >&2; exit 2; fi
+  done
+fi
+exec "$RV_TEST_REAL_GREP" "$@"
+EOF
+chmod +x "$T/fault-bin/grep"
+PATH="$T/fault-bin:$PATH" RV_TEST_FAIL_GREP=1 \
+  check patch-filter-failure 1 "$old_remote" 'cannot read pushed commit history'
+RV_SCAN_PATTERNS="$T/missing-patterns" check pattern-file-missing 1 "$old_remote" 'names, hosts and projects are NOT checked'
 
 # Maintenance history diverges before main's newer commits.
 g switch -qc release-x "$initial_main"
@@ -149,6 +166,15 @@ g rm -q transient.txt
 g commit -qm "Remove transient text"
 check own-removed-patch-force-push 1 "$old_remote"
 check new-branch-own-removed-patch 1 "$ZERO"
+
+# A new file's name is in the added patch headers, even when a later commit removes the file again.
+g switch -qc own-file-name "$clean_tip"
+echo clean > SyntheticForbiddenMarker.txt
+g add SyntheticForbiddenMarker.txt
+g commit -qm "Add a file"
+g rm -q SyntheticForbiddenMarker.txt
+g commit -qm "Remove the file"
+check own-new-file-name 1 "$ZERO"
 
 # Taking an already published line out again: the removed line is public, so only the tree and the added
 # lines count and the push passes.
