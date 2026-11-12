@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # git pre-push hook: refuses a push unless scripts/scan-public.sh prints 0 for every pushed tree and for the
-# patches and messages of the commits being pushed. Install once per checkout:
+# messages and the added lines of the patches of the commits being pushed. A removed line is left out: it is
+# already public, or an earlier pushed commit added it and that commit's patch is scanned, so a commit that
+# takes a leaked line out of main is not refused for it. Install once per checkout:
 #   ln -s ../../scripts/pre-push .git/hooks/pre-push
 set -uo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
@@ -40,12 +42,15 @@ while read -r _ local_sha _; do
     rm -rf "$work"
     continue
   fi
-  if ! git -C "$ROOT" log -p --format='%an <%ae>%n%cn <%ce>%n%B' "$local_sha" --not "${exclude[@]}" > "$work/.pushed-commits.txt"; then
+  if ! git -C "$ROOT" log --format='%an <%ae>%n%cn <%ce>%n%B' "$local_sha" --not "${exclude[@]}" > "$work/.pushed-commits.txt" ||
+    ! git -C "$ROOT" log -p --format= "$local_sha" --not "${exclude[@]}" > "$work.patches" ||
+    ! { grep -v '^-' "$work.patches" > "$work/.pushed-patches.txt" || [[ $? == 1 ]]; }; then
     echo "pre-push: cannot read pushed commit history; push refused" >&2
     status=1
-    rm -rf "$work"
+    rm -rf "$work" "$work.patches"
     continue
   fi
+  rm -f "$work.patches"
   if ! bash "$ROOT/scripts/scan-public.sh" "$work" > "$work.scan" 2>&1; then
     cat "$work.scan" >&2
     echo "pre-push: leak scan is not 0 for ${local_sha:0:7}; push refused" >&2

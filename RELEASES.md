@@ -19,6 +19,7 @@ Every release is a git tag `vX.Y.Z` (Z for fixes, Y for features). Each tag gets
 - Faster hand scenes: the finger and roll solves measured every triangle of the held thing for each hand point; runs of triangles that cannot be the nearest are now passed by (same nearest triangle, same result). A default mug grip costs about 200 ms per frame instead of 400 to 800, which every check that samples the hand frames repeats.
 
 - Fix: see-through triangles on the back of a `KIT.fx.human` hand. When a gripping hand turned far from its forearm (a cup gripped with the trunk bent, about 175 degrees at the wrist), the skin where hand and forearm meet folded inside out and showed small triangular holes up close. Those wrist seam vertices now follow the blended rotation of their joints (dual quaternion) once the joints turn more than 50 degrees apart, fully from 80; every other vertex, and the wrist seam below 50 degrees, follows the same blend of matrices as before. Where a grip measures the hand skin itself (the fingers round a handle), the arm can settle a little differently for it. `tests/test_human_skin.py` looks at every folded hand triangle from outside in each frame of two grip scenes and fails on a hole.
+- `scripts/pre-push`: scans the messages and the added lines of the pushed patches, no longer the removed lines. A commit that took an already public private word out of a file was refused for the very line it removed; the pushed tree is still scanned in full, and a line added and removed again within one push is still caught by the commit that added it. `tests/test_pre_push.sh` has the case.
 
 ### 한국어
 
@@ -31,6 +32,7 @@ Every release is a git tag `vX.Y.Z` (Z for fixes, Y for features). Each tag gets
 - 손 장면이 빨라짐: 손가락·굴림 풀이가 손 점마다 쥔 물체의 모든 삼각형을 재던 것을, 가장 가까울 수 없는 삼각형 묶음은 건너뛴다(가장 가까운 삼각형·결과는 같음). 기본값 머그 쥐기 한 프레임이 400~800 ms 에서 약 200 ms 로, 손 프레임을 재는 검사마다 그만큼 준다.
 
 - 고침: `KIT.fx.human` 손등에 비쳐 보이던 삼각 구멍. 쥔 손이 팔뚝에서 크게 돌면(몸을 숙여 컵을 쥘 때 손목에서 약 175도) 손과 팔뚝이 만나는 피부가 뒤집혀 가까이서 작은 삼각 구멍으로 보였다. 이제 그 손목 이음 정점은 관절들이 50도 넘게 벌어지면 관절 회전을 섞은 회전(듀얼 쿼터니언)을 따르기 시작해 80도부터 완전히 따른다. 다른 정점과 50도 아래의 손목 이음은 예전과 같은 행렬 혼합을 따른다. 쥐기가 손 피부를 직접 재는 경우(손잡이를 감싸는 손가락)에는 그 때문에 팔이 조금 다르게 앉을 수 있다. `tests/test_human_skin.py` 가 쥐기 장면 두 개의 모든 프레임에서 뒤집힌 손 삼각면을 바깥에서 보고 구멍이 보이면 실패한다.
+- `scripts/pre-push`: 올리는 패치는 메시지와 더한 줄만 검사하고 지운 줄은 보지 않는다. 이미 공개된 비공개 낱말을 파일에서 빼는 커밋이 그 지운 줄 때문에 거절됐다. 올리는 트리는 여전히 전부 검사하고, 한 번에 올리는 커밋 안에서 더했다가 지운 줄은 더한 커밋에서 걸린다. `tests/test_pre_push.sh` 에 그 경우가 있다.
 
 ## v0.5.0
 
