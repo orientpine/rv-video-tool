@@ -150,6 +150,19 @@ g commit -qm "Remove transient text"
 check own-removed-patch-force-push 1 "$old_remote"
 check new-branch-own-removed-patch 1 "$ZERO"
 
+# Taking an already published line out again: the removed line is public, so only the tree and the added
+# lines count and the push passes.
+g switch -qc published-line "$clean_tip"
+echo SyntheticForbiddenMarker > published-line.txt
+g add published-line.txt
+g commit -qm "Published line"
+g push -q origin published-line
+g switch -qc remove-published-line
+g rm -q published-line.txt
+g commit -qm "Remove published line"
+check remove-published-line 0 "$ZERO"
+g --git-dir="$T/remote.git" update-ref -d refs/heads/published-line
+
 g switch -qc own-identity "$clean_tip"
 GIT_COMMITTER_NAME=SyntheticForbiddenMarker g commit -q --allow-empty -m "Own identity"
 g commit -q --allow-empty -m "Clean tip"
