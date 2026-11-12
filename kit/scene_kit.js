@@ -902,7 +902,7 @@
         const held = new Set(); for (const s of specs) for (const o of [s.target, s.hold]) if (o) o.traverse(x => held.add(x));
         const env = [];
         // light shafts, haze and glass (see-through, not depth-writing) and shells round the whole body (a room, a sky) are not
-        // furniture to keep clear of: counted, they left no spot with room and the body stood 10 mm off a shelf (공돌 home)
+        // furniture to keep clear of: counted, they left no spot with room and the body stood 10 mm off a shelf (a furnished home scene)
         const bodyBox = new THREE.Box3().setFromObject(g);
         const furniture = o => { const ms = [].concat(o.material || []); if (ms.some(m => m && (m.depthWrite === false || (m.transparent && m.opacity < .6)))) return false;
           return !new THREE.Box3().setFromObject(o).containsBox(bodyBox); };
